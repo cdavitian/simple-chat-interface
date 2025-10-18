@@ -14,10 +14,16 @@ AWS.config.update({
     region: process.env.AWS_REGION || 'us-east-1'
 });
 
-// Configure OpenAI
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-});
+// Lazy OpenAI client initialization - only create when needed
+let openaiClient = null;
+const getOpenAIClient = () => {
+    if (!openaiClient && process.env.OPENAI_API_KEY) {
+        openaiClient = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY
+        });
+    }
+    return openaiClient;
+};
 
 // Session configuration
 app.use(session({
@@ -173,8 +179,14 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         }
 
         // Use OpenAI API to create a proper session
-        const { OpenAI } = require('openai');
-        const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const client = getOpenAIClient();
+        
+        if (!client) {
+            console.log('ERROR: OpenAI client not initialized');
+            return res.status(500).json({ 
+                error: 'OpenAI API Key not configured' 
+            });
+        }
         
         console.log('Creating ChatKit session...');
         
