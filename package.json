@@ -1,0 +1,26 @@
+{
+  "name": "simple-chat-interface",
+  "version": "1.0.0",
+  "description": "A modern, responsive chat interface built with HTML, CSS, and JavaScript",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "chat",
+    "interface",
+    "html",
+    "css",
+    "javascript",
+    "web"
+  ],
+  "author": "Colin Davitian",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
