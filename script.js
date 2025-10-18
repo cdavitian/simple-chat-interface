@@ -3,8 +3,13 @@ class ChatInterface {
         this.messagesContainer = document.getElementById('chatMessages');
         this.messageInput = document.getElementById('messageInput');
         this.sendButton = document.getElementById('sendButton');
+        this.userInfo = document.getElementById('userInfo');
+        this.userPhoto = document.getElementById('userPhoto');
+        this.userName = document.getElementById('userName');
+        this.logoutBtn = document.getElementById('logoutBtn');
         
         this.initializeEventListeners();
+        this.loadUserInfo();
     }
     
     initializeEventListeners() {
@@ -26,6 +31,9 @@ class ChatInterface {
         
         // Focus input on load
         this.messageInput.focus();
+        
+        // Logout button
+        this.logoutBtn.addEventListener('click', () => this.logout());
     }
     
     sendMessage() {
@@ -115,6 +123,45 @@ class ChatInterface {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    
+    async loadUserInfo() {
+        try {
+            const response = await fetch('/api/user');
+            if (response.ok) {
+                const user = await response.json();
+                this.displayUserInfo(user);
+            } else {
+                // If not authenticated, redirect to login
+                window.location.href = '/login';
+            }
+        } catch (error) {
+            console.error('Error loading user info:', error);
+            window.location.href = '/login';
+        }
+    }
+    
+    displayUserInfo(user) {
+        // For now, we'll use a default avatar since we don't have photo from Cognito
+        this.userPhoto.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=667eea&color=fff&size=32`;
+        this.userPhoto.alt = user.name;
+        this.userName.textContent = user.name;
+        this.userInfo.style.display = 'flex';
+    }
+    
+    async logout() {
+        try {
+            const response = await fetch('/auth/logout', { method: 'GET' });
+            if (response.ok) {
+                window.location.href = '/login';
+            } else {
+                console.error('Logout failed');
+            }
+        } catch (error) {
+            console.error('Logout error:', error);
+            // Still redirect to login even if logout request fails
+            window.location.href = '/login';
+        }
     }
 }
 

@@ -10,9 +10,16 @@
     <div class="chat-container">
         <div class="chat-header">
             <h1>Chat</h1>
-            <div class="status-indicator">
-                <span class="status-dot"></span>
-                <span class="status-text">Online</span>
+            <div class="header-right">
+                <div class="user-info" id="userInfo" style="display: none;">
+                    <img id="userPhoto" class="user-photo" src="" alt="User Photo">
+                    <span id="userName" class="user-name"></span>
+                    <button id="logoutBtn" class="logout-btn" title="Logout">Logout</button>
+                </div>
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Online</span>
+                </div>
             </div>
         </div>
         
