@@ -62,15 +62,12 @@ const requireAuth = (req, res, next) => {
 // Serve static files from public directory (avatars, etc)
 app.use('/public', express.static('public'));
 
-// Serve dist bundle and assets
-app.use('/bundle.js', express.static('dist'));
-
 // Serve styles.css from root for login page
 app.use('/styles.css', (req, res) => {
     res.sendFile(path.join(__dirname, 'styles.css'));
 });
 
-// Authentication routes
+// ============ Authentication Routes ============
 app.post('/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -109,44 +106,7 @@ app.get('/auth/logout', (req, res) => {
     });
 });
 
-// Login page route
-app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'login.html'));
-});
-
-// Test route - serve static HTML
-app.get('/test', (req, res) => {
-    res.sendFile(path.join(__dirname, 'test.html'));
-});
-
-// Direct React test - serve HTML that directly includes bundle.js
-app.get('/direct', (req, res) => {
-    res.sendFile(path.join(__dirname, 'direct-test.html'));
-});
-
-// Fixed React test - serve the exact same HTML as direct but through main route
-app.get('/fixed', (req, res) => {
-    res.sendFile(path.join(__dirname, 'fixed-index.html'));
-});
-
-// Vanilla React test - uses React from CDN, not webpack bundle
-app.get('/vanilla', (req, res) => {
-    res.sendFile(path.join(__dirname, 'vanilla-test.html'));
-});
-
-// Simple webpack test - uses simpler webpack config without minimization
-app.get('/simple', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist-simple', 'index.html'));
-});
-
-// Serve React app to everyone - let React handle authentication
-app.get('/', (req, res) => {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
-
+// ============ API Routes ============
 // API route to get current user info
 app.get('/api/user', requireAuth, (req, res) => {
     res.json(req.session.user);
@@ -277,6 +237,50 @@ app.get('/health', (req, res) => {
         message: 'Chat interface is running',
         timestamp: new Date().toISOString()
     });
+});
+
+// ============ Static File Serving ============
+// Serve static files from dist directory (bundle.js, etc.)
+app.use(express.static('dist'));
+
+// ============ HTML Page Routes ============
+// Login page route
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+// Test route - serve static HTML
+app.get('/test', (req, res) => {
+    res.sendFile(path.join(__dirname, 'test.html'));
+});
+
+// Direct React test - serve HTML that directly includes bundle.js
+app.get('/direct', (req, res) => {
+    res.sendFile(path.join(__dirname, 'direct-test.html'));
+});
+
+// Fixed React test - serve the exact same HTML as direct but through main route
+app.get('/fixed', (req, res) => {
+    res.sendFile(path.join(__dirname, 'fixed-index.html'));
+});
+
+// Vanilla React test - uses React from CDN, not webpack bundle
+app.get('/vanilla', (req, res) => {
+    res.sendFile(path.join(__dirname, 'vanilla-test.html'));
+});
+
+// Simple webpack test - uses simpler webpack config without minimization
+app.get('/simple', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist-simple', 'index.html'));
+});
+
+// ============ Root Route (Must be LAST) ============
+// Serve React app to everyone - let React handle authentication
+app.get('/', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // Start the server
