@@ -117,7 +117,7 @@ function App() {
         <div className="header-right">
           <div className="user-info">
             <img 
-              src={user?.picture || '/default-avatar.png'} 
+              src={user?.picture || '/public/default-avatar.png'} 
               alt="User" 
               className="user-photo"
             />

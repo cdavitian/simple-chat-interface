@@ -1701,7 +1701,7 @@ function App_App() {
   }, /*#__PURE__*/react.createElement("div", {
     className: "user-info"
   }, /*#__PURE__*/react.createElement("img", {
-    src: (user === null || user === void 0 ? void 0 : user.picture) || '/default-avatar.png',
+    src: (user === null || user === void 0 ? void 0 : user.picture) || '/public/default-avatar.png',
     alt: "User",
     className: "user-photo"
   }), /*#__PURE__*/react.createElement("span", {
