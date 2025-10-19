@@ -26,20 +26,30 @@ const getOpenAIClient = () => {
 };
 
 // Session configuration
+const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
+
 app.use(session({
     secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false } // Set to true in production with HTTPS
+    cookie: { 
+        secure: isProduction, // true in production with HTTPS
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        sameSite: 'lax' // Allow cookies for same-site requests
+    }
 }));
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
 
-// Serve static files from public directory
-app.use(express.static('public'));
+// CORS configuration - only needed if frontend is on different domain
+// For same-origin, we don't need CORS at all
+// app.use(cors({
+//     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+//     credentials: true
+// }));
 
 // Middleware to check authentication
 const requireAuth = (req, res, next) => {
@@ -49,19 +59,16 @@ const requireAuth = (req, res, next) => {
     res.status(401).json({ error: 'Authentication required' });
 };
 
-// Serve specific files from the current directory
-app.use('/login', express.static('.'));
-app.use('/styles.css', express.static('.'));
-app.use('/login.html', express.static('.'));
+// Serve static files from public directory (avatars, etc)
+app.use('/public', express.static('public'));
 
-// Serve static files from the dist directory (bundled React app)
-app.use(express.static('dist'));
+// Serve dist bundle and assets
+app.use('/bundle.js', express.static('dist'));
 
-// Serve static files from dist-simple directory
-app.use(express.static('dist-simple'));
-
-// Serve static files from the public directory (chatkit.js)
-app.use(express.static('public'));
+// Serve styles.css from root for login page
+app.use('/styles.css', (req, res) => {
+    res.sendFile(path.join(__dirname, 'styles.css'));
+});
 
 // Authentication routes
 app.post('/auth/login', async (req, res) => {

@@ -53,3 +53,7 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Root index.html (use dist/index.html instead)
+/index.html
+/script.js
