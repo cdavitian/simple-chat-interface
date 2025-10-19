@@ -28,6 +28,11 @@ const getOpenAIClient = () => {
 // Session configuration
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
 
+// Trust proxy - required for Railway/Heroku/etc (they use reverse proxies)
+if (isProduction) {
+    app.set('trust proxy', 1);
+}
+
 app.use(session({
     secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
     resave: false,
@@ -37,7 +42,8 @@ app.use(session({
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         sameSite: 'lax' // Allow cookies for same-site requests
-    }
+    },
+    proxy: isProduction // Trust the reverse proxy when setting secure cookies
 }));
 
 // Middleware
@@ -72,6 +78,10 @@ app.post('/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
         
+        console.log('Login attempt for:', email);
+        console.log('Is production:', isProduction);
+        console.log('Session ID before login:', req.sessionID);
+        
         // Check if email domain is kyocare.com
         const domain = email.split('@')[1];
         if (domain !== 'kyocare.com') {
@@ -90,7 +100,18 @@ app.post('/auth/login', async (req, res) => {
             id: email // Using email as ID for now
         };
         
-        res.json({ success: true, user: req.session.user });
+        // Save session explicitly
+        req.session.save((err) => {
+            if (err) {
+                console.error('Session save error:', err);
+                return res.status(500).json({ error: 'Failed to save session' });
+            }
+            
+            console.log('Session saved successfully:', req.sessionID);
+            console.log('Session cookie will be secure:', isProduction);
+            
+            res.json({ success: true, user: req.session.user });
+        });
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ error: 'Login failed' });
@@ -108,8 +129,17 @@ app.get('/auth/logout', (req, res) => {
 
 // ============ API Routes ============
 // API route to get current user info
-app.get('/api/user', requireAuth, (req, res) => {
-    res.json(req.session.user);
+app.get('/api/user', (req, res) => {
+    console.log('GET /api/user - Session ID:', req.sessionID);
+    console.log('GET /api/user - Has session.user:', !!req.session.user);
+    console.log('GET /api/user - Session:', JSON.stringify(req.session));
+    console.log('GET /api/user - Cookies:', req.headers.cookie);
+    
+    if (req.session.user) {
+        return res.json(req.session.user);
+    }
+    
+    res.status(401).json({ error: 'Authentication required' });
 });
 
 // ChatKit session endpoint - generates client tokens for ChatKit
