@@ -13,7 +13,8 @@
     "backup:list": "node backup-database.js --list",
     "backup:restore": "node backup-database.js --restore",
     "migrate": "node railway-migrate.js",
-    "migrate:aurora": "node database/migrate.js"
+    "migrate:aurora": "node database/migrate.js",
+    "debug:db": "node debug-railway-db.js"
   },
   "keywords": [
     "chat",

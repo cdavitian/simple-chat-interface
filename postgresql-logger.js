@@ -2,13 +2,19 @@ const { Pool } = require('pg');
 
 class PostgreSQLAccessLogger {
     constructor(options = {}) {
+        // Configure SSL options to handle self-signed certificates
+        const sslConfig = process.env.DB_SSL === 'true' ? {
+            rejectUnauthorized: false, // Allow self-signed certificates
+            sslmode: 'require'
+        } : false;
+
         this.pool = new Pool({
             host: options.host || process.env.DB_HOST,
             port: options.port || process.env.DB_PORT,
             database: options.database || process.env.DB_NAME,
             user: options.user || process.env.DB_USER,
             password: options.password || process.env.DB_PASSWORD,
-            ssl: options.ssl || process.env.DB_SSL === 'true'
+            ssl: sslConfig
         });
         
         this.enableConsole = options.enableConsole || false;
@@ -17,14 +23,33 @@ class PostgreSQLAccessLogger {
 
     async initDatabase() {
         try {
+            console.log('Initializing PostgreSQL database...');
+            console.log('Database config:', {
+                host: process.env.DB_HOST,
+                port: process.env.DB_PORT,
+                database: process.env.DB_NAME,
+                user: process.env.DB_USER,
+                ssl: process.env.DB_SSL
+            });
+            
             await this.createTables();
-            console.log('PostgreSQL database initialized');
+            console.log('PostgreSQL database initialized successfully');
         } catch (error) {
             console.error('Error initializing database:', error);
+            console.error('Error details:', {
+                message: error.message,
+                code: error.code,
+                detail: error.detail
+            });
         }
     }
 
     async createTables() {
+        // Test connection first
+        console.log('Testing database connection...');
+        const testResult = await this.pool.query('SELECT NOW() as current_time');
+        console.log('Database connection successful. Current time:', testResult.rows[0].current_time);
+
         const createTableSQL = `
             CREATE TABLE IF NOT EXISTS access_logs (
                 id SERIAL PRIMARY KEY,
@@ -40,7 +65,9 @@ class PostgreSQLAccessLogger {
             )
         `;
 
+        console.log('Creating access_logs table...');
         await this.pool.query(createTableSQL);
+        console.log('access_logs table created successfully');
     }
 
     async logAccess(event) {
