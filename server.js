@@ -4,10 +4,15 @@ const session = require('express-session');
 const cors = require('cors');
 const AWS = require('aws-sdk');
 const OpenAI = require('openai');
+const LoggingConfig = require('./logging-config');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Initialize access logger
+const loggingConfig = new LoggingConfig();
+const accessLogger = loggingConfig.getLogger();
 
 // Configure AWS
 AWS.config.update({
@@ -56,6 +61,14 @@ app.use(express.urlencoded({ extended: true }));
 //     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
 //     credentials: true
 // }));
+
+// Helper function to extract client information
+const getClientInfo = (req) => {
+    return {
+        ipAddress: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown'
+    };
+};
 
 // Middleware to check authentication
 const requireAuth = (req, res, next) => {
@@ -110,6 +123,21 @@ app.post('/auth/login', async (req, res) => {
             console.log('Session saved successfully:', req.sessionID);
             console.log('Session cookie will be secure:', isProduction);
             
+            // Log successful login
+            const clientInfo = getClientInfo(req);
+            loggingConfig.logAccess({
+                userId: req.session.user.id,
+                email: req.session.user.email,
+                eventType: 'login',
+                ipAddress: clientInfo.ipAddress,
+                userAgent: clientInfo.userAgent,
+                sessionId: req.sessionID,
+                metadata: {
+                    domain: domain,
+                    isProduction: isProduction
+                }
+            });
+            
             res.json({ success: true, user: req.session.user });
         });
     } catch (error) {
@@ -119,6 +147,20 @@ app.post('/auth/login', async (req, res) => {
 });
 
 app.get('/auth/logout', (req, res) => {
+    // Log logout event before destroying session
+    if (req.session.user) {
+        const clientInfo = getClientInfo(req);
+        loggingConfig.logAccess({
+            userId: req.session.user.id,
+            email: req.session.user.email,
+            eventType: 'logout',
+            ipAddress: clientInfo.ipAddress,
+            userAgent: clientInfo.userAgent,
+            sessionId: req.sessionID,
+            metadata: {}
+        });
+    }
+    
     req.session.destroy((err) => {
         if (err) {
             return res.status(500).json({ error: 'Logout failed' });
@@ -260,6 +302,41 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
     }
 });
 
+// ============ Access Log API Endpoints ============
+// Get access logs for a specific user (admin only)
+app.get('/api/admin/access-logs/:userId', requireAuth, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { startDate, endDate } = req.query;
+        
+        const logs = await loggingConfig.queryUserLogs(userId, startDate, endDate);
+        res.json({
+            success: true,
+            userId,
+            logs,
+            count: logs.length
+        });
+    } catch (error) {
+        console.error('Failed to get access logs:', error);
+        res.status(500).json({ error: 'Failed to retrieve access logs' });
+    }
+});
+
+// Get access statistics (admin only)
+app.get('/api/admin/access-stats', requireAuth, async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        const stats = await loggingConfig.getAccessStats(startDate, endDate);
+        res.json({
+            success: true,
+            stats
+        });
+    } catch (error) {
+        console.error('Failed to get access stats:', error);
+        res.status(500).json({ error: 'Failed to retrieve access statistics' });
+    }
+});
+
 // Health check endpoint for Railway
 app.get('/health', (req, res) => {
     res.status(200).json({ 
@@ -277,6 +354,11 @@ app.use(express.static('dist'));
 // Login page route
 app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+// Admin dashboard route
+app.get('/admin', requireAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
 });
 
 // Test route - serve static HTML
