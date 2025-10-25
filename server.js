@@ -337,6 +337,31 @@ app.get('/api/admin/access-stats', requireAuth, async (req, res) => {
     }
 });
 
+// Get all users (admin only)
+app.get('/api/admin/users', requireAuth, async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        const users = await loggingConfig.getAllUsers(startDate, endDate);
+        res.json({
+            success: true,
+            users,
+            stats: {
+                totalUsers: users.length,
+                activeUsers: users.filter(user => user.lastAccess).length,
+                newUsers: users.filter(user => {
+                    if (!user.firstAccess) return false;
+                    const firstAccessDate = new Date(user.firstAccess);
+                    const startDateObj = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+                    return firstAccessDate >= startDateObj;
+                }).length
+            }
+        });
+    } catch (error) {
+        console.error('Failed to get users:', error);
+        res.status(500).json({ error: 'Failed to retrieve users' });
+    }
+});
+
 // Health check endpoint for Railway
 app.get('/health', (req, res) => {
     res.status(200).json({ 
@@ -356,9 +381,19 @@ app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
-// Admin dashboard route
+// Admin menu route
 app.get('/admin', requireAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-menu.html'));
+});
+
+// Admin access log route
+app.get('/admin/access-log', requireAuth, (req, res) => {
     res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
+});
+
+// Admin users route
+app.get('/admin/users', requireAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-users.html'));
 });
 
 // Test route - serve static HTML

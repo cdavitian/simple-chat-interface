@@ -233,6 +233,47 @@ class DatabaseAccessLogger {
     }
 
     /**
+     * Get all users with their access information
+     */
+    getAllUsers(startDate, endDate) {
+        return new Promise((resolve, reject) => {
+            let whereClause = 'WHERE 1=1';
+            const params = [];
+
+            if (startDate) {
+                whereClause += ' AND timestamp >= ?';
+                params.push(startDate);
+            }
+
+            if (endDate) {
+                whereClause += ' AND timestamp <= ?';
+                params.push(endDate);
+            }
+
+            const sql = `
+                SELECT 
+                    user_id as userId,
+                    email,
+                    MIN(timestamp) as firstAccess,
+                    MAX(timestamp) as lastAccess,
+                    COUNT(CASE WHEN event_type = 'login' THEN 1 END) as totalLogins
+                FROM access_logs 
+                ${whereClause}
+                GROUP BY user_id, email
+                ORDER BY lastAccess DESC
+            `;
+
+            this.db.all(sql, params, (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows);
+                }
+            });
+        });
+    }
+
+    /**
      * Clean up old logs (older than specified days)
      */
     cleanupOldLogs(daysToKeep = 30) {

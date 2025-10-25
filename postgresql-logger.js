@@ -165,6 +165,38 @@ class PostgreSQLAccessLogger {
         return result.rows;
     }
 
+    async getAllUsers(startDate, endDate) {
+        let whereClause = 'WHERE 1=1';
+        const values = [];
+        let paramCount = 0;
+
+        if (startDate) {
+            whereClause += ` AND timestamp >= $${++paramCount}`;
+            values.push(startDate);
+        }
+
+        if (endDate) {
+            whereClause += ` AND timestamp <= $${++paramCount}`;
+            values.push(endDate);
+        }
+
+        const sql = `
+            SELECT 
+                user_id as "userId",
+                email,
+                MIN(timestamp) as "firstAccess",
+                MAX(timestamp) as "lastAccess",
+                COUNT(CASE WHEN event_type = 'login' THEN 1 END) as "totalLogins"
+            FROM access_logs 
+            ${whereClause}
+            GROUP BY user_id, email
+            ORDER BY "lastAccess" DESC
+        `;
+
+        const result = await this.pool.query(sql, values);
+        return result.rows;
+    }
+
     async cleanupOldLogs(daysToKeep = 30) {
         const sql = `DELETE FROM access_logs WHERE timestamp < NOW() - INTERVAL '${daysToKeep} days'`;
         const result = await this.pool.query(sql);

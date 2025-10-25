@@ -58,6 +58,14 @@ class LoggingConfig {
             return this.logger.getAccessStats(startDate, endDate);
         }
     }
+
+    async getAllUsers(startDate, endDate) {
+        if (this.loggerType === 'database') {
+            return await this.logger.getAllUsers(startDate, endDate);
+        } else {
+            return this.logger.getAllUsers(startDate, endDate);
+        }
+    }
 }
 
 module.exports = LoggingConfig;

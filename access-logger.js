@@ -209,6 +209,74 @@ class AccessLogger {
             loginEvents: stats.loginEvents.slice(0, 100) // Limit to last 100 events
         };
     }
+
+    /**
+     * Get all users with their access information
+     */
+    getAllUsers(startDate, endDate) {
+        const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default: last 30 days
+        const end = endDate ? new Date(endDate) : new Date();
+        
+        const userMap = new Map();
+
+        try {
+            const files = fs.readdirSync(this.logDir)
+                .filter(file => file.startsWith('access-') && file.endsWith('.jsonl'));
+
+            for (const file of files) {
+                const filePath = path.join(this.logDir, file);
+                const content = fs.readFileSync(filePath, 'utf8');
+                const lines = content.trim().split('\n').filter(line => line);
+
+                for (const line of lines) {
+                    try {
+                        const logEntry = JSON.parse(line);
+                        const logDate = new Date(logEntry.timestamp);
+                        
+                        if (logDate >= start && logDate <= end) {
+                            const userId = logEntry.userId;
+                            
+                            if (!userMap.has(userId)) {
+                                userMap.set(userId, {
+                                    userId: userId,
+                                    email: logEntry.email,
+                                    firstAccess: logEntry.timestamp,
+                                    lastAccess: logEntry.timestamp,
+                                    totalLogins: 0
+                                });
+                            }
+                            
+                            const user = userMap.get(userId);
+                            
+                            // Update first access if this is earlier
+                            if (new Date(logEntry.timestamp) < new Date(user.firstAccess)) {
+                                user.firstAccess = logEntry.timestamp;
+                            }
+                            
+                            // Update last access if this is later
+                            if (new Date(logEntry.timestamp) > new Date(user.lastAccess)) {
+                                user.lastAccess = logEntry.timestamp;
+                            }
+                            
+                            // Count login events
+                            if (logEntry.eventType === 'login') {
+                                user.totalLogins++;
+                            }
+                        }
+                    } catch (parseError) {
+                        console.error('Failed to parse log line:', parseError);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to get all users:', error);
+        }
+
+        // Convert map to array and sort by last access
+        return Array.from(userMap.values()).sort((a, b) => 
+            new Date(b.lastAccess) - new Date(a.lastAccess)
+        );
+    }
 }
 
 module.exports = AccessLogger;
