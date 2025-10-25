@@ -773,6 +773,22 @@ body {
     color: white;
 }
 
+.admin-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.admin-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
 .logout-btn {
     background: rgba(255, 255, 255, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -1004,6 +1020,11 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     
     .user-name {
         font-size: 12px;
+    }
+    
+    .admin-btn {
+        padding: 4px 8px;
+        font-size: 11px;
     }
     
     .logout-btn {
@@ -1707,6 +1728,11 @@ function App_App() {
   }), /*#__PURE__*/react.createElement("span", {
     className: "user-name"
   }, (user === null || user === void 0 ? void 0 : user.name) || 'User'), /*#__PURE__*/react.createElement("button", {
+    className: "admin-btn",
+    onClick: function onClick() {
+      return window.location.href = '/admin';
+    }
+  }, "Admin"), /*#__PURE__*/react.createElement("button", {
     className: "logout-btn",
     onClick: function onClick() {
       return window.location.href = '/logout';
