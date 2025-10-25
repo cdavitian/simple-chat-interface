@@ -123,6 +123,12 @@ function App() {
             />
             <span className="user-name">{user?.name || 'User'}</span>
             <button 
+              className="admin-btn"
+              onClick={() => window.location.href = '/admin'}
+            >
+              Admin
+            </button>
+            <button 
               className="logout-btn"
               onClick={() => window.location.href = '/logout'}
             >
