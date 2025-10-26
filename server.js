@@ -15,6 +15,66 @@ const PORT = process.env.PORT || 3000;
 const loggingConfig = new LoggingConfig();
 const accessLogger = loggingConfig.getLogger();
 
+// Run database migration for Google OAuth attributes
+const runMigration = async () => {
+    try {
+        console.log('Checking for Google OAuth attributes migration...');
+        
+        // Check if the new columns exist
+        const checkColumnsSQL = `
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'access_logs' 
+            AND column_name IN ('email_verified', 'family_name', 'given_name', 'full_name', 'picture_url', 'username')
+        `;
+        
+        const existingColumns = await loggingConfig.logger.pool.query(checkColumnsSQL);
+        const existingColumnNames = existingColumns.rows.map(row => row.column_name);
+        
+        if (existingColumnNames.length < 6) {
+            console.log('Google OAuth columns missing, running migration...');
+            
+            // Add missing columns
+            const addColumnsSQL = `
+                ALTER TABLE access_logs 
+                ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT NULL,
+                ADD COLUMN IF NOT EXISTS family_name VARCHAR(255) DEFAULT NULL,
+                ADD COLUMN IF NOT EXISTS given_name VARCHAR(255) DEFAULT NULL,
+                ADD COLUMN IF NOT EXISTS full_name VARCHAR(255) DEFAULT NULL,
+                ADD COLUMN IF NOT EXISTS picture_url VARCHAR(500) DEFAULT NULL,
+                ADD COLUMN IF NOT EXISTS username VARCHAR(255) DEFAULT NULL
+            `;
+
+            await loggingConfig.logger.pool.query(addColumnsSQL);
+            console.log('✅ Google OAuth columns added successfully');
+
+            // Add indexes for the new columns
+            const indexSQL = [
+                'CREATE INDEX IF NOT EXISTS idx_access_logs_email_verified ON access_logs(email_verified)',
+                'CREATE INDEX IF NOT EXISTS idx_access_logs_username ON access_logs(username)'
+            ];
+
+            for (const sql of indexSQL) {
+                try {
+                    await loggingConfig.logger.pool.query(sql);
+                } catch (error) {
+                    console.warn(`Warning: Could not create index: ${sql}`, error.message);
+                }
+            }
+            
+            console.log('✅ Google OAuth migration completed successfully');
+        } else {
+            console.log('✅ Google OAuth columns already exist, migration not needed');
+        }
+    } catch (error) {
+        console.error('Migration check failed:', error.message);
+        // Don't fail the app startup if migration fails
+    }
+};
+
+// Run migration on startup
+runMigration();
+
 // Configure AWS
 AWS.config.update({
     region: process.env.AWS_REGION || 'us-east-1',
