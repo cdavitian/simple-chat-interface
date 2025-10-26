@@ -330,6 +330,11 @@ app.post('/auth/login', async (req, res) => {
     }
 });
 
+// Add /logout route that redirects to /auth/logout
+app.get('/logout', (req, res) => {
+    res.redirect('/auth/logout');
+});
+
 app.get('/auth/logout', (req, res) => {
     // Log logout event before destroying session
     if (req.session.user) {
@@ -349,7 +354,8 @@ app.get('/auth/logout', (req, res) => {
         if (err) {
             return res.status(500).json({ error: 'Logout failed' });
         }
-        res.json({ success: true });
+        // Redirect to login page instead of returning JSON
+        res.redirect('/login');
     });
 });
 
