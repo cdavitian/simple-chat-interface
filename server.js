@@ -4,6 +4,7 @@ const session = require('express-session');
 const cors = require('cors');
 const AWS = require('aws-sdk');
 const OpenAI = require('openai');
+const crypto = require('crypto');
 const LoggingConfig = require('./logging-config');
 require('dotenv').config();
 
@@ -70,6 +71,14 @@ const getClientInfo = (req) => {
         ipAddress: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'unknown',
         userAgent: req.headers['user-agent'] || 'unknown'
     };
+};
+
+// Helper function to calculate SECRET_HASH for Cognito
+const calculateSecretHash = (username, clientId, clientSecret) => {
+    return crypto
+        .createHmac('SHA256', clientSecret)
+        .update(username + clientId)
+        .digest('base64');
 };
 
 // Middleware to check authentication
@@ -230,9 +239,18 @@ app.post('/auth/login', async (req, res) => {
             return res.status(500).json({ error: 'Server configuration error' });
         }
         
+        // Check if client secret is configured (required for SECRET_HASH)
+        if (!process.env.COGNITO_CLIENT_SECRET) {
+            console.error('Cognito client secret not configured');
+            return res.status(500).json({ error: 'Server configuration error - missing client secret' });
+        }
+        
         // Use AWS Cognito for authentication
         const AWS = require('aws-sdk');
         const cognito = new AWS.CognitoIdentityServiceProvider();
+        
+        // Calculate SECRET_HASH for client with secret
+        const secretHash = calculateSecretHash(email, process.env.COGNITO_CLIENT_ID, process.env.COGNITO_CLIENT_SECRET);
         
         try {
             const authResult = await cognito.adminInitiateAuth({
@@ -241,7 +259,8 @@ app.post('/auth/login', async (req, res) => {
                 AuthFlow: 'ADMIN_NO_SRP_AUTH',
                 AuthParameters: {
                     USERNAME: email,
-                    PASSWORD: password
+                    PASSWORD: password,
+                    SECRET_HASH: secretHash
                 }
             }).promise();
             
@@ -284,7 +303,24 @@ app.post('/auth/login', async (req, res) => {
                 message: authError.message,
                 statusCode: authError.statusCode
             });
-            res.status(401).json({ error: 'Invalid credentials' });
+            
+            // Provide more specific error messages based on the error type
+            let errorMessage = 'Invalid credentials';
+            if (authError.code === 'NotAuthorizedException') {
+                if (authError.message.includes('SECRET_HASH')) {
+                    errorMessage = 'Authentication configuration error';
+                } else if (authError.message.includes('Incorrect username or password')) {
+                    errorMessage = 'Invalid email or password';
+                } else {
+                    errorMessage = 'Authentication failed';
+                }
+            } else if (authError.code === 'UserNotFoundException') {
+                errorMessage = 'User not found';
+            } else if (authError.code === 'InvalidParameterException') {
+                errorMessage = 'Invalid request parameters';
+            }
+            
+            res.status(401).json({ error: errorMessage });
         }
         
     } catch (error) {
