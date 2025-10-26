@@ -190,19 +190,33 @@ app.get('/auth/cognito/callback', async (req, res) => {
         
         // Log successful login
         const clientInfo = getClientInfo(req);
-        await loggingConfig.logAccess({
+        console.log('Attempting to log access for Google OAuth login:', {
             userId: req.session.user.id,
             email: req.session.user.email,
             eventType: 'login',
             ipAddress: clientInfo.ipAddress,
             userAgent: clientInfo.userAgent,
-            sessionId: req.sessionID,
-            metadata: {
-                authMethod: 'cognito_google_oauth',
-                domain: domain,
-                isProduction: isProduction
-            }
+            sessionId: req.sessionID
         });
+        
+        try {
+            await loggingConfig.logAccess({
+                userId: req.session.user.id,
+                email: req.session.user.email,
+                eventType: 'login',
+                ipAddress: clientInfo.ipAddress,
+                userAgent: clientInfo.userAgent,
+                sessionId: req.sessionID,
+                metadata: {
+                    authMethod: 'cognito_google_oauth',
+                    domain: domain,
+                    isProduction: isProduction
+                }
+            });
+            console.log('Access log entry created successfully for Google OAuth login');
+        } catch (logError) {
+            console.error('Failed to log access for Google OAuth login:', logError);
+        }
         
         console.log('Google OAuth login successful for:', userInfo.email);
         res.redirect('/');
@@ -592,6 +606,15 @@ app.get('/api/debug-env', (req, res) => {
 app.get('/api/test-logging', async (req, res) => {
     try {
         const clientInfo = getClientInfo(req);
+        console.log('Test logging - attempting to log access:', {
+            userId: 'test-user-123',
+            email: 'test@example.com',
+            eventType: 'test',
+            ipAddress: clientInfo.ipAddress,
+            userAgent: clientInfo.userAgent,
+            sessionId: req.sessionID
+        });
+        
         await loggingConfig.logAccess({
             userId: 'test-user-123',
             email: 'test@example.com',
@@ -601,6 +624,8 @@ app.get('/api/test-logging', async (req, res) => {
             sessionId: req.sessionID,
             metadata: { test: true, timestamp: new Date().toISOString() }
         });
+        
+        console.log('Test logging - access log entry created successfully');
         res.json({ success: true, message: 'Test access log entry created' });
     } catch (error) {
         console.error('Test logging error:', error);
