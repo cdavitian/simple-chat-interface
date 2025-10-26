@@ -13,9 +13,27 @@ try {
 
 class LoggingConfig {
     constructor() {
-        this.loggerType = process.env.LOGGER_TYPE || 'file'; // 'file', 'database', 'postgresql', or 'aurora'
+        // Auto-detect Railway PostgreSQL if available, otherwise use configured type
+        this.loggerType = this.detectLoggerType();
         this.logger = null;
         this.initLogger();
+    }
+
+    detectLoggerType() {
+        // Check if Railway PostgreSQL variables are available
+        if (process.env.PGHOST && process.env.PGDATABASE && process.env.PGUSER && process.env.PGPASSWORD) {
+            console.log('Railway PostgreSQL detected, using PostgreSQL logger');
+            return 'postgresql';
+        }
+        
+        // Check if Aurora variables are available
+        if (process.env.AURORA_HOST && process.env.AURORA_DATABASE && process.env.AURORA_USER && process.env.AURORA_PASSWORD) {
+            console.log('Aurora MySQL detected, using Aurora logger');
+            return 'aurora';
+        }
+        
+        // Fall back to configured type or file
+        return process.env.LOGGER_TYPE || 'file';
     }
 
     initLogger() {
