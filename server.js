@@ -185,7 +185,12 @@ app.get('/auth/cognito/callback', async (req, res) => {
             id: userInfo.sub,
             email: userInfo.email,
             name: userInfo.name,
-            avatar: userInfo.picture
+            avatar: userInfo.picture,
+            // Additional Google OAuth attributes
+            emailVerified: userInfo.email_verified,
+            familyName: userInfo.family_name,
+            givenName: userInfo.given_name,
+            username: userInfo.sub // username is mapped from sub in Cognito
         };
         
         // Log successful login
@@ -207,6 +212,13 @@ app.get('/auth/cognito/callback', async (req, res) => {
                 ipAddress: clientInfo.ipAddress,
                 userAgent: clientInfo.userAgent,
                 sessionId: req.sessionID,
+                // Google OAuth attributes from Cognito
+                emailVerified: userInfo.email_verified,
+                familyName: userInfo.family_name,
+                givenName: userInfo.given_name,
+                fullName: userInfo.name,
+                pictureUrl: userInfo.picture,
+                username: userInfo.sub,
                 metadata: {
                     authMethod: 'cognito_google_oauth',
                     domain: domain,

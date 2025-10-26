@@ -20,12 +20,22 @@ CREATE TABLE IF NOT EXISTS access_logs (
     metadata JSON,
     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     
+    -- Google OAuth attributes from Cognito
+    email_verified BOOLEAN DEFAULT NULL,
+    family_name VARCHAR(255) DEFAULT NULL,
+    given_name VARCHAR(255) DEFAULT NULL,
+    full_name VARCHAR(255) DEFAULT NULL,
+    picture_url VARCHAR(500) DEFAULT NULL,
+    username VARCHAR(255) DEFAULT NULL,
+    
     -- Indexes for better query performance
     INDEX idx_user_id (user_id),
     INDEX idx_timestamp (timestamp),
     INDEX idx_event_type (event_type),
     INDEX idx_user_timestamp (user_id, timestamp),
-    INDEX idx_created_at (created_at)
+    INDEX idx_created_at (created_at),
+    INDEX idx_email_verified (email_verified),
+    INDEX idx_username (username)
 );
 
 -- Create a view for login events only (useful for analytics)

@@ -15,7 +15,15 @@ CREATE TABLE IF NOT EXISTS access_logs (
     user_agent TEXT,
     session_id VARCHAR(255),
     metadata JSONB, -- PostgreSQL JSONB for better JSON performance
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Google OAuth attributes from Cognito
+    email_verified BOOLEAN DEFAULT NULL,
+    family_name VARCHAR(255) DEFAULT NULL,
+    given_name VARCHAR(255) DEFAULT NULL,
+    full_name VARCHAR(255) DEFAULT NULL,
+    picture_url VARCHAR(500) DEFAULT NULL,
+    username VARCHAR(255) DEFAULT NULL
 );
 
 -- Create indexes for better query performance
@@ -24,6 +32,8 @@ CREATE INDEX IF NOT EXISTS idx_access_logs_timestamp ON access_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_access_logs_event_type ON access_logs(event_type);
 CREATE INDEX IF NOT EXISTS idx_access_logs_user_timestamp ON access_logs(user_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_access_logs_email_verified ON access_logs(email_verified);
+CREATE INDEX IF NOT EXISTS idx_access_logs_username ON access_logs(username);
 
 -- Create a GIN index for JSONB metadata queries
 CREATE INDEX IF NOT EXISTS idx_access_logs_metadata ON access_logs USING GIN(metadata);

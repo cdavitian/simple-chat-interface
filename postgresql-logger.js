@@ -61,20 +61,48 @@ class PostgreSQLAccessLogger {
                 user_agent TEXT,
                 session_id VARCHAR(255),
                 metadata JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                -- Google OAuth attributes from Cognito
+                email_verified BOOLEAN DEFAULT NULL,
+                family_name VARCHAR(255) DEFAULT NULL,
+                given_name VARCHAR(255) DEFAULT NULL,
+                full_name VARCHAR(255) DEFAULT NULL,
+                picture_url VARCHAR(500) DEFAULT NULL,
+                username VARCHAR(255) DEFAULT NULL
             )
         `;
 
         console.log('Creating access_logs table...');
         await this.pool.query(createTableSQL);
         console.log('access_logs table created successfully');
+
+        // Create indexes for better performance
+        const indexSQL = [
+            'CREATE INDEX IF NOT EXISTS idx_access_logs_user_id ON access_logs(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_access_logs_timestamp ON access_logs(timestamp)',
+            'CREATE INDEX IF NOT EXISTS idx_access_logs_event_type ON access_logs(event_type)',
+            'CREATE INDEX IF NOT EXISTS idx_access_logs_user_timestamp ON access_logs(user_id, timestamp)',
+            'CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs(created_at)',
+            'CREATE INDEX IF NOT EXISTS idx_access_logs_email_verified ON access_logs(email_verified)',
+            'CREATE INDEX IF NOT EXISTS idx_access_logs_username ON access_logs(username)',
+            'CREATE INDEX IF NOT EXISTS idx_access_logs_metadata ON access_logs USING GIN(metadata)'
+        ];
+
+        for (const sql of indexSQL) {
+            try {
+                await this.pool.query(sql);
+            } catch (error) {
+                console.warn(`Warning: Could not create index: ${sql}`, error.message);
+            }
+        }
     }
 
     async logAccess(event) {
         const sql = `
             INSERT INTO access_logs 
-            (user_id, email, event_type, ip_address, user_agent, session_id, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (user_id, email, event_type, ip_address, user_agent, session_id, metadata, 
+             email_verified, family_name, given_name, full_name, picture_url, username)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         `;
 
         const values = [
@@ -84,7 +112,14 @@ class PostgreSQLAccessLogger {
             event.ipAddress,
             event.userAgent,
             event.sessionId,
-            JSON.stringify(event.metadata || {})
+            JSON.stringify(event.metadata || {}),
+            // Google OAuth attributes
+            event.emailVerified || null,
+            event.familyName || null,
+            event.givenName || null,
+            event.fullName || null,
+            event.pictureUrl || null,
+            event.username || null
         ];
 
         try {
