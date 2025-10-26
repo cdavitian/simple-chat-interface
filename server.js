@@ -87,6 +87,120 @@ app.use('/styles.css', (req, res) => {
 });
 
 // ============ Authentication Routes ============
+
+// AWS Cognito Hosted UI Routes for Google OAuth
+app.get('/auth/cognito', (req, res) => {
+    const cognitoDomain = process.env.COGNITO_HOSTED_UI_DOMAIN;
+    const clientId = process.env.COGNITO_CLIENT_ID;
+    const redirectUri = process.env.COGNITO_REDIRECT_URI;
+    
+    if (!cognitoDomain || !clientId || !redirectUri) {
+        console.error('Missing Cognito configuration for Google OAuth');
+        return res.status(500).json({ error: 'OAuth configuration missing' });
+    }
+    
+    const authUrl = `https://${cognitoDomain}/oauth2/authorize?` +
+        `client_id=${clientId}&` +
+        `response_type=code&` +
+        `scope=email+openid+profile&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}`;
+    
+    console.log('Redirecting to Cognito OAuth:', authUrl);
+    res.redirect(authUrl);
+});
+
+app.get('/auth/cognito/callback', async (req, res) => {
+    try {
+        const { code } = req.query;
+        
+        if (!code) {
+            console.error('No authorization code received');
+            return res.redirect('/login?error=no_code');
+        }
+        
+        console.log('Received authorization code:', code.substring(0, 10) + '...');
+        
+        // Exchange code for tokens
+        const tokenResponse = await fetch(`https://${process.env.COGNITO_HOSTED_UI_DOMAIN}/oauth2/token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                grant_type: 'authorization_code',
+                client_id: process.env.COGNITO_CLIENT_ID,
+                code: code,
+                redirect_uri: process.env.COGNITO_REDIRECT_URI,
+            }),
+        });
+        
+        const tokens = await tokenResponse.json();
+        
+        if (tokens.error) {
+            console.error('Token exchange failed:', tokens);
+            return res.redirect('/login?error=token_exchange_failed');
+        }
+        
+        console.log('Token exchange successful');
+        
+        // Get user info from Cognito
+        const userResponse = await fetch(`https://${process.env.COGNITO_HOSTED_UI_DOMAIN}/oauth2/userInfo`, {
+            headers: {
+                'Authorization': `Bearer ${tokens.access_token}`,
+            },
+        });
+        
+        const userInfo = await userResponse.json();
+        
+        if (userInfo.error) {
+            console.error('Failed to get user info:', userInfo);
+            return res.redirect('/login?error=user_info_failed');
+        }
+        
+        console.log('User info received:', { email: userInfo.email, name: userInfo.name });
+        
+        // Check domain restriction
+        const email = userInfo.email;
+        const domain = email.split('@')[1];
+        
+        if (domain !== 'kyocare.com') {
+            console.log('Domain restriction failed for:', domain);
+            return res.redirect('/login?error=access_denied');
+        }
+        
+        // Store user in session
+        req.session.user = {
+            id: userInfo.sub,
+            email: userInfo.email,
+            name: userInfo.name,
+            avatar: userInfo.picture
+        };
+        
+        // Log successful login
+        const clientInfo = getClientInfo(req);
+        loggingConfig.logAccess({
+            userId: req.session.user.id,
+            email: req.session.user.email,
+            eventType: 'login',
+            ipAddress: clientInfo.ipAddress,
+            userAgent: clientInfo.userAgent,
+            sessionId: req.sessionID,
+            metadata: {
+                authMethod: 'cognito_google_oauth',
+                domain: domain,
+                isProduction: isProduction
+            }
+        });
+        
+        console.log('Google OAuth login successful for:', userInfo.email);
+        res.redirect('/');
+        
+    } catch (error) {
+        console.error('Cognito OAuth callback error:', error);
+        res.redirect('/login?error=oauth_failed');
+    }
+});
+
 app.post('/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
