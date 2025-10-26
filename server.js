@@ -587,6 +587,26 @@ app.get('/api/debug-env', (req, res) => {
     });
 });
 
+// Test endpoint to trigger access logging
+app.get('/api/test-logging', async (req, res) => {
+    try {
+        const clientInfo = getClientInfo(req);
+        await loggingConfig.logAccess({
+            userId: 'test-user-123',
+            email: 'test@example.com',
+            eventType: 'test',
+            ipAddress: clientInfo.ipAddress,
+            userAgent: clientInfo.userAgent,
+            sessionId: req.sessionID,
+            metadata: { test: true, timestamp: new Date().toISOString() }
+        });
+        res.json({ success: true, message: 'Test access log entry created' });
+    } catch (error) {
+        console.error('Test logging error:', error);
+        res.status(500).json({ error: 'Failed to create test log entry', details: error.message });
+    }
+});
+
 // ============ Static File Serving ============
 // Serve static files from dist directory (bundle.js, etc.)
 app.use(express.static('dist'));
