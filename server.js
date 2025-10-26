@@ -648,6 +648,27 @@ app.get('/api/recent-logs', async (req, res) => {
     }
 });
 
+// Debug endpoint to check all access log entries
+app.get('/api/all-logs', async (req, res) => {
+    try {
+        // Query all access logs directly from the database
+        const sql = `
+            SELECT * FROM access_logs 
+            ORDER BY timestamp DESC 
+            LIMIT 50
+        `;
+        const result = await loggingConfig.logger.pool.query(sql);
+        res.json({ 
+            success: true, 
+            count: result.rows.length,
+            logs: result.rows
+        });
+    } catch (error) {
+        console.error('Error fetching all logs:', error);
+        res.status(500).json({ error: 'Failed to fetch all logs', details: error.message });
+    }
+});
+
 // ============ Static File Serving ============
 // Serve static files from dist directory (bundle.js, etc.)
 app.use(express.static('dist'));
