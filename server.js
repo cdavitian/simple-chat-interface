@@ -669,6 +669,32 @@ app.get('/api/all-logs', async (req, res) => {
     }
 });
 
+// Debug endpoint to test admin users data (no auth required)
+app.get('/api/debug-admin-users', async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        const users = await loggingConfig.getAllUsers(startDate, endDate);
+        res.json({
+            success: true,
+            users,
+            stats: {
+                totalUsers: users.length,
+                activeUsers: users.filter(user => user.lastAccess).length,
+                newUsers: users.filter(user => {
+                    const firstAccess = new Date(user.firstAccess);
+                    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+                    return firstAccess > thirtyDaysAgo;
+                }).length
+            },
+            queryParams: { startDate, endDate },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Error fetching admin users:', error);
+        res.status(500).json({ error: 'Failed to fetch admin users', details: error.message });
+    }
+});
+
 // ============ Static File Serving ============
 // Serve static files from dist directory (bundle.js, etc.)
 app.use(express.static('dist'));
