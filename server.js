@@ -561,6 +561,17 @@ app.get('/health', (req, res) => {
     });
 });
 
+// Logger status endpoint (for debugging)
+app.get('/api/logger-status', (req, res) => {
+    res.json({
+        loggerType: loggingConfig.loggerType,
+        loggerInstance: loggingConfig.logger.constructor.name,
+        hasPostgreSQLVars: !!(process.env.PGHOST && process.env.PGDATABASE && process.env.PGUSER && process.env.PGPASSWORD),
+        hasAuroraVars: !!(process.env.AURORA_HOST && process.env.AURORA_DATABASE && process.env.AURORA_USER && process.env.AURORA_PASSWORD),
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
+
 // ============ Static File Serving ============
 // Serve static files from dist directory (bundle.js, etc.)
 app.use(express.static('dist'));
