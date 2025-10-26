@@ -190,7 +190,7 @@ app.get('/auth/cognito/callback', async (req, res) => {
         
         // Log successful login
         const clientInfo = getClientInfo(req);
-        loggingConfig.logAccess({
+        await loggingConfig.logAccess({
             userId: req.session.user.id,
             email: req.session.user.email,
             eventType: 'login',
@@ -278,7 +278,7 @@ app.post('/auth/login', async (req, res) => {
                 
                 // Log successful login
                 const clientInfo = getClientInfo(req);
-                loggingConfig.logAccess({
+                await loggingConfig.logAccess({
                     userId: req.session.user.id,
                     email: req.session.user.email,
                     eventType: 'login',
@@ -335,11 +335,11 @@ app.get('/logout', (req, res) => {
     res.redirect('/auth/logout');
 });
 
-app.get('/auth/logout', (req, res) => {
+app.get('/auth/logout', async (req, res) => {
     // Log logout event before destroying session
     if (req.session.user) {
         const clientInfo = getClientInfo(req);
-        loggingConfig.logAccess({
+        await loggingConfig.logAccess({
             userId: req.session.user.id,
             email: req.session.user.email,
             eventType: 'logout',
@@ -566,7 +566,7 @@ app.get('/api/logger-status', (req, res) => {
     res.json({
         loggerType: loggingConfig.loggerType,
         loggerInstance: loggingConfig.logger.constructor.name,
-        hasPostgreSQLVars: !!(process.env.PGHOST && process.env.PGDATABASE && process.env.PGUSER && process.env.PGPASSWORD),
+        hasPostgreSQLVars: !!(process.env.PGHOST && process.env.PGDATABASE && process.env.PGUSER && process.env.PGPASSWORD) || !!(process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER && process.env.DB_PASSWORD),
         hasAuroraVars: !!(process.env.AURORA_HOST && process.env.AURORA_DATABASE && process.env.AURORA_USER && process.env.AURORA_PASSWORD),
         environment: process.env.NODE_ENV || 'development'
     });
