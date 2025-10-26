@@ -37,10 +37,14 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ```bash
 AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-aws-access-key-id
+AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
 COGNITO_USER_POOL_ID=us-east-1_WuzfoISRw
 COGNITO_CLIENT_ID=6h307650vrg74mdgc5m182jg99
 COGNITO_DOMAIN=https://us-east-1wuzfoisrw.auth.us-east-1.amazoncognito.com
 ```
+
+**Important:** You need AWS credentials to authenticate with Cognito for traditional login!
 
 ### 4. Google OAuth through Cognito (Required for Google Sign-in)
 

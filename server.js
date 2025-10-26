@@ -16,7 +16,9 @@ const accessLogger = loggingConfig.getLogger();
 
 // Configure AWS
 AWS.config.update({
-    region: process.env.AWS_REGION || 'us-east-1'
+    region: process.env.AWS_REGION || 'us-east-1',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
 });
 
 // Lazy OpenAI client initialization - only create when needed
@@ -206,6 +208,13 @@ app.post('/auth/login', async (req, res) => {
         const { email, password } = req.body;
         
         console.log('Traditional login attempt for:', email);
+        console.log('AWS Config check:', {
+            region: process.env.AWS_REGION,
+            hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+            hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY,
+            userPoolId: process.env.COGNITO_USER_POOL_ID,
+            clientId: process.env.COGNITO_CLIENT_ID
+        });
         
         // Check if email domain is kyocare.com
         const domain = email.split('@')[1];
@@ -213,6 +222,12 @@ app.post('/auth/login', async (req, res) => {
             return res.status(403).json({ 
                 error: 'Access denied. Only kyocare.com users are allowed.' 
             });
+        }
+        
+        // Check AWS credentials
+        if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+            console.error('AWS credentials not configured');
+            return res.status(500).json({ error: 'Server configuration error' });
         }
         
         // Use AWS Cognito for authentication
@@ -229,6 +244,8 @@ app.post('/auth/login', async (req, res) => {
                     PASSWORD: password
                 }
             }).promise();
+            
+            console.log('Cognito auth result:', authResult);
             
             if (authResult.AuthenticationResult) {
                 // Successful authentication
@@ -257,10 +274,16 @@ app.post('/auth/login', async (req, res) => {
                 
                 res.json({ success: true, user: req.session.user });
             } else {
+                console.log('No authentication result from Cognito');
                 res.status(401).json({ error: 'Invalid credentials' });
             }
         } catch (authError) {
             console.error('Cognito authentication error:', authError);
+            console.error('Error details:', {
+                code: authError.code,
+                message: authError.message,
+                statusCode: authError.statusCode
+            });
             res.status(401).json({ error: 'Invalid credentials' });
         }
         
