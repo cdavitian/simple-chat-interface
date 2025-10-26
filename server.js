@@ -567,7 +567,6 @@ app.get('/api/logger-status', (req, res) => {
         loggerType: loggingConfig.loggerType,
         loggerInstance: loggingConfig.logger.constructor.name,
         hasPostgreSQLVars: !!(process.env.PGHOST && process.env.PGDATABASE && process.env.PGUSER && process.env.PGPASSWORD) || !!(process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER && process.env.DB_PASSWORD),
-        hasAuroraVars: !!(process.env.AURORA_HOST && process.env.AURORA_DATABASE && process.env.AURORA_USER && process.env.AURORA_PASSWORD),
         environment: process.env.NODE_ENV || 'development'
     });
 });
@@ -583,7 +582,9 @@ app.get('/api/debug-env', (req, res) => {
         DB_NAME: process.env.DB_NAME ? 'SET' : 'NOT SET',
         DB_USER: process.env.DB_USER ? 'SET' : 'NOT SET',
         DB_PASSWORD: process.env.DB_PASSWORD ? 'SET' : 'NOT SET',
-        allEnvKeys: Object.keys(process.env).filter(key => key.includes('DB') || key.includes('PG')).sort()
+        allEnvKeys: Object.keys(process.env).filter(key => key.includes('DB') || key.includes('PG')).sort(),
+        loggerType: loggingConfig.loggerType,
+        loggerInstance: loggingConfig.logger.constructor.name
     });
 });
 
