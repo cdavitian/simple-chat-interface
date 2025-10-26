@@ -572,6 +572,21 @@ app.get('/api/logger-status', (req, res) => {
     });
 });
 
+// Debug endpoint to check environment variables
+app.get('/api/debug-env', (req, res) => {
+    res.json({
+        PGHOST: process.env.PGHOST ? 'SET' : 'NOT SET',
+        PGDATABASE: process.env.PGDATABASE ? 'SET' : 'NOT SET', 
+        PGUSER: process.env.PGUSER ? 'SET' : 'NOT SET',
+        PGPASSWORD: process.env.PGPASSWORD ? 'SET' : 'NOT SET',
+        DB_HOST: process.env.DB_HOST ? 'SET' : 'NOT SET',
+        DB_NAME: process.env.DB_NAME ? 'SET' : 'NOT SET',
+        DB_USER: process.env.DB_USER ? 'SET' : 'NOT SET',
+        DB_PASSWORD: process.env.DB_PASSWORD ? 'SET' : 'NOT SET',
+        allEnvKeys: Object.keys(process.env).filter(key => key.includes('DB') || key.includes('PG')).sort()
+    });
+});
+
 // ============ Static File Serving ============
 // Serve static files from dist directory (bundle.js, etc.)
 app.use(express.static('dist'));
