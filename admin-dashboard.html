@@ -198,13 +198,9 @@
             const userId = document.getElementById('userId').value;
             
             try {
-                let url = '/api/admin/access-logs/';
+                let url = '/api/admin/access-logs';
                 if (userId) {
-                    url += userId;
-                } else {
-                    // For now, we'll need to implement a general logs endpoint
-                    showError('Please enter a User ID to view logs');
-                    return;
+                    url += `/${userId}`;
                 }
                 
                 const response = await fetch(`${url}?startDate=${startDate}&endDate=${endDate}`);
@@ -264,10 +260,10 @@
                             <tr>
                                 <td>${new Date(log.timestamp).toLocaleString()}</td>
                                 <td>${log.userId || 'N/A'}</td>
-                                <td>${log.email}</td>
-                                <td><span class="event-type event-${log.eventType}">${log.eventType}</span></td>
-                                <td>${log.ipAddress}</td>
-                                <td title="${log.userAgent}">${log.userAgent.substring(0, 50)}${log.userAgent.length > 50 ? '...' : ''}</td>
+                                <td>${log.email || 'N/A'}</td>
+                                <td><span class="event-type event-${log.eventType}">${log.eventType || 'N/A'}</span></td>
+                                <td>${log.ipAddress || 'N/A'}</td>
+                                <td title="${log.userAgent || 'N/A'}">${log.userAgent ? (log.userAgent.substring(0, 50) + (log.userAgent.length > 50 ? '...' : '')) : 'N/A'}</td>
                             </tr>
                         `).join('')}
                     </tbody>
