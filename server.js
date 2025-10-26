@@ -608,6 +608,21 @@ app.get('/api/test-logging', async (req, res) => {
     }
 });
 
+// Debug endpoint to check recent access logs
+app.get('/api/recent-logs', async (req, res) => {
+    try {
+        const logs = await loggingConfig.getAllUsers();
+        res.json({ 
+            success: true, 
+            count: logs.length,
+            logs: logs.slice(0, 10) // Show last 10 entries
+        });
+    } catch (error) {
+        console.error('Error fetching logs:', error);
+        res.status(500).json({ error: 'Failed to fetch logs', details: error.message });
+    }
+});
+
 // ============ Static File Serving ============
 // Serve static files from dist directory (bundle.js, etc.)
 app.use(express.static('dist'));
