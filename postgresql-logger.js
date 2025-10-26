@@ -108,8 +108,11 @@ class PostgreSQLAccessLogger {
         }
 
         if (endDate) {
-            sql += ` AND timestamp <= $${++paramCount}`;
-            values.push(endDate);
+            // Add 1 day to endDate to include the full day
+            const endDatePlusOne = new Date(endDate);
+            endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
+            sql += ` AND timestamp < $${++paramCount}`;
+            values.push(endDatePlusOne.toISOString().split('T')[0]);
         }
 
         sql += ` ORDER BY timestamp DESC LIMIT $${++paramCount}`;
@@ -130,8 +133,11 @@ class PostgreSQLAccessLogger {
         }
 
         if (endDate) {
-            whereClause += ` AND timestamp <= $${++paramCount}`;
-            values.push(endDate);
+            // Add 1 day to endDate to include the full day
+            const endDatePlusOne = new Date(endDate);
+            endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
+            whereClause += ` AND timestamp < $${++paramCount}`;
+            values.push(endDatePlusOne.toISOString().split('T')[0]);
         }
 
         const sql = `
@@ -203,8 +209,11 @@ class PostgreSQLAccessLogger {
         }
 
         if (endDate) {
-            whereClause += ` AND timestamp <= $${++paramCount}`;
-            values.push(endDate);
+            // Add 1 day to endDate to include the full day
+            const endDatePlusOne = new Date(endDate);
+            endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
+            whereClause += ` AND timestamp < $${++paramCount}`;
+            values.push(endDatePlusOne.toISOString().split('T')[0]);
         }
 
         const sql = `
