@@ -33,7 +33,41 @@ A random string for session encryption. Generate one using:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### 3. Production Environment (Optional)
+### 3. AWS Cognito Configuration (Required for Authentication)
+
+```bash
+AWS_REGION=us-east-1
+COGNITO_USER_POOL_ID=us-east-1_WuzfoISRw
+COGNITO_CLIENT_ID=6h307650vrg74mdgc5m182jg99
+COGNITO_DOMAIN=https://us-east-1wuzfoisrw.auth.us-east-1.amazoncognito.com
+```
+
+### 4. Google OAuth through Cognito (Required for Google Sign-in)
+
+```bash
+COGNITO_HOSTED_UI_DOMAIN=us-east-1wuzfoisrw.auth.us-east-1.amazoncognito.com
+COGNITO_REDIRECT_URI=https://your-railway-domain.railway.app/auth/cognito/callback
+```
+
+**Important:** Replace `your-railway-domain.railway.app` with your actual Railway domain!
+
+### 5. Domain Restriction (Required for Security)
+
+```bash
+ALLOWED_DOMAIN=kyocare.com
+```
+
+### 6. Session Configuration (Optional but Recommended)
+
+```bash
+SESSION_SECRET=your-random-secure-secret-here
+```
+A random string for session encryption. Generate one using:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### 7. Production Environment (Optional)
 
 ```bash
 NODE_ENV=production
@@ -83,4 +117,13 @@ If you don't have ChatKit credentials yet:
 
 **Sessions not persisting / keeps redirecting to login**
 → This should be fixed with the proxy configuration, but make sure Railway is using HTTPS
+
+**Google OAuth not working / "OAuth configuration missing"**
+→ Make sure `COGNITO_HOSTED_UI_DOMAIN` and `COGNITO_REDIRECT_URI` are set in Railway variables
+
+**"redirect_uri_mismatch" error**
+→ Check that `COGNITO_REDIRECT_URI` matches your Railway domain exactly (https://your-domain.railway.app/auth/cognito/callback)
+
+**Google OAuth button not appearing**
+→ Make sure all Cognito environment variables are set correctly
 

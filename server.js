@@ -205,9 +205,7 @@ app.post('/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
         
-        console.log('Login attempt for:', email);
-        console.log('Is production:', isProduction);
-        console.log('Session ID before login:', req.sessionID);
+        console.log('Traditional login attempt for:', email);
         
         // Check if email domain is kyocare.com
         const domain = email.split('@')[1];
@@ -217,43 +215,55 @@ app.post('/auth/login', async (req, res) => {
             });
         }
         
-        // Here you would typically validate the user with Cognito
-        // For now, we'll simulate a successful login
-        // In production, you'd use Cognito's authentication APIs
+        // Use AWS Cognito for authentication
+        const AWS = require('aws-sdk');
+        const cognito = new AWS.CognitoIdentityServiceProvider();
         
-        req.session.user = {
-            email: email,
-            name: email.split('@')[0], // Simple name extraction
-            id: email // Using email as ID for now
-        };
-        
-        // Save session explicitly
-        req.session.save((err) => {
-            if (err) {
-                console.error('Session save error:', err);
-                return res.status(500).json({ error: 'Failed to save session' });
-            }
-            
-            console.log('Session saved successfully:', req.sessionID);
-            console.log('Session cookie will be secure:', isProduction);
-            
-            // Log successful login
-            const clientInfo = getClientInfo(req);
-            loggingConfig.logAccess({
-                userId: req.session.user.id,
-                email: req.session.user.email,
-                eventType: 'login',
-                ipAddress: clientInfo.ipAddress,
-                userAgent: clientInfo.userAgent,
-                sessionId: req.sessionID,
-                metadata: {
-                    domain: domain,
-                    isProduction: isProduction
+        try {
+            const authResult = await cognito.adminInitiateAuth({
+                UserPoolId: process.env.COGNITO_USER_POOL_ID,
+                ClientId: process.env.COGNITO_CLIENT_ID,
+                AuthFlow: 'ADMIN_NO_SRP_AUTH',
+                AuthParameters: {
+                    USERNAME: email,
+                    PASSWORD: password
                 }
-            });
+            }).promise();
             
-            res.json({ success: true, user: req.session.user });
-        });
+            if (authResult.AuthenticationResult) {
+                // Successful authentication
+                req.session.user = {
+                    id: authResult.AuthenticationResult.AccessToken,
+                    email: email,
+                    name: email.split('@')[0],
+                    authMethod: 'cognito_traditional'
+                };
+                
+                // Log successful login
+                const clientInfo = getClientInfo(req);
+                loggingConfig.logAccess({
+                    userId: req.session.user.id,
+                    email: req.session.user.email,
+                    eventType: 'login',
+                    ipAddress: clientInfo.ipAddress,
+                    userAgent: clientInfo.userAgent,
+                    sessionId: req.sessionID,
+                    metadata: {
+                        authMethod: 'cognito_traditional',
+                        domain: domain,
+                        isProduction: isProduction
+                    }
+                });
+                
+                res.json({ success: true, user: req.session.user });
+            } else {
+                res.status(401).json({ error: 'Invalid credentials' });
+            }
+        } catch (authError) {
+            console.error('Cognito authentication error:', authError);
+            res.status(401).json({ error: 'Invalid credentials' });
+        }
+        
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ error: 'Login failed' });
