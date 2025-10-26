@@ -9,11 +9,11 @@ class PostgreSQLAccessLogger {
         } : false;
 
         this.pool = new Pool({
-            host: options.host || process.env.DB_HOST,
-            port: options.port || process.env.DB_PORT,
-            database: options.database || process.env.DB_NAME,
-            user: options.user || process.env.DB_USER,
-            password: options.password || process.env.DB_PASSWORD,
+            host: options.host || process.env.PGHOST || process.env.DB_HOST,
+            port: options.port || process.env.PGPORT || process.env.DB_PORT,
+            database: options.database || process.env.PGDATABASE || process.env.DB_NAME,
+            user: options.user || process.env.PGUSER || process.env.DB_USER,
+            password: options.password || process.env.PGPASSWORD || process.env.DB_PASSWORD,
             ssl: sslConfig
         });
         
@@ -25,10 +25,10 @@ class PostgreSQLAccessLogger {
         try {
             console.log('Initializing PostgreSQL database...');
             console.log('Database config:', {
-                host: process.env.DB_HOST,
-                port: process.env.DB_PORT,
-                database: process.env.DB_NAME,
-                user: process.env.DB_USER,
+                host: process.env.PGHOST || process.env.DB_HOST,
+                port: process.env.PGPORT || process.env.DB_PORT,
+                database: process.env.PGDATABASE || process.env.DB_NAME,
+                user: process.env.PGUSER || process.env.DB_USER,
                 ssl: process.env.DB_SSL
             });
             
