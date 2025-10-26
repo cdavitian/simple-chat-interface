@@ -59,35 +59,23 @@ class LoggingConfig {
 
     // Wrapper methods to handle different logger types
     logAccess(event) {
-        if (this.loggerType === 'database' || this.loggerType === 'postgresql' || this.loggerType === 'aurora') {
-            this.logger.logAccess(event);
-        } else {
-            this.logger.logAccess(event);
-        }
+        // Always call the actual logger instance, regardless of configured type
+        this.logger.logAccess(event);
     }
 
     async queryUserLogs(userId, startDate, endDate) {
-        if (this.loggerType === 'database' || this.loggerType === 'postgresql' || this.loggerType === 'aurora') {
-            return await this.logger.queryUserLogs(userId, startDate, endDate);
-        } else {
-            return this.logger.queryUserLogs(userId, startDate, endDate);
-        }
+        // Always call the actual logger instance, regardless of configured type
+        return await this.logger.queryUserLogs(userId, startDate, endDate);
     }
 
     async getAccessStats(startDate, endDate) {
-        if (this.loggerType === 'database' || this.loggerType === 'postgresql' || this.loggerType === 'aurora') {
-            return await this.logger.getAccessStats(startDate, endDate);
-        } else {
-            return this.logger.getAccessStats(startDate, endDate);
-        }
+        // Always call the actual logger instance, regardless of configured type
+        return await this.logger.getAccessStats(startDate, endDate);
     }
 
     async getAllUsers(startDate, endDate) {
-        if (this.loggerType === 'database' || this.loggerType === 'postgresql' || this.loggerType === 'aurora') {
-            return await this.logger.getAllUsers(startDate, endDate);
-        } else {
-            return this.logger.getAllUsers(startDate, endDate);
-        }
+        // Always call the actual logger instance, regardless of configured type
+        return await this.logger.getAllUsers(startDate, endDate);
     }
 }
 
