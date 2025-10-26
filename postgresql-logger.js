@@ -124,11 +124,97 @@ class PostgreSQLAccessLogger {
 
         try {
             await this.pool.query(sql, values);
+            
+            // Update users table for login events
+            if (event.eventType === 'login') {
+                await this.updateUsersTable(event);
+            }
+            
             if (this.enableConsole) {
                 console.log(`[ACCESS LOG] ${new Date().toISOString()} - ${event.eventType} - ${event.email} - ${event.ipAddress}`);
             }
         } catch (error) {
             console.error('Error logging access:', error);
+        }
+    }
+
+    async updateUsersTable(event) {
+        try {
+            // First, check if users table exists, if not create it
+            await this.ensureUsersTableExists();
+            
+            const currentTimestamp = new Date().toISOString();
+            
+            // Insert or update user in users table
+            const upsertSQL = `
+                INSERT INTO users (user_id, created, last_login, email, family_name, given_name, full_name, user_type)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    last_login = EXCLUDED.last_login,
+                    email = EXCLUDED.email,
+                    family_name = EXCLUDED.family_name,
+                    given_name = EXCLUDED.given_name,
+                    full_name = EXCLUDED.full_name,
+                    updated_at = CURRENT_TIMESTAMP
+            `;
+
+            const values = [
+                event.userId,
+                currentTimestamp, // created (will be updated to first login if user already exists)
+                currentTimestamp, // last_login
+                event.email,
+                event.familyName || null,
+                event.givenName || null,
+                event.fullName || null,
+                'new' // user_type
+            ];
+
+            await this.pool.query(upsertSQL, values);
+            
+            // Update created timestamp to first login if this is a new user
+            const updateCreatedSQL = `
+                UPDATE users 
+                SET created = (
+                    SELECT MIN(timestamp) 
+                    FROM access_logs 
+                    WHERE user_id = $1 AND event_type = 'login'
+                )
+                WHERE user_id = $1 AND created = last_login
+            `;
+            
+            await this.pool.query(updateCreatedSQL, [event.userId]);
+            
+        } catch (error) {
+            console.error('Error updating users table:', error);
+        }
+    }
+
+    async ensureUsersTableExists() {
+        try {
+            // Check if users table exists
+            const checkTableSQL = `
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'users'
+                );
+            `;
+            
+            const result = await this.pool.query(checkTableSQL);
+            
+            if (!result.rows[0].exists) {
+                console.log('Users table does not exist, creating it...');
+                
+                // Read and execute the migration SQL
+                const fs = require('fs');
+                const path = require('path');
+                const migrationSQL = fs.readFileSync(path.join(__dirname, 'database', 'migrate-create-users-table.sql'), 'utf8');
+                
+                await this.pool.query(migrationSQL);
+                console.log('Users table created successfully');
+            }
+        } catch (error) {
+            console.error('Error ensuring users table exists:', error);
         }
     }
 
@@ -234,12 +320,15 @@ class PostgreSQLAccessLogger {
     }
 
     async getAllUsers(startDate, endDate) {
+        // First ensure users table exists
+        await this.ensureUsersTableExists();
+        
         let whereClause = 'WHERE 1=1';
         const values = [];
         let paramCount = 0;
 
         if (startDate) {
-            whereClause += ` AND timestamp >= $${++paramCount}`;
+            whereClause += ` AND u.created >= $${++paramCount}`;
             values.push(startDate);
         }
 
@@ -247,21 +336,34 @@ class PostgreSQLAccessLogger {
             // Add 1 day to endDate to include the full day
             const endDatePlusOne = new Date(endDate);
             endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
-            whereClause += ` AND timestamp < $${++paramCount}`;
+            whereClause += ` AND u.created < $${++paramCount}`;
             values.push(endDatePlusOne.toISOString().split('T')[0]);
         }
 
         const sql = `
             SELECT 
-                user_id as "userId",
-                email,
-                MIN(timestamp) as "firstAccess",
-                MAX(timestamp) as "lastAccess",
-                COUNT(CASE WHEN event_type = 'login' THEN 1 END) as "totalLogins"
-            FROM access_logs 
+                u.user_id as "userId",
+                u.email,
+                u.created as "firstAccess",
+                u.last_login as "lastAccess",
+                u.family_name as "familyName",
+                u.given_name as "givenName",
+                u.full_name as "fullName",
+                u.user_type as "userType",
+                u.created_at as "createdAt",
+                u.updated_at as "updatedAt",
+                COALESCE(login_stats.total_logins, 0) as "totalLogins"
+            FROM users u
+            LEFT JOIN (
+                SELECT 
+                    user_id,
+                    COUNT(*) as total_logins
+                FROM access_logs 
+                WHERE event_type = 'login'
+                GROUP BY user_id
+            ) login_stats ON u.user_id = login_stats.user_id
             ${whereClause}
-            GROUP BY user_id, email
-            ORDER BY "lastAccess" DESC
+            ORDER BY u.last_login DESC
         `;
 
         const result = await this.pool.query(sql, values);
