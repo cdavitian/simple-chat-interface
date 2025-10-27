@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
     <title>Users</title>
     <style>
         body {
@@ -176,6 +177,79 @@
         .control-group {
             position: relative;
         }
+        
+        /* Edit mode styles */
+        .edit-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        
+        .edit-controls button {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        
+        .edit-controls button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .edit-controls button:disabled:hover {
+            background: #ccc;
+        }
+        
+        .save-btn {
+            background: #28a745;
+        }
+        
+        .save-btn:hover {
+            background: #218838;
+        }
+        
+        .cancel-btn {
+            background: #dc3545;
+        }
+        
+        .cancel-btn:hover {
+            background: #c82333;
+        }
+        
+        /* Editable table styles */
+        .users-table.editable td {
+            position: relative;
+        }
+        
+        .editable-field {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 4px 8px;
+            background: white;
+            width: 100%;
+            font-size: 14px;
+        }
+        
+        .editable-field:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+        
+        .change-indicator {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 8px;
+            height: 8px;
+            background: #28a745;
+            border-radius: 50%;
+            display: none;
+        }
+        
+        .change-indicator.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -218,6 +292,12 @@
             <!-- Stats will be populated here -->
         </div>
 
+        <div id="editControls" class="edit-controls" style="display: none;">
+            <button id="editBtn" onclick="toggleEditMode()">Edit</button>
+            <button id="saveBtn" class="save-btn" onclick="saveChanges()" style="display: none;">Save</button>
+            <button id="cancelBtn" class="cancel-btn" onclick="cancelEdit()" style="display: none;">Cancel</button>
+        </div>
+
         <div id="usersContainer">
             <div class="loading">Click "Load Users" to view user information</div>
         </div>
@@ -235,6 +315,11 @@
         let totalCount = 0;
         let userNameSuggestions = [];
         let selectedUserName = '';
+        
+        // Edit mode state
+        let isEditMode = false;
+        let originalUserData = [];
+        let currentUserData = [];
 
         async function loadUsers(page = 1) {
             const userType = document.getElementById('userType').value;
@@ -340,11 +425,19 @@
             
             if (users.length === 0) {
                 container.innerHTML = '<div class="no-data">No users found for the selected criteria</div>';
+                document.getElementById('editControls').style.display = 'none';
                 return;
             }
 
+            // Store user data for edit mode
+            currentUserData = users.map(user => ({ ...user }));
+            originalUserData = users.map(user => ({ ...user }));
+
+            // Show edit controls
+            document.getElementById('editControls').style.display = 'flex';
+
             const table = `
-                <table class="users-table">
+                <table class="users-table ${isEditMode ? 'editable' : ''}">
                     <thead>
                         <tr>
                             <th>Email Address</th>
@@ -356,11 +449,22 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${users.map(user => `
-                            <tr>
+                        ${users.map((user, index) => `
+                            <tr data-user-index="${index}">
                                 <td>${user.email}</td>
                                 <td>${user.fullName || 'N/A'}</td>
-                                <td>${user.userType || 'N/A'}</td>
+                                <td>
+                                    ${isEditMode ? 
+                                        `<select class="editable-field" onchange="markFieldChanged(${index}, 'userType', this.value)" data-field="userType">
+                                            <option value="">Select Type</option>
+                                            ${USER_TYPE_OPTIONS.map(type => 
+                                                `<option value="${type}" ${user.userType === type ? 'selected' : ''}>${getUserTypeDisplayName(type)}</option>`
+                                            ).join('')}
+                                        </select>` : 
+                                        (user.userType || 'N/A')
+                                    }
+                                    ${isEditMode ? '<div class="change-indicator" id="indicator-' + index + '-userType"></div>' : ''}
+                                </td>
                                 <td>${user.lastAccess ? new Date(user.lastAccess).toLocaleString() : 'Never'}</td>
                                 <td>${user.totalLogins || 0}</td>
                                 <td>${user.firstAccess ? new Date(user.firstAccess).toLocaleString() : 'Unknown'}</td>
@@ -435,6 +539,97 @@
                 hideSuggestions();
             }
         });
+
+        // Edit mode functions
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            
+            if (isEditMode) {
+                // Enter edit mode
+                document.getElementById('editBtn').disabled = true;
+                document.getElementById('editBtn').textContent = 'Edit';
+                document.getElementById('saveBtn').style.display = 'inline-block';
+                document.getElementById('cancelBtn').style.display = 'inline-block';
+                
+                // Re-render the table in edit mode
+                displayUsers(currentUserData);
+            } else {
+                // Exit edit mode
+                document.getElementById('editBtn').disabled = false;
+                document.getElementById('saveBtn').style.display = 'none';
+                document.getElementById('cancelBtn').style.display = 'none';
+                
+                // Re-render the table in normal mode
+                displayUsers(currentUserData);
+            }
+        }
+
+        function markFieldChanged(userIndex, fieldName, newValue) {
+            // Update the current user data
+            currentUserData[userIndex][fieldName] = newValue;
+            
+            // Show change indicator
+            const indicator = document.getElementById(`indicator-${userIndex}-${fieldName}`);
+            if (indicator) {
+                indicator.classList.add('visible');
+            }
+        }
+
+        async function saveChanges() {
+            try {
+                // Find users that have been changed
+                const changedUsers = [];
+                for (let i = 0; i < currentUserData.length; i++) {
+                    const current = currentUserData[i];
+                    const original = originalUserData[i];
+                    
+                    if (current.userType !== original.userType) {
+                        changedUsers.push({
+                            email: current.email,
+                            userType: current.userType
+                        });
+                    }
+                }
+
+                if (changedUsers.length === 0) {
+                    alert('No changes to save.');
+                    return;
+                }
+
+                // Send update request to server
+                const response = await fetch('/api/admin/users/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ users: changedUsers })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`Successfully updated ${changedUsers.length} user(s).`);
+                    // Exit edit mode and reload data
+                    isEditMode = false;
+                    toggleEditMode();
+                    loadUsers(currentPage);
+                } else {
+                    alert('Failed to save changes: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error saving changes:', error);
+                alert('Error saving changes: ' + error.message);
+            }
+        }
+
+        function cancelEdit() {
+            // Reset to original data
+            currentUserData = originalUserData.map(user => ({ ...user }));
+            
+            // Exit edit mode
+            isEditMode = false;
+            toggleEditMode();
+        }
     </script>
 </body>
 </html>

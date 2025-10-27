@@ -118,6 +118,12 @@ app.use(session({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Add X-Robots-Tag header to all responses to prevent search engine indexing
+app.use((req, res, next) => {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    next();
+});
+
 // CORS configuration - only needed if frontend is on different domain
 // For same-origin, we don't need CORS at all
 // app.use(cors({
@@ -709,6 +715,78 @@ app.get('/api/admin/users/search-names', requireAuth, async (req, res) => {
     }
 });
 
+// Update user data (admin only)
+app.post('/api/admin/users/update', requireAuth, async (req, res) => {
+    try {
+        const { users } = req.body;
+        
+        if (!users || !Array.isArray(users)) {
+            return res.status(400).json({ error: 'Invalid request: users array required' });
+        }
+        
+        const updatePromises = users.map(async (userUpdate) => {
+            const { email, userType } = userUpdate;
+            
+            if (!email || !userType) {
+                throw new Error('Email and userType are required for each user update');
+            }
+            
+            // Validate user type
+            const { isValidUserType } = require('./constants.js');
+            if (!isValidUserType(userType)) {
+                throw new Error(`Invalid user type: ${userType}`);
+            }
+            
+            // Update user type in the database
+            const updateSQL = `
+                UPDATE access_logs 
+                SET user_type = $1 
+                WHERE email = $2 
+                AND user_type IS DISTINCT FROM $1
+            `;
+            
+            const result = await loggingConfig.logger.pool.query(updateSQL, [userType, email]);
+            
+            return {
+                email,
+                userType,
+                rowsAffected: result.rowCount
+            };
+        });
+        
+        const results = await Promise.all(updatePromises);
+        
+        // Log the admin action
+        const clientInfo = getClientInfo(req);
+        await loggingConfig.logAccess({
+            userId: req.session.user.id,
+            email: req.session.user.email,
+            eventType: 'admin_user_update',
+            ipAddress: clientInfo.ipAddress,
+            userAgent: clientInfo.userAgent,
+            sessionId: req.sessionID,
+            metadata: {
+                action: 'update_user_types',
+                updatedUsers: results,
+                totalUpdated: results.length
+            }
+        });
+        
+        res.json({
+            success: true,
+            message: `Successfully updated ${results.length} user(s)`,
+            results: results
+        });
+        
+    } catch (error) {
+        console.error('Failed to update users:', error);
+        res.status(500).json({ 
+            error: 'Failed to update users', 
+            details: error.message 
+        });
+    }
+});
+
 // Health check endpoint for Railway
 app.get('/health', (req, res) => {
     res.status(200).json({ 
@@ -846,6 +924,12 @@ app.use(express.static('dist'));
 app.get('/constants.js', (req, res) => {
     res.setHeader('Content-Type', 'application/javascript');
     res.sendFile(path.join(__dirname, 'constants.js'));
+});
+
+// Serve robots.txt file
+app.get('/robots.txt', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain');
+    res.sendFile(path.join(__dirname, 'robots.txt'));
 });
 
 // ============ HTML Page Routes ============
