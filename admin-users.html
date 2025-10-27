@@ -455,15 +455,20 @@
                                 <td>${user.fullName || 'N/A'}</td>
                                 <td>
                                     ${isEditMode ? 
-                                        `<select class="editable-field" onchange="markFieldChanged(${index}, 'userType', this.value)" data-field="userType">
-                                            <option value="">Select Type</option>
-                                            ${USER_TYPE_OPTIONS.map(type => 
-                                                `<option value="${type}" ${user.userType === type ? 'selected' : ''}>${getUserTypeDisplayName(type)}</option>`
-                                            ).join('')}
-                                        </select>` : 
+                                        (user.email === 'colin@kyocare.com' ? 
+                                            `<select class="editable-field" disabled style="background-color: #f5f5f5; color: #666;" data-field="userType">
+                                                <option value="${user.userType}" selected>${getUserTypeDisplayName(user.userType)} (Locked)</option>
+                                            </select>` :
+                                            `<select class="editable-field" onchange="markFieldChanged(${index}, 'userType', this.value)" data-field="userType">
+                                                <option value="">Select Type</option>
+                                                ${USER_TYPE_OPTIONS.map(type => 
+                                                    `<option value="${type}" ${user.userType === type ? 'selected' : ''}>${getUserTypeDisplayName(type)}</option>`
+                                                ).join('')}
+                                            </select>`
+                                        ) : 
                                         (user.userType || 'N/A')
                                     }
-                                    ${isEditMode ? '<div class="change-indicator" id="indicator-' + index + '-userType"></div>' : ''}
+                                    ${isEditMode && user.email !== 'colin@kyocare.com' ? '<div class="change-indicator" id="indicator-' + index + '-userType"></div>' : ''}
                                 </td>
                                 <td>${user.lastAccess ? new Date(user.lastAccess).toLocaleString() : 'Never'}</td>
                                 <td>${user.totalLogins || 0}</td>
@@ -575,6 +580,12 @@
         }
 
         function markFieldChanged(userIndex, fieldName, newValue) {
+            // Prevent changes to colin@kyocare.com user type
+            if (fieldName === 'userType' && currentUserData[userIndex].email === 'colin@kyocare.com') {
+                alert('User Type for colin@kyocare.com cannot be modified.');
+                return;
+            }
+            
             // Update the current user data
             currentUserData[userIndex][fieldName] = newValue;
             
@@ -594,6 +605,12 @@
                     const original = originalUserData[i];
                     
                     if (current.userType !== original.userType) {
+                        // Skip colin@kyocare.com as their user type is locked
+                        if (current.email === 'colin@kyocare.com') {
+                            console.log('Skipping colin@kyocare.com user type change - user type is locked');
+                            continue;
+                        }
+                        
                         changedUsers.push({
                             email: current.email,
                             userType: current.userType

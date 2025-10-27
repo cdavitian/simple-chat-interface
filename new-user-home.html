@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>Kyo Chat Tools - Homepage</title>
+    <title>Access Restricted - Kyo Chat Tools</title>
     <style>
         * {
             margin: 0;
@@ -22,7 +22,7 @@
             padding: 20px;
         }
 
-        .homepage-container {
+        .restricted-container {
             background: white;
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
@@ -35,7 +35,7 @@
             position: relative;
         }
 
-        .homepage-header {
+        .restricted-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 20px;
@@ -74,24 +74,6 @@
             color: white;
         }
 
-        .admin-btn {
-            background: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 16px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            text-decoration: none;
-            display: inline-block;
-        }
-
-        .admin-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-1px);
-        }
-
         .logout-btn {
             background: rgba(255, 255, 255, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.3);
@@ -110,7 +92,7 @@
             transform: translateY(-1px);
         }
 
-        .homepage-header h1 {
+        .restricted-header h1 {
             font-size: 24px;
             font-weight: 600;
         }
@@ -124,7 +106,7 @@
         .status-dot {
             width: 8px;
             height: 8px;
-            background: #4ade80;
+            background: #ff6b6b;
             border-radius: 50%;
             animation: pulse 2s infinite;
         }
@@ -139,7 +121,7 @@
             font-weight: 500;
         }
 
-        .homepage-content {
+        .restricted-content {
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -149,39 +131,45 @@
             text-align: center;
         }
 
-        .homepage-title {
-            font-size: 48px;
+        .restricted-icon {
+            font-size: 80px;
+            margin-bottom: 30px;
+            color: #ff6b6b;
+        }
+
+        .restricted-title {
+            font-size: 36px;
             font-weight: 700;
             color: #333;
-            margin-bottom: 40px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            margin-bottom: 20px;
         }
 
-        .mcp-test-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            padding: 16px 32px;
+        .restricted-message {
             font-size: 18px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-            text-decoration: none;
-            display: inline-block;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 30px;
         }
 
-        .mcp-test-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        .contact-info {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 400px;
+            width: 100%;
         }
 
-        .mcp-test-btn:active {
-            transform: translateY(0);
+        .contact-info h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .contact-info p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
         }
 
         .loading {
@@ -223,29 +211,34 @@
 
         /* Responsive design */
         @media (max-width: 600px) {
-            .homepage-container {
+            .restricted-container {
                 height: 100vh;
                 border-radius: 0;
                 max-width: none;
                 margin: 0;
             }
             
-            .homepage-header {
+            .restricted-header {
                 padding: 16px;
             }
             
-            .homepage-header h1 {
+            .restricted-header h1 {
                 font-size: 20px;
             }
             
-            .homepage-title {
-                font-size: 36px;
-                margin-bottom: 30px;
+            .restricted-title {
+                font-size: 28px;
+                margin-bottom: 15px;
             }
             
-            .mcp-test-btn {
-                padding: 14px 28px;
+            .restricted-message {
                 font-size: 16px;
+                margin-bottom: 25px;
+            }
+            
+            .restricted-icon {
+                font-size: 60px;
+                margin-bottom: 20px;
             }
             
             .header-right {
@@ -260,11 +253,6 @@
                 font-size: 12px;
             }
             
-            .admin-btn {
-                padding: 4px 8px;
-                font-size: 11px;
-            }
-            
             .logout-btn {
                 padding: 4px 8px;
                 font-size: 11px;
@@ -273,8 +261,8 @@
     </style>
 </head>
 <body>
-    <div class="homepage-container">
-        <div class="homepage-header">
+    <div class="restricted-container">
+        <div class="restricted-header">
             <h1>Kyo Chat Tools</h1>
             <div class="header-right">
                 <div class="user-info" id="userInfo" style="display: none;">
@@ -285,21 +273,29 @@
                         class="user-photo"
                     />
                     <span class="user-name" id="userName">User</span>
-                    <a href="/admin" class="admin-btn">Admin</a>
                     <a href="/logout" class="logout-btn">Logout</a>
                 </div>
                 <div class="status-indicator">
                     <span class="status-dot"></span>
-                    <span class="status-text">Online</span>
+                    <span class="status-text">Restricted</span>
                 </div>
             </div>
         </div>
         
-        <div class="homepage-content">
-            <h2 class="homepage-title">Kyo Chat Tools</h2>
-            <button class="mcp-test-btn" onclick="openChatInterface()">
-                MCP Test
-            </button>
+        <div class="restricted-content">
+            <div class="restricted-icon">🚫</div>
+            <h2 class="restricted-title">Access Restricted</h2>
+            <p class="restricted-message">
+                You do not have access to this site. Please contact your Administrator.
+            </p>
+            
+            <div class="contact-info">
+                <h3>Need Help?</h3>
+                <p>
+                    If you believe you should have access to this application, 
+                    please contact your system administrator for assistance.
+                </p>
+            </div>
         </div>
         
         <div class="loading" id="loading">
@@ -335,17 +331,11 @@
             const userInfo = document.getElementById('userInfo');
             const userPhoto = document.getElementById('userPhoto');
             const userName = document.getElementById('userName');
-            const adminBtn = document.querySelector('.admin-btn');
             
             if (user) {
                 userPhoto.src = user.picture || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=667eea&color=fff&size=32`;
                 userName.textContent = user.name || 'User';
                 userInfo.style.display = 'flex';
-                
-                // Hide admin button for Standard users
-                if (user.userType === 'Standard' && adminBtn) {
-                    adminBtn.style.display = 'none';
-                }
             }
         }
 
@@ -357,26 +347,12 @@
 
         function showLoading() {
             document.getElementById('loading').style.display = 'flex';
-            document.querySelector('.homepage-content').style.display = 'none';
+            document.querySelector('.restricted-content').style.display = 'none';
         }
 
         function hideLoading() {
             document.getElementById('loading').style.display = 'none';
-            document.querySelector('.homepage-content').style.display = 'flex';
-        }
-
-        function openChatInterface() {
-            showLoading();
-            // Open the chat interface in a new window
-            const chatWindow = window.open('/chat', '_blank', 'width=1000,height=700,scrollbars=yes,resizable=yes');
-            
-            if (chatWindow) {
-                chatWindow.focus();
-                hideLoading();
-            } else {
-                hideLoading();
-                showError('Unable to open chat interface. Please check your popup blocker settings.');
-            }
+            document.querySelector('.restricted-content').style.display = 'flex';
         }
 
         // Initialize the page

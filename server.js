@@ -155,6 +155,58 @@ const requireAuth = (req, res, next) => {
     res.status(401).json({ error: 'Authentication required' });
 };
 
+// Helper function to get user type from database
+const getUserType = async (email) => {
+    try {
+        const sql = `
+            SELECT user_type 
+            FROM users 
+            WHERE email = $1
+        `;
+        const result = await loggingConfig.logger.pool.query(sql, [email]);
+        return result.rows[0]?.user_type || 'New';
+    } catch (error) {
+        console.error('Error getting user type:', error);
+        return 'New'; // Default to 'New' if error
+    }
+};
+
+// Middleware to check user type and redirect accordingly
+const checkUserPermissions = async (req, res, next) => {
+    if (!req.session.user) {
+        return res.redirect('/login');
+    }
+    
+    try {
+        const userType = await getUserType(req.session.user.email);
+        req.session.user.userType = userType;
+        
+        // Store user type in session for easy access
+        req.session.userType = userType;
+        
+        next();
+    } catch (error) {
+        console.error('Error checking user permissions:', error);
+        req.session.user.userType = 'New';
+        req.session.userType = 'New';
+        next();
+    }
+};
+
+// Middleware to require admin access
+const requireAdmin = (req, res, next) => {
+    if (!req.session.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    const userType = req.session.user.userType || req.session.userType;
+    if (userType !== 'Admin') {
+        return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    next();
+};
+
 // Serve static files from public directory (avatars, etc)
 app.use('/public', express.static('public'));
 
@@ -586,7 +638,7 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
 
 // ============ Access Log API Endpoints ============
 // Get access logs for a specific user (admin only)
-app.get('/api/admin/access-logs/:userId', requireAuth, async (req, res) => {
+app.get('/api/admin/access-logs/:userId', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
     try {
         const { userId } = req.params;
         const { startDate, endDate } = req.query;
@@ -605,7 +657,7 @@ app.get('/api/admin/access-logs/:userId', requireAuth, async (req, res) => {
 });
 
 // Get all access logs (admin only)
-app.get('/api/admin/access-logs', requireAuth, async (req, res) => {
+app.get('/api/admin/access-logs', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
     try {
         const { startDate, endDate, userEmail, page = 1, limit = 10 } = req.query;
         const pageNum = parseInt(page);
@@ -644,7 +696,7 @@ app.get('/api/admin/access-logs', requireAuth, async (req, res) => {
 });
 
 // Get access statistics (admin only)
-app.get('/api/admin/access-stats', requireAuth, async (req, res) => {
+app.get('/api/admin/access-stats', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         const stats = await loggingConfig.getAccessStats(startDate, endDate);
@@ -659,7 +711,7 @@ app.get('/api/admin/access-stats', requireAuth, async (req, res) => {
 });
 
 // Get all users (admin only)
-app.get('/api/admin/users', requireAuth, async (req, res) => {
+app.get('/api/admin/users', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
     try {
         const { userType, userName, page = 1, limit = 10 } = req.query;
         const pageNum = parseInt(page);
@@ -695,7 +747,7 @@ app.get('/api/admin/users', requireAuth, async (req, res) => {
 });
 
 // Search user names for autocomplete (admin only)
-app.get('/api/admin/users/search-names', requireAuth, async (req, res) => {
+app.get('/api/admin/users/search-names', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
     try {
         const { q } = req.query;
         
@@ -716,7 +768,7 @@ app.get('/api/admin/users/search-names', requireAuth, async (req, res) => {
 });
 
 // Update user data (admin only)
-app.post('/api/admin/users/update', requireAuth, async (req, res) => {
+app.post('/api/admin/users/update', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
     try {
         const { users } = req.body;
         
@@ -729,6 +781,11 @@ app.post('/api/admin/users/update', requireAuth, async (req, res) => {
             
             if (!email || !userType) {
                 throw new Error('Email and userType are required for each user update');
+            }
+            
+            // Prevent changes to colin@kyocare.com user type
+            if (email === 'colin@kyocare.com') {
+                throw new Error('User Type for colin@kyocare.com cannot be modified');
             }
             
             // Validate user type
@@ -938,24 +995,44 @@ app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
-// Homepage route
-app.get('/homepage', requireAuth, (req, res) => {
+// Homepage route - check permissions and redirect based on user type
+app.get('/homepage', requireAuth, checkUserPermissions, (req, res) => {
+    const userType = req.session.user.userType || req.session.userType;
+    
+    if (userType === 'New') {
+        // Redirect New users to the restricted page
+        return res.redirect('/new-user-home');
+    }
+    
+    // Admin and Standard users see the normal homepage
     res.sendFile(path.join(__dirname, 'homepage.html'));
 });
 
-// Admin menu route
-app.get('/admin', requireAuth, (req, res) => {
+// Admin menu route - require admin access
+app.get('/admin', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, 'admin-menu.html'));
 });
 
-// Admin access log route
-app.get('/admin/access-log', requireAuth, (req, res) => {
+// Admin access log route - require admin access
+app.get('/admin/access-log', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
 });
 
-// Admin users route
-app.get('/admin/users', requireAuth, (req, res) => {
+// Admin users route - require admin access
+app.get('/admin/users', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, 'admin-users.html'));
+});
+
+// New User Home route - for users with 'New' type
+app.get('/new-user-home', requireAuth, checkUserPermissions, (req, res) => {
+    const userType = req.session.user.userType || req.session.userType;
+    
+    // Only allow New users to access this page
+    if (userType !== 'New') {
+        return res.redirect('/homepage');
+    }
+    
+    res.sendFile(path.join(__dirname, 'new-user-home.html'));
 });
 
 // Test route - serve static HTML
@@ -984,17 +1061,37 @@ app.get('/simple', (req, res) => {
 });
 
 // ============ Root Route (Must be LAST) ============
-// Redirect to homepage if authenticated, otherwise to login
-app.get('/', (req, res) => {
+// Redirect to appropriate page based on authentication and user type
+app.get('/', async (req, res) => {
     if (req.session.user) {
-        res.redirect('/homepage');
+        try {
+            const userType = await getUserType(req.session.user.email);
+            req.session.user.userType = userType;
+            req.session.userType = userType;
+            
+            if (userType === 'New') {
+                res.redirect('/new-user-home');
+            } else {
+                res.redirect('/homepage');
+            }
+        } catch (error) {
+            console.error('Error checking user type in root route:', error);
+            res.redirect('/homepage');
+        }
     } else {
         res.redirect('/login');
     }
 });
 
-// Chat interface route - serve React app
-app.get('/chat', (req, res) => {
+// Chat interface route - serve React app (restricted to Admin and Standard users)
+app.get('/chat', requireAuth, checkUserPermissions, (req, res) => {
+    const userType = req.session.user.userType || req.session.userType;
+    
+    // Block New users from accessing chat
+    if (userType === 'New') {
+        return res.redirect('/new-user-home');
+    }
+    
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');

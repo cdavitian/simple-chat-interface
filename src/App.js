@@ -21,6 +21,12 @@ function App() {
         if (response.ok) {
           const userData = await response.json();
           setUser(userData);
+          
+          // Check user type and redirect if necessary
+          if (userData.userType === 'New') {
+            window.location.href = '/new-user-home';
+            return;
+          }
         } else {
           // Redirect to login if not authenticated
           window.location.href = '/login';
@@ -122,12 +128,14 @@ function App() {
               className="user-photo"
             />
             <span className="user-name">{user?.name || 'User'}</span>
-            <button 
-              className="admin-btn"
-              onClick={() => window.location.href = '/admin'}
-            >
-              Admin
-            </button>
+            {user?.userType === 'Admin' && (
+              <button 
+                className="admin-btn"
+                onClick={() => window.location.href = '/admin'}
+              >
+                Admin
+              </button>
+            )}
             <button 
               className="logout-btn"
               onClick={() => window.location.href = '/logout'}
