@@ -737,10 +737,10 @@ app.post('/api/admin/users/update', requireAuth, async (req, res) => {
                 throw new Error(`Invalid user type: ${userType}`);
             }
             
-            // Update user type in the database
+            // Update user type in the users table
             const updateSQL = `
-                UPDATE access_logs 
-                SET user_type = $1 
+                UPDATE users 
+                SET user_type = $1, updated_at = CURRENT_TIMESTAMP
                 WHERE email = $2 
                 AND user_type IS DISTINCT FROM $1
             `;
