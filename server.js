@@ -601,7 +601,9 @@ app.get('/api/admin/access-logs/:userId', requireAuth, async (req, res) => {
 // Get all access logs (admin only)
 app.get('/api/admin/access-logs', requireAuth, async (req, res) => {
     try {
-        const { startDate, endDate, userEmail } = req.query;
+        const { startDate, endDate, userEmail, page = 1, limit = 10 } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
         
         // Use the logging configuration wrapper to get logs
         let logs = await loggingConfig.getAllAccessLogs(startDate, endDate);
@@ -613,10 +615,21 @@ app.get('/api/admin/access-logs', requireAuth, async (req, res) => {
             );
         }
         
+        // Calculate pagination
+        const totalCount = logs.length;
+        const totalPages = Math.ceil(totalCount / limitNum);
+        const startIndex = (pageNum - 1) * limitNum;
+        const endIndex = startIndex + limitNum;
+        const paginatedLogs = logs.slice(startIndex, endIndex);
+        
         res.json({
             success: true,
-            logs: logs,
-            count: logs.length
+            logs: paginatedLogs,
+            count: paginatedLogs.length,
+            totalCount,
+            totalPages,
+            currentPage: pageNum,
+            limit: limitNum
         });
     } catch (error) {
         console.error('Failed to get all access logs:', error);
@@ -642,25 +655,57 @@ app.get('/api/admin/access-stats', requireAuth, async (req, res) => {
 // Get all users (admin only)
 app.get('/api/admin/users', requireAuth, async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
-        const users = await loggingConfig.getAllUsers(startDate, endDate);
+        const { userType, userName, page = 1, limit = 10 } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        
+        const users = await loggingConfig.getAllUsers(userType, userName);
+        
+        // Calculate pagination
+        const totalCount = users.length;
+        const totalPages = Math.ceil(totalCount / limitNum);
+        const startIndex = (pageNum - 1) * limitNum;
+        const endIndex = startIndex + limitNum;
+        const paginatedUsers = users.slice(startIndex, endIndex);
+        
         res.json({
             success: true,
-            users,
+            users: paginatedUsers,
+            count: paginatedUsers.length,
+            totalCount,
+            totalPages,
+            currentPage: pageNum,
+            limit: limitNum,
             stats: {
-                totalUsers: users.length,
+                totalUsers: totalCount,
                 activeUsers: users.filter(user => user.lastAccess).length,
-                newUsers: users.filter(user => {
-                    if (!user.firstAccess) return false;
-                    const firstAccessDate = new Date(user.firstAccess);
-                    const startDateObj = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-                    return firstAccessDate >= startDateObj;
-                }).length
+                newUsers: users.filter(user => user.userType === 'New').length
             }
         });
     } catch (error) {
         console.error('Failed to get users:', error);
         res.status(500).json({ error: 'Failed to retrieve users' });
+    }
+});
+
+// Search user names for autocomplete (admin only)
+app.get('/api/admin/users/search-names', requireAuth, async (req, res) => {
+    try {
+        const { q } = req.query;
+        
+        if (!q || q.length < 2) {
+            return res.json({ success: true, names: [] });
+        }
+        
+        const names = await loggingConfig.searchUserNames(q);
+        
+        res.json({
+            success: true,
+            names: names
+        });
+    } catch (error) {
+        console.error('Failed to search user names:', error);
+        res.status(500).json({ error: 'Failed to search user names' });
     }
 });
 
@@ -796,6 +841,12 @@ app.get('/api/debug-admin-users', async (req, res) => {
 // ============ Static File Serving ============
 // Serve static files from dist directory (bundle.js, etc.)
 app.use(express.static('dist'));
+
+// Serve constants.js file
+app.get('/constants.js', (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.sendFile(path.join(__dirname, 'constants.js'));
+});
 
 // ============ HTML Page Routes ============
 // Login page route

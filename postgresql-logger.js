@@ -319,7 +319,7 @@ class PostgreSQLAccessLogger {
         return result.rows;
     }
 
-    async getAllUsers(startDate, endDate) {
+    async getAllUsers(userType, userName) {
         // First ensure users table exists
         await this.ensureUsersTableExists();
         
@@ -327,17 +327,16 @@ class PostgreSQLAccessLogger {
         const values = [];
         let paramCount = 0;
 
-        if (startDate) {
-            whereClause += ` AND u.created >= $${++paramCount}`;
-            values.push(startDate);
+        if (userType) {
+            whereClause += ` AND u.user_type = $${++paramCount}`;
+            values.push(userType);
         }
 
-        if (endDate) {
-            // Add 1 day to endDate to include the full day
-            const endDatePlusOne = new Date(endDate);
-            endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
-            whereClause += ` AND u.created < $${++paramCount}`;
-            values.push(endDatePlusOne.toISOString().split('T')[0]);
+        if (userName) {
+            whereClause += ` AND (CONCAT(u.given_name, ' ', u.family_name) ILIKE $${++paramCount} OR u.full_name ILIKE $${++paramCount})`;
+            const searchPattern = `%${userName}%`;
+            values.push(searchPattern);
+            values.push(searchPattern);
         }
 
         const sql = `
@@ -368,6 +367,36 @@ class PostgreSQLAccessLogger {
 
         const result = await this.pool.query(sql, values);
         return result.rows;
+    }
+
+    async searchUserNames(query) {
+        // First ensure users table exists
+        await this.ensureUsersTableExists();
+        
+        const searchPattern = `%${query}%`;
+        
+        const sql = `
+            SELECT DISTINCT 
+                CASE 
+                    WHEN u.full_name IS NOT NULL AND u.full_name != '' THEN u.full_name
+                    WHEN u.given_name IS NOT NULL AND u.family_name IS NOT NULL THEN CONCAT(u.given_name, ' ', u.family_name)
+                    WHEN u.given_name IS NOT NULL THEN u.given_name
+                    WHEN u.family_name IS NOT NULL THEN u.family_name
+                    ELSE u.email
+                END as display_name
+            FROM users u
+            WHERE (
+                u.full_name ILIKE $1 OR 
+                u.given_name ILIKE $1 OR 
+                u.family_name ILIKE $1 OR
+                CONCAT(u.given_name, ' ', u.family_name) ILIKE $1
+            )
+            ORDER BY display_name
+            LIMIT 10
+        `;
+
+        const result = await this.pool.query(sql, [searchPattern]);
+        return result.rows.map(row => row.display_name).filter(name => name && name.trim() !== '');
     }
 
     async getAllAccessLogs(startDate, endDate) {

@@ -125,6 +125,43 @@
             padding: 40px;
             color: #666;
         }
+        .pagination-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding: 15px 0;
+            border-top: 1px solid #eee;
+        }
+        .pagination-info {
+            color: #666;
+            font-size: 14px;
+        }
+        .pagination-buttons {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .pagination-buttons button {
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .pagination-buttons button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .pagination-buttons button:disabled:hover {
+            background: #ccc;
+        }
+        .page-size-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .page-size-selector select {
+            padding: 6px 10px;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -148,6 +185,14 @@
                 <input type="email" id="userEmail" placeholder="Enter user email">
             </div>
             <div class="control-group">
+                <label for="pageSize">Rows per page</label>
+                <select id="pageSize">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                </select>
+            </div>
+            <div class="control-group">
                 <label>&nbsp;</label>
                 <button onclick="loadStats()">Load Statistics</button>
             </div>
@@ -164,6 +209,10 @@
         <div id="logsContainer">
             <div class="loading">Click "Load Logs" to view access logs</div>
         </div>
+
+        <div id="paginationContainer" class="pagination-controls" style="display: none;">
+            <!-- Pagination controls will be populated here -->
+        </div>
     </div>
 
     <script>
@@ -173,6 +222,11 @@
         
         document.getElementById('startDate').value = lastWeek.toISOString().split('T')[0];
         document.getElementById('endDate').value = today.toISOString().split('T')[0];
+
+        // Pagination state
+        let currentPage = 1;
+        let totalPages = 1;
+        let totalCount = 0;
 
         async function loadStats() {
             const startDate = document.getElementById('startDate').value;
@@ -192,10 +246,11 @@
             }
         }
 
-        async function loadLogs() {
+        async function loadLogs(page = 1) {
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
             const userEmail = document.getElementById('userEmail').value;
+            const pageSize = document.getElementById('pageSize').value;
             
             try {
                 let url = '/api/admin/access-logs';
@@ -204,6 +259,8 @@
                 if (startDate) params.append('startDate', startDate);
                 if (endDate) params.append('endDate', endDate);
                 if (userEmail) params.append('userEmail', userEmail);
+                params.append('page', page);
+                params.append('limit', pageSize);
                 
                 if (params.toString()) {
                     url += '?' + params.toString();
@@ -213,7 +270,12 @@
                 const data = await response.json();
                 
                 if (data.success) {
+                    currentPage = data.currentPage;
+                    totalPages = data.totalPages;
+                    totalCount = data.totalCount;
+                    
                     displayLogs(data.logs);
+                    displayPagination();
                 } else {
                     showError('Failed to load logs');
                 }
@@ -275,10 +337,42 @@
             container.innerHTML = table;
         }
 
+        function displayPagination() {
+            const container = document.getElementById('paginationContainer');
+            
+            if (totalPages <= 1) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            const startItem = (currentPage - 1) * parseInt(document.getElementById('pageSize').value) + 1;
+            const endItem = Math.min(currentPage * parseInt(document.getElementById('pageSize').value), totalCount);
+            
+            container.innerHTML = `
+                <div class="pagination-info">
+                    Showing ${startItem}-${endItem} of ${totalCount} logs
+                </div>
+                <div class="pagination-buttons">
+                    <button onclick="loadLogs(1)" ${currentPage === 1 ? 'disabled' : ''}>First</button>
+                    <button onclick="loadLogs(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
+                    <span style="padding: 0 10px;">Page ${currentPage} of ${totalPages}</span>
+                    <button onclick="loadLogs(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+                    <button onclick="loadLogs(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>Last</button>
+                </div>
+            `;
+            container.style.display = 'flex';
+        }
+
         function showError(message) {
             const container = document.getElementById('logsContainer');
             container.innerHTML = `<div class="error">${message}</div>`;
+            document.getElementById('paginationContainer').style.display = 'none';
         }
+
+        // Add event listener for page size changes
+        document.getElementById('pageSize').addEventListener('change', function() {
+            loadLogs(1); // Reset to first page when page size changes
+        });
     </script>
 </body>
 </html>
