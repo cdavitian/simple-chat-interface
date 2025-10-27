@@ -202,8 +202,9 @@
                 <table class="users-table">
                     <thead>
                         <tr>
-                            <th>UserID</th>
                             <th>Email Address</th>
+                            <th>User Name</th>
+                            <th>User Type</th>
                             <th>Last Access</th>
                             <th>Total Logins</th>
                             <th>First Access</th>
@@ -212,8 +213,9 @@
                     <tbody>
                         ${users.map(user => `
                             <tr>
-                                <td>${user.userId || 'N/A'}</td>
                                 <td>${user.email}</td>
+                                <td>${user.fullName || 'N/A'}</td>
+                                <td>${user.userType || 'N/A'}</td>
                                 <td>${user.lastAccess ? new Date(user.lastAccess).toLocaleString() : 'Never'}</td>
                                 <td>${user.totalLogins || 0}</td>
                                 <td>${user.firstAccess ? new Date(user.firstAccess).toLocaleString() : 'Unknown'}</td>

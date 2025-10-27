@@ -277,6 +277,45 @@ class AccessLogger {
             new Date(b.lastAccess) - new Date(a.lastAccess)
         );
     }
+
+    /**
+     * Get all access logs with optional date filtering
+     */
+    getAllAccessLogs(startDate, endDate) {
+        const start = startDate ? new Date(startDate) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // Default: last 7 days
+        const end = endDate ? new Date(endDate) : new Date();
+        
+        const allLogs = [];
+
+        try {
+            const files = fs.readdirSync(this.logDir)
+                .filter(file => file.startsWith('access-') && file.endsWith('.jsonl'));
+
+            for (const file of files) {
+                const filePath = path.join(this.logDir, file);
+                const content = fs.readFileSync(filePath, 'utf8');
+                const lines = content.trim().split('\n').filter(line => line);
+
+                for (const line of lines) {
+                    try {
+                        const logEntry = JSON.parse(line);
+                        const logDate = new Date(logEntry.timestamp);
+                        
+                        if (logDate >= start && logDate <= end) {
+                            allLogs.push(logEntry);
+                        }
+                    } catch (parseError) {
+                        console.error('Failed to parse log line:', parseError);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to get all access logs:', error);
+        }
+
+        // Sort by timestamp descending (most recent first)
+        return allLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    }
 }
 
 module.exports = AccessLogger;

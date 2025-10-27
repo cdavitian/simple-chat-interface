@@ -17,7 +17,7 @@ The users table contains the following columns:
 - `family_name` (VARCHAR(255), NULL) - User's family name from Google OAuth
 - `given_name` (VARCHAR(255), NULL) - User's given name from Google OAuth
 - `full_name` (VARCHAR(255), NULL) - User's full name from Google OAuth
-- `user_type` (VARCHAR(50), DEFAULT 'new') - User type (defaults to 'new')
+- `user_type` (VARCHAR(50), DEFAULT 'New') - User type (defaults to 'New')
 - `created_at` (TIMESTAMP(3), NOT NULL) - Record creation timestamp
 - `updated_at` (TIMESTAMP(3), NOT NULL) - Record last update timestamp
 

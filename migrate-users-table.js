@@ -29,7 +29,7 @@ async function migrateUsersTable() {
                 al.family_name,
                 al.given_name,
                 al.full_name,
-                'new' as user_type
+                'New' as user_type
             FROM access_logs al
             WHERE al.event_type = 'login'
             GROUP BY al.user_id, al.email, al.family_name, al.given_name, al.full_name
@@ -49,7 +49,7 @@ async function migrateUsersTable() {
         const verifySQL = `
             SELECT 
                 COUNT(*) as total_users,
-                COUNT(CASE WHEN user_type = 'new' THEN 1 END) as new_users,
+                COUNT(CASE WHEN user_type = 'New' THEN 1 END) as new_users,
                 MIN(created) as earliest_user,
                 MAX(last_login) as latest_login
             FROM users

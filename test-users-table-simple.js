@@ -39,7 +39,7 @@ async function testUsersTableMigration() {
             'family_name VARCHAR(255)',
             'given_name VARCHAR(255)',
             'full_name VARCHAR(255)',
-            'user_type VARCHAR(50) DEFAULT \'new\'',
+            'user_type VARCHAR(50) DEFAULT \'New\'',
             'CREATE INDEX IF NOT EXISTS',
             'CREATE OR REPLACE FUNCTION',
             'CREATE TRIGGER'

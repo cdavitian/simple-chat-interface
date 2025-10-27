@@ -603,37 +603,13 @@ app.get('/api/admin/access-logs', requireAuth, async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         
-        // Query all access logs directly from the database
-        let whereClause = 'WHERE 1=1';
-        const values = [];
-        let paramCount = 0;
-
-        if (startDate) {
-            whereClause += ` AND timestamp >= $${++paramCount}`;
-            values.push(startDate);
-        }
-
-        if (endDate) {
-            // Add 1 day to endDate to include the full day
-            const endDatePlusOne = new Date(endDate);
-            endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
-            whereClause += ` AND timestamp < $${++paramCount}`;
-            values.push(endDatePlusOne.toISOString().split('T')[0]);
-        }
-
-        const sql = `
-            SELECT * FROM access_logs 
-            ${whereClause}
-            ORDER BY timestamp DESC 
-            LIMIT 1000
-        `;
-        
-        const result = await loggingConfig.logger.pool.query(sql, values);
+        // Use the logging configuration wrapper to get logs
+        const logs = await loggingConfig.getAllAccessLogs(startDate, endDate);
         
         res.json({
             success: true,
-            logs: result.rows,
-            count: result.rows.length
+            logs: logs,
+            count: logs.length
         });
     } catch (error) {
         console.error('Failed to get all access logs:', error);

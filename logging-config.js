@@ -66,6 +66,11 @@ class LoggingConfig {
         // Always call the actual logger instance, regardless of configured type
         return await this.logger.getAllUsers(startDate, endDate);
     }
+
+    async getAllAccessLogs(startDate, endDate) {
+        // Always call the actual logger instance, regardless of configured type
+        return await this.logger.getAllAccessLogs(startDate, endDate);
+    }
 }
 
 module.exports = LoggingConfig;
