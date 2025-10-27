@@ -564,6 +564,16 @@
             }
         }
 
+        function exitEditMode() {
+            isEditMode = false;
+            document.getElementById('editBtn').disabled = false;
+            document.getElementById('saveBtn').style.display = 'none';
+            document.getElementById('cancelBtn').style.display = 'none';
+            
+            // Re-render the table in normal mode
+            displayUsers(currentUserData);
+        }
+
         function markFieldChanged(userIndex, fieldName, newValue) {
             // Update the current user data
             currentUserData[userIndex][fieldName] = newValue;
@@ -610,8 +620,7 @@
                 if (result.success) {
                     alert(`Successfully updated ${changedUsers.length} user(s).`);
                     // Exit edit mode and reload data
-                    isEditMode = false;
-                    toggleEditMode();
+                    exitEditMode();
                     loadUsers(currentPage);
                 } else {
                     alert('Failed to save changes: ' + (result.error || 'Unknown error'));
@@ -626,9 +635,11 @@
             // Reset to original data
             currentUserData = originalUserData.map(user => ({ ...user }));
             
+            // Show helpful dialog
+            alert('Canceled all changes');
+            
             // Exit edit mode
-            isEditMode = false;
-            toggleEditMode();
+            exitEditMode();
         }
     </script>
 </body>
