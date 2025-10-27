@@ -297,7 +297,7 @@ app.get('/auth/cognito/callback', async (req, res) => {
         }
         
         console.log('Google OAuth login successful for:', userInfo.email);
-        res.redirect('/');
+        res.redirect('/homepage');
         
     } catch (error) {
         console.error('Cognito OAuth callback error:', error);
@@ -938,6 +938,11 @@ app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
+// Homepage route
+app.get('/homepage', requireAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'homepage.html'));
+});
+
 // Admin menu route
 app.get('/admin', requireAuth, (req, res) => {
     res.sendFile(path.join(__dirname, 'admin-menu.html'));
@@ -979,8 +984,17 @@ app.get('/simple', (req, res) => {
 });
 
 // ============ Root Route (Must be LAST) ============
-// Serve React app to everyone - let React handle authentication
+// Redirect to homepage if authenticated, otherwise to login
 app.get('/', (req, res) => {
+    if (req.session.user) {
+        res.redirect('/homepage');
+    } else {
+        res.redirect('/login');
+    }
+});
+
+// Chat interface route - serve React app
+app.get('/chat', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
