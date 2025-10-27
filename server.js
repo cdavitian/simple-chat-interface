@@ -601,10 +601,17 @@ app.get('/api/admin/access-logs/:userId', requireAuth, async (req, res) => {
 // Get all access logs (admin only)
 app.get('/api/admin/access-logs', requireAuth, async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, userEmail } = req.query;
         
         // Use the logging configuration wrapper to get logs
-        const logs = await loggingConfig.getAllAccessLogs(startDate, endDate);
+        let logs = await loggingConfig.getAllAccessLogs(startDate, endDate);
+        
+        // Filter by user email if provided
+        if (userEmail) {
+            logs = logs.filter(log => 
+                log.email && log.email.toLowerCase().includes(userEmail.toLowerCase())
+            );
+        }
         
         res.json({
             success: true,
