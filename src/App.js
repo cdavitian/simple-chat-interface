@@ -258,56 +258,59 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
   console.log('[ChatKit] 🔐 About to initialize useChatKit hook...');
   console.log('[ChatKit] 🔐 SessionData available for hook:', !!sessionData);
   
-  // getClientSecret: Always fetch a fresh token from server (never reuse stale tokens)
+  // Create the getClientSecret function that will be used by ChatKit
   // This function is called whenever ChatKit needs a token - we always fetch fresh
-  const { control } = useChatKit({
-    api: {
-      getClientSecret: async (currentClientSecret) => {
-        console.log('[ChatKit] ========================================');
-        console.log('[ChatKit] 🔐🔐🔐 getClientSecret CALLED! 🔐🔐🔐');
-        console.log('[ChatKit] 🔐 Called with currentClientSecret:', currentClientSecret?.substring(0, 30) + '...');
-        
-        // ALWAYS fetch fresh token from server - don't reuse sessionData
-        // This ensures we never use stale/expired tokens
-        try {
-          console.log('[ChatKit] 🔐 Fetching fresh token from server...');
-          const freshSession = await fetchChatKitSession();
-          
-          if (!freshSession?.clientToken) {
-            console.error('[ChatKit] ❌ ERROR: No clientToken in fresh session!');
-            throw new Error('No clientToken available from server');
-          }
-          
-          // Optional: Check if token is expired before returning
-          const expiry = getExpiryFromEk(freshSession.clientToken);
-          if (expiry) {
-            const expiryDate = new Date(expiry * 1000);
-            const now = new Date();
-            if (expiryDate < now) {
-              console.warn('[ChatKit] ⚠️ WARNING: Fresh token is already expired!');
-            } else {
-              console.log('[ChatKit] ✅ Token is valid until:', expiryDate.toISOString());
-            }
-          }
-          
-          // Update sessionData in parent component if callback provided
-          if (onSessionUpdate) {
-            onSessionUpdate(freshSession);
-          }
-          
-          console.log('[ChatKit] ✅ Returning fresh clientToken:', {
-            length: freshSession.clientToken.length,
-            prefix: freshSession.clientToken.substring(0, 30),
-            suffix: freshSession.clientToken.substring(freshSession.clientToken.length - 10)
-          });
-          console.log('[ChatKit] ========================================');
-          
-          return freshSession.clientToken;
-        } catch (error) {
-          console.error('[ChatKit] ❌ Failed to fetch fresh token:', error);
-          throw error;
+  const getClientSecret = useMemo(() => async (currentClientSecret) => {
+    console.log('[ChatKit] ========================================');
+    console.log('[ChatKit] 🔐🔐🔐 getClientSecret CALLED! 🔐🔐🔐');
+    console.log('[ChatKit] 🔐 Called with currentClientSecret:', currentClientSecret?.substring(0, 30) + '...');
+    
+    // ALWAYS fetch fresh token from server - don't reuse sessionData
+    // This ensures we never use stale/expired tokens
+    try {
+      console.log('[ChatKit] 🔐 Fetching fresh token from server...');
+      const freshSession = await fetchChatKitSession();
+      
+      if (!freshSession?.clientToken) {
+        console.error('[ChatKit] ❌ ERROR: No clientToken in fresh session!');
+        throw new Error('No clientToken available from server');
+      }
+      
+      // Optional: Check if token is expired before returning
+      const expiry = getExpiryFromEk(freshSession.clientToken);
+      if (expiry) {
+        const expiryDate = new Date(expiry * 1000);
+        const now = new Date();
+        if (expiryDate < now) {
+          console.warn('[ChatKit] ⚠️ WARNING: Fresh token is already expired!');
+        } else {
+          console.log('[ChatKit] ✅ Token is valid until:', expiryDate.toISOString());
         }
       }
+      
+      // Update sessionData in parent component if callback provided
+      if (onSessionUpdate) {
+        onSessionUpdate(freshSession);
+      }
+      
+      console.log('[ChatKit] ✅ Returning fresh clientToken:', {
+        length: freshSession.clientToken.length,
+        prefix: freshSession.clientToken.substring(0, 30),
+        suffix: freshSession.clientToken.substring(freshSession.clientToken.length - 10)
+      });
+      console.log('[ChatKit] ========================================');
+      
+      return freshSession.clientToken;
+    } catch (error) {
+      console.error('[ChatKit] ❌ Failed to fetch fresh token:', error);
+      throw error;
+    }
+  }, [onSessionUpdate]);
+
+  // getClientSecret: Always fetch a fresh token from server (never reuse stale tokens)
+  const { control } = useChatKit({
+    api: {
+      getClientSecret: getClientSecret
     }
   });
 
@@ -507,6 +510,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
   return (
     <div style={{ width: '100%', height: '600px', display: 'block' }}>
       <ChatKit 
+        clientToken={sessionData?.clientToken}
         publicKey={sessionData?.publicKey}
         control={control}
         composer={composerConfig}
