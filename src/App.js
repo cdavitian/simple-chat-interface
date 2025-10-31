@@ -308,12 +308,11 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
   }, [onSessionUpdate]);
 
   // getClientSecret: Always fetch a fresh token from server (never reuse stale tokens)
-  // Also pass publicKey and composer via options so they are applied through setOptions
+  // Pass composer via options so it is applied through setOptions
   const { control } = useChatKit({
     api: {
       getClientSecret: getClientSecret
     },
-    publicKey: sessionData?.publicKey,
     composer: composerConfig
   });
 
@@ -419,33 +418,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
           });
         }
         
-        // Check if element has setOptions method
-        if (typeof el.setOptions === 'function') {
-          console.log('[ChatKit] Element has setOptions method');
-          
-          // Try to get current options
-          if (typeof el.getOptions === 'function') {
-            try {
-              const currentOptions = el.getOptions();
-              console.log('[ChatKit] Current ChatKit options:', JSON.stringify(currentOptions, null, 2));
-            } catch (err) {
-              console.log('[ChatKit] Could not get current options:', err.message);
-            }
-          }
-          
-          // Try to set composer config via setOptions as alternative
-          console.log('[ChatKit] Attempting to set composer config via setOptions...');
-          try {
-            el.setOptions({
-              composer: composerConfig
-            });
-            console.log('[ChatKit] setOptions call completed successfully');
-          } catch (error) {
-            console.error('[ChatKit] setOptions failed:', error);
-          }
-        } else {
-          console.log('[ChatKit] Element does not have setOptions method');
-        }
+        // Avoid calling setOptions directly here; the React wrapper applies options
         
         // Check element's internal state if accessible
         if (el._options || el.options || el.config) {
