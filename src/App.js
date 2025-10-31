@@ -249,6 +249,15 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
   const composerConfig = useMemo(() => ({
     attachments: {
       enabled: true,
+      uploadStrategy: {
+        type: 'hosted'
+      },
+      maxSize: 20 * 1024 * 1024, // 20MB per file
+      maxCount: 3,
+      accept: {
+        "application/pdf": [".pdf"],
+        "image/*": [".png", ".jpg"]
+      },
     },
   }), []);
   
