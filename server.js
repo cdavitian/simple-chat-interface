@@ -571,6 +571,11 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             workflow: {   // <-- must be an object, not a string
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID  // <-- must be string
                 // optional: state_variables: { user_id: userId }
+            },
+            chatkit_configuration: {
+                file_upload: {
+                    enabled: true
+                }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
         });

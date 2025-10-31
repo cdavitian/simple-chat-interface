@@ -123,3 +123,4 @@ async function testPermissions() {
 
 // Run the test
 testPermissions();
+
