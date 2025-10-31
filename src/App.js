@@ -182,7 +182,7 @@ function App() {
         <div className="header-right">
           <div className="user-info">
             <img 
-              src={user?.picture || '/public/default-avatar.png'} 
+              src={user?.picture || user?.avatar || '/default-avatar.png'} 
               alt="User" 
               className="user-photo"
             />
@@ -507,7 +507,6 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
   return (
     <div style={{ width: '100%', height: '600px', display: 'block' }}>
       <ChatKit 
-        clientToken={sessionData?.clientToken}
         publicKey={sessionData?.publicKey}
         control={control}
         composer={composerConfig}
