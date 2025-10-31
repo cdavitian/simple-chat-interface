@@ -259,7 +259,9 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
         "image/*": [".png", ".jpg"],
         "text/csv": [".csv"],
         "application/csv": [".csv"],
+        "text/plain": [".csv"],
         "application/vnd.ms-excel": [".xls", ".csv"],
+        "application/octet-stream": [".csv", ".xls", ".xlsx"],
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]
       },
     },
