@@ -2,6 +2,63 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChatKit, useChatKit } from '@openai/chatkit-react';
 import './App.css';
 
+// Helper function to fetch a fresh ChatKit session
+// Always fetches from server with no caching to ensure fresh tokens
+async function fetchChatKitSession() {
+  const response = await fetch('/api/chatkit/session', {
+    method: 'GET',
+    cache: 'no-store',
+    headers: {
+      'Accept': 'application/json',
+    },
+    credentials: 'include' // Ensure cookies are sent
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Session error: ${response.status} - ${errorText}`);
+  }
+  
+  const sessionData = await response.json();
+  return sessionData; // { clientToken, publicKey }
+}
+
+// Optional: Check token expiry (decodes ek_... token to check expires_at)
+function getExpiryFromEk(token) {
+  if (!token || !token.startsWith('ek_')) return undefined;
+  
+  try {
+    const parts = token.split('_');
+    const b64 = parts[parts.length - 1].replace(/[^A-Za-z0-9+/=]/g, '');
+    const json = JSON.parse(atob(b64));
+    return json.expires_at || json.expiresAt;
+  } catch {
+    return undefined;
+  }
+}
+
+// Helper function to wrap operations with 401 retry logic
+async function withTokenRefresh(getTokenFn, operationFn, retries = 1) {
+  try {
+    return await operationFn(await getTokenFn());
+  } catch (error) {
+    // Detect 401 or unauthorized errors
+    const isUnauthorized = 
+      error?.status === 401 || 
+      error?.statusCode === 401 ||
+      /unauthorized/i.test(String(error)) ||
+      /401/i.test(String(error));
+    
+    if (isUnauthorized && retries > 0) {
+      console.log('[ChatKit] 🔄 401 detected, refreshing token and retrying...');
+      // Refresh token and retry once
+      return await operationFn(await getTokenFn());
+    }
+    
+    throw error;
+  }
+}
+
 function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
@@ -56,30 +113,32 @@ function App() {
       console.log('User authenticated:', !!user);
       console.log('User data:', user);
       
-      // Get session data from server
-      console.log('Making request to /api/chatkit/session...');
-      const response = await fetch('/api/chatkit/session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include' // Ensure cookies are sent
+      // Always fetch fresh session data from server (no caching)
+      console.log('Fetching fresh ChatKit session...');
+      const sessionData = await fetchChatKitSession();
+      
+      console.log('ChatKit session data received:', {
+        hasClientToken: !!sessionData?.clientToken,
+        clientTokenPrefix: sessionData?.clientToken?.substring(0, 30) || 'N/A',
+        hasPublicKey: !!sessionData?.publicKey,
+        publicKeyPrefix: sessionData?.publicKey?.substring(0, 30) || 'N/A'
       });
       
-      console.log('ChatKit session response status:', response.status);
-      console.log('Response URL:', response.url);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('ChatKit session error:', errorText);
-        console.error('Response headers:', Object.fromEntries(response.headers.entries()));
-        throw new Error(`Session error: ${response.status} - ${errorText}`);
+      // Optional: Check token expiry
+      if (sessionData?.clientToken) {
+        const expiry = getExpiryFromEk(sessionData.clientToken);
+        if (expiry) {
+          const expiryDate = new Date(expiry * 1000);
+          const now = new Date();
+          console.log('[ChatKit] Token expiry:', {
+            expiresAt: expiryDate.toISOString(),
+            isExpired: expiryDate < now,
+            timeUntilExpiry: expiryDate > now ? `${Math.round((expiryDate - now) / 1000)}s` : 'EXPIRED'
+          });
+        }
       }
       
-      const sessionData = await response.json();
-      console.log('ChatKit session data received:', sessionData);
-      
-      // Store session data and mark as initialized
+      // Store session data in memory (not localStorage) and mark as initialized
       setSessionData(sessionData);
       setChatkitInitialized(true);
       console.log('Chat interface initialized');
@@ -163,14 +222,17 @@ function App() {
             <p>Initializing chat interface...</p>
           </div>
         ) : (
-          <ChatKitComponent sessionData={sessionData} />
+          <ChatKitComponent 
+            sessionData={sessionData} 
+            onSessionUpdate={(freshSession) => setSessionData(freshSession)}
+          />
         )}
       </div>
     </div>
   );
 }
 
-function ChatKitComponent({ sessionData }) {
+function ChatKitComponent({ sessionData, onSessionUpdate }) {
   console.log('[ChatKit] ========================================');
   console.log('[ChatKit] Component rendering with sessionData:', sessionData);
   console.log('[ChatKit] SessionData details:', {
@@ -196,34 +258,55 @@ function ChatKitComponent({ sessionData }) {
   console.log('[ChatKit] 🔐 About to initialize useChatKit hook...');
   console.log('[ChatKit] 🔐 SessionData available for hook:', !!sessionData);
   
+  // getClientSecret: Always fetch a fresh token from server (never reuse stale tokens)
+  // This function is called whenever ChatKit needs a token - we always fetch fresh
   const { control } = useChatKit({
     api: {
       getClientSecret: async (currentClientSecret) => {
         console.log('[ChatKit] ========================================');
         console.log('[ChatKit] 🔐🔐🔐 getClientSecret CALLED! 🔐🔐🔐');
-        console.log('[ChatKit] 🔐 Called with currentClientSecret:', currentClientSecret);
-        console.log('[ChatKit] 🔐 SessionData at call time:', {
-          exists: !!sessionData,
-          hasClientToken: !!sessionData?.clientToken,
-          clientTokenType: typeof sessionData?.clientToken,
-          clientTokenValue: sessionData?.clientToken?.substring(0, 50) + '...' || 'NULL'
-        });
+        console.log('[ChatKit] 🔐 Called with currentClientSecret:', currentClientSecret?.substring(0, 30) + '...');
         
-        if (!sessionData?.clientToken) {
-          console.error('[ChatKit] ❌ ERROR: No clientToken available in sessionData!');
-          console.error('[ChatKit] ❌ SessionData object:', sessionData);
-          throw new Error('No clientToken available');
+        // ALWAYS fetch fresh token from server - don't reuse sessionData
+        // This ensures we never use stale/expired tokens
+        try {
+          console.log('[ChatKit] 🔐 Fetching fresh token from server...');
+          const freshSession = await fetchChatKitSession();
+          
+          if (!freshSession?.clientToken) {
+            console.error('[ChatKit] ❌ ERROR: No clientToken in fresh session!');
+            throw new Error('No clientToken available from server');
+          }
+          
+          // Optional: Check if token is expired before returning
+          const expiry = getExpiryFromEk(freshSession.clientToken);
+          if (expiry) {
+            const expiryDate = new Date(expiry * 1000);
+            const now = new Date();
+            if (expiryDate < now) {
+              console.warn('[ChatKit] ⚠️ WARNING: Fresh token is already expired!');
+            } else {
+              console.log('[ChatKit] ✅ Token is valid until:', expiryDate.toISOString());
+            }
+          }
+          
+          // Update sessionData in parent component if callback provided
+          if (onSessionUpdate) {
+            onSessionUpdate(freshSession);
+          }
+          
+          console.log('[ChatKit] ✅ Returning fresh clientToken:', {
+            length: freshSession.clientToken.length,
+            prefix: freshSession.clientToken.substring(0, 30),
+            suffix: freshSession.clientToken.substring(freshSession.clientToken.length - 10)
+          });
+          console.log('[ChatKit] ========================================');
+          
+          return freshSession.clientToken;
+        } catch (error) {
+          console.error('[ChatKit] ❌ Failed to fetch fresh token:', error);
+          throw error;
         }
-        
-        const tokenToReturn = sessionData.clientToken;
-        console.log('[ChatKit] ✅ Returning clientToken:', {
-          length: tokenToReturn.length,
-          prefix: tokenToReturn.substring(0, 30),
-          suffix: tokenToReturn.substring(tokenToReturn.length - 10),
-          fullToken: tokenToReturn  // Log full token for debugging
-        });
-        console.log('[ChatKit] ========================================');
-        return tokenToReturn;
       }
     }
   });
