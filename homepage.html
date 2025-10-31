@@ -366,17 +366,8 @@
         }
 
         function openChatInterface() {
-            showLoading();
-            // Open the chat interface in a new window
-            const chatWindow = window.open('/chat', '_blank', 'width=1000,height=700,scrollbars=yes,resizable=yes');
-            
-            if (chatWindow) {
-                chatWindow.focus();
-                hideLoading();
-            } else {
-                hideLoading();
-                showError('Unable to open chat interface. Please check your popup blocker settings.');
-            }
+            // Navigate to the chat interface in the same tab
+            window.location.href = '/chat';
         }
 
         // Initialize the page
