@@ -171,7 +171,16 @@ function App() {
 }
 
 function ChatKitComponent({ sessionData }) {
+  console.log('[ChatKit] ========================================');
   console.log('[ChatKit] Component rendering with sessionData:', sessionData);
+  console.log('[ChatKit] SessionData details:', {
+    hasClientToken: !!sessionData?.clientToken,
+    clientTokenLength: sessionData?.clientToken?.length || 0,
+    clientTokenPrefix: sessionData?.clientToken?.substring(0, 30) || 'N/A',
+    hasPublicKey: !!sessionData?.publicKey,
+    publicKeyPrefix: sessionData?.publicKey?.substring(0, 30) || 'N/A',
+    sessionDataKeys: sessionData ? Object.keys(sessionData) : []
+  });
   
   // Composer configuration with attachments enabled
   // Use useMemo to prevent recreating the object on every render
@@ -183,26 +192,65 @@ function ChatKitComponent({ sessionData }) {
   
   console.log('[ChatKit] Composer configuration:', JSON.stringify(composerConfig, null, 2));
   
+  // Log before useChatKit is called
+  console.log('[ChatKit] 🔐 About to initialize useChatKit hook...');
+  console.log('[ChatKit] 🔐 SessionData available for hook:', !!sessionData);
+  
   const { control } = useChatKit({
     api: {
       getClientSecret: async (currentClientSecret) => {
-        console.log('[ChatKit] getClientSecret called with:', currentClientSecret);
+        console.log('[ChatKit] ========================================');
+        console.log('[ChatKit] 🔐🔐🔐 getClientSecret CALLED! 🔐🔐🔐');
+        console.log('[ChatKit] 🔐 Called with currentClientSecret:', currentClientSecret);
+        console.log('[ChatKit] 🔐 SessionData at call time:', {
+          exists: !!sessionData,
+          hasClientToken: !!sessionData?.clientToken,
+          clientTokenType: typeof sessionData?.clientToken,
+          clientTokenValue: sessionData?.clientToken?.substring(0, 50) + '...' || 'NULL'
+        });
+        
         if (!sessionData?.clientToken) {
-          console.error('[ChatKit] ERROR: No clientToken available in sessionData!');
+          console.error('[ChatKit] ❌ ERROR: No clientToken available in sessionData!');
+          console.error('[ChatKit] ❌ SessionData object:', sessionData);
           throw new Error('No clientToken available');
         }
-        console.log('[ChatKit] Returning clientToken:', sessionData.clientToken.substring(0, 20) + '...');
-        return sessionData.clientToken;
+        
+        const tokenToReturn = sessionData.clientToken;
+        console.log('[ChatKit] ✅ Returning clientToken:', {
+          length: tokenToReturn.length,
+          prefix: tokenToReturn.substring(0, 30),
+          suffix: tokenToReturn.substring(tokenToReturn.length - 10),
+          fullToken: tokenToReturn  // Log full token for debugging
+        });
+        console.log('[ChatKit] ========================================');
+        return tokenToReturn;
       }
     }
   });
 
-  console.log('[ChatKit] useChatKit hook returned control:', control);
-  console.log('[ChatKit] Control methods available:', control ? Object.keys(control) : 'control is null/undefined');
+  console.log('[ChatKit] 🔐 useChatKit hook returned control:', control);
+  console.log('[ChatKit] 🔐 Control methods available:', control ? Object.keys(control) : 'control is null/undefined');
+  
+  // Log when control is first available
+  useEffect(() => {
+    if (control) {
+      console.log('[ChatKit] ✅ Control object is now available');
+      console.log('[ChatKit] Control details:', {
+        hasSetInstance: typeof control.setInstance === 'function',
+        hasOptions: !!control.options,
+        hasHandlers: !!control.handlers,
+        optionsKeys: control.options ? Object.keys(control.options) : [],
+        handlersKeys: control.handlers ? Object.keys(control.handlers) : []
+      });
+    } else {
+      console.warn('[ChatKit] ⚠️ Control object is not available yet');
+    }
+  }, [control]);
 
   // Debug: Check element after render and inspect ChatKit state
   useEffect(() => {
-    console.log('[ChatKit] useEffect triggered, checking ChatKit element...');
+    console.log('[ChatKit] 🔍 useEffect triggered, checking ChatKit element...');
+    console.log('[ChatKit] 🔍 SessionData in effect:', !!sessionData);
     
     const checkElement = () => {
       const el = document.querySelector('openai-chatkit');
