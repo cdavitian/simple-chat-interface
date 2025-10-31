@@ -187,8 +187,12 @@ function ChatKitComponent({ sessionData }) {
     api: {
       getClientSecret: async (currentClientSecret) => {
         console.log('[ChatKit] getClientSecret called with:', currentClientSecret);
-        console.log('[ChatKit] Returning clientToken:', sessionData?.clientToken?.substring(0, 20) + '...');
-        return sessionData?.clientToken;
+        if (!sessionData?.clientToken) {
+          console.error('[ChatKit] ERROR: No clientToken available in sessionData!');
+          throw new Error('No clientToken available');
+        }
+        console.log('[ChatKit] Returning clientToken:', sessionData.clientToken.substring(0, 20) + '...');
+        return sessionData.clientToken;
       }
     }
   });
@@ -346,6 +350,21 @@ function ChatKitComponent({ sessionData }) {
       console.log('[ChatKit] Component unmounting');
     };
   });
+
+  // Use useEffect to set composer config via control API after control is ready
+  useEffect(() => {
+    if (control && control.setInstance) {
+      console.log('[ChatKit] Setting composer config via control.setInstance...');
+      try {
+        control.setInstance({
+          composer: composerConfig
+        });
+        console.log('[ChatKit] control.setInstance completed');
+      } catch (error) {
+        console.error('[ChatKit] control.setInstance failed:', error);
+      }
+    }
+  }, [control, composerConfig]);
 
   console.log('[ChatKit] Rendering ChatKit component with props:', {
     hasControl: !!control,
