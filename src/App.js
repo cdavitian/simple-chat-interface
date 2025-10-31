@@ -220,6 +220,11 @@ function ChatKitComponent({ sessionData }) {
     <div style={{ width: '100%', height: '600px', display: 'block' }}>
       <ChatKit 
         control={control}
+        composer={{
+          attachments: {
+            enabled: true,
+          },
+        }}
         style={{ 
           height: '600px', 
           width: '100%', 
