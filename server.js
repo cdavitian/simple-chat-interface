@@ -623,10 +623,17 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             console.log('ChatKit token timing log failed (GET):', e.message);
         }
 
+        // Choose public key based on request host (use a local key for localhost)
+        const hostHeader = req.headers.host || '';
+        const isLocalHost = /(^localhost)|(127\.0\.0\.1)/i.test(hostHeader);
+        const publicKey = isLocalHost && process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
+            ? process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
+            : process.env.OPENAI_CHATKIT_PUBLIC_KEY;
+
         // Return the session information that ChatKit needs
         const sessionData = {
             clientToken: clientToken,
-            publicKey: process.env.OPENAI_CHATKIT_PUBLIC_KEY
+            publicKey: publicKey
         };
         
         console.log('Sending ChatKit session data:', {
@@ -750,10 +757,17 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             console.log('ChatKit token timing log failed (POST):', e.message);
         }
 
+        // Choose public key based on request host (use a local key for localhost)
+        const hostHeader = req.headers.host || '';
+        const isLocalHost = /(^localhost)|(127\.0\.0\.1)/i.test(hostHeader);
+        const publicKey = isLocalHost && process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
+            ? process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
+            : process.env.OPENAI_CHATKIT_PUBLIC_KEY;
+
         // Return the session information that ChatKit needs
         const sessionData = {
             clientToken: clientToken,
-            publicKey: process.env.OPENAI_CHATKIT_PUBLIC_KEY
+            publicKey: publicKey
         };
         
         console.log('Sending ChatKit session data:', {
