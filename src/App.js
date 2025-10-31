@@ -256,7 +256,10 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
       maxCount: 3,
       accept: {
         "application/pdf": [".pdf"],
-        "image/*": [".png", ".jpg"]
+        "image/*": [".png", ".jpg"],
+        "text/csv": [".csv"],
+        "application/vnd.ms-excel": [".xls"],
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]
       },
     },
   }), []);
