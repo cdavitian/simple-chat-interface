@@ -647,7 +647,17 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true
+                    enabled: true,
+                    accept: {
+                        "application/pdf": [".pdf"],
+                        "image/*": [".png", ".jpg", ".jpeg"],
+                        // spreadsheets & tabular
+                        "text/csv": [".csv"],
+                        "application/csv": [".csv"],                        // some browsers/tools use this
+                        "application/vnd.ms-excel": [".xls", ".csv"],       // CSVs are often mislabeled as this
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]
+                    },
+                    max_size_bytes: 20 * 1024 * 1024  // 20MB
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
@@ -781,7 +791,17 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true
+                    enabled: true,
+                    accept: {
+                        "application/pdf": [".pdf"],
+                        "image/*": [".png", ".jpg", ".jpeg"],
+                        // spreadsheets & tabular
+                        "text/csv": [".csv"],
+                        "application/csv": [".csv"],                        // some browsers/tools use this
+                        "application/vnd.ms-excel": [".xls", ".csv"],       // CSVs are often mislabeled as this
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]
+                    },
+                    max_size_bytes: 20 * 1024 * 1024  // 20MB
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
