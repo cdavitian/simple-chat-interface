@@ -308,10 +308,13 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
   }, [onSessionUpdate]);
 
   // getClientSecret: Always fetch a fresh token from server (never reuse stale tokens)
+  // Also pass publicKey and composer via options so they are applied through setOptions
   const { control } = useChatKit({
     api: {
       getClientSecret: getClientSecret
-    }
+    },
+    publicKey: sessionData?.publicKey,
+    composer: composerConfig
   });
 
   console.log('[ChatKit] 🔐 useChatKit hook returned control:', control);
@@ -485,20 +488,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
     };
   });
 
-  // Use useEffect to set composer config via control API after control is ready
-  useEffect(() => {
-    if (control && control.setInstance) {
-      console.log('[ChatKit] Setting composer config via control.setInstance...');
-      try {
-        control.setInstance({
-          composer: composerConfig
-        });
-        console.log('[ChatKit] control.setInstance completed');
-      } catch (error) {
-        console.error('[ChatKit] control.setInstance failed:', error);
-      }
-    }
-  }, [control, composerConfig]);
+  // No longer need to set composer via setInstance; it's provided in options above
 
   // Force getClientSecret to be called if ChatKit needs a token but hasn't called it
   // This ensures tokens are available even if ChatKit doesn't auto-call getClientSecret
@@ -535,10 +525,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
   return (
     <div style={{ width: '100%', height: '600px', display: 'block' }}>
       <ChatKit 
-        clientToken={sessionData?.clientToken}
-        publicKey={sessionData?.publicKey}
         control={control}
-        composer={composerConfig}
         style={{ 
           height: '600px', 
           width: '100%', 
