@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChatKit, useChatKit } from '@openai/chatkit-react';
 import './App.css';
 
@@ -174,11 +174,12 @@ function ChatKitComponent({ sessionData }) {
   console.log('[ChatKit] Component rendering with sessionData:', sessionData);
   
   // Composer configuration with attachments enabled
-  const composerConfig = {
+  // Use useMemo to prevent recreating the object on every render
+  const composerConfig = useMemo(() => ({
     attachments: {
       enabled: true,
     },
-  };
+  }), []);
   
   console.log('[ChatKit] Composer configuration:', JSON.stringify(composerConfig, null, 2));
   
@@ -362,9 +363,6 @@ function ChatKitComponent({ sessionData }) {
           display: 'block',
           minHeight: '600px',
           minWidth: '360px'
-        }}
-        onError={(error) => {
-          console.error('[ChatKit] ChatKit error event:', error);
         }}
       />
     </div>
