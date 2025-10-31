@@ -606,6 +606,23 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             });
         }
         
+        // Log server time and token expiry (if decodable) to diagnose clock/expiry issues
+        try {
+            let expiresAtSeconds;
+            if (typeof clientToken === 'string' && clientToken.startsWith('ek_')) {
+                const parts = clientToken.split('_');
+                const b64 = parts[parts.length - 1].replace(/[^A-Za-z0-9+/=]/g, '');
+                const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+                expiresAtSeconds = payload.expires_at || payload.expiresAt;
+            }
+            const serverNowIso = new Date().toISOString();
+            const expiresIso = typeof expiresAtSeconds === 'number' ? new Date(expiresAtSeconds * 1000).toISOString() : 'unknown';
+            const msUntilExpiry = typeof expiresAtSeconds === 'number' ? (expiresAtSeconds * 1000 - Date.now()) : 'unknown';
+            console.log('ChatKit token timing (GET):', { serverNow: serverNowIso, expiresAt: expiresIso, msUntilExpiry });
+        } catch (e) {
+            console.log('ChatKit token timing log failed (GET):', e.message);
+        }
+
         // Return the session information that ChatKit needs
         const sessionData = {
             clientToken: clientToken,
@@ -716,6 +733,23 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             });
         }
         
+        // Log server time and token expiry (if decodable) to diagnose clock/expiry issues
+        try {
+            let expiresAtSeconds;
+            if (typeof clientToken === 'string' && clientToken.startsWith('ek_')) {
+                const parts = clientToken.split('_');
+                const b64 = parts[parts.length - 1].replace(/[^A-Za-z0-9+/=]/g, '');
+                const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+                expiresAtSeconds = payload.expires_at || payload.expiresAt;
+            }
+            const serverNowIso = new Date().toISOString();
+            const expiresIso = typeof expiresAtSeconds === 'number' ? new Date(expiresAtSeconds * 1000).toISOString() : 'unknown';
+            const msUntilExpiry = typeof expiresAtSeconds === 'number' ? (expiresAtSeconds * 1000 - Date.now()) : 'unknown';
+            console.log('ChatKit token timing (POST):', { serverNow: serverNowIso, expiresAt: expiresIso, msUntilExpiry });
+        } catch (e) {
+            console.log('ChatKit token timing log failed (POST):', e.message);
+        }
+
         // Return the session information that ChatKit needs
         const sessionData = {
             clientToken: clientToken,
