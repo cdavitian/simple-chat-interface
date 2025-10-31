@@ -194,9 +194,6 @@ function ChatKitComponent({ sessionData }) {
         console.log('[ChatKit] Returning clientToken:', sessionData.clientToken.substring(0, 20) + '...');
         return sessionData.clientToken;
       }
-    },
-    hosted: {
-      domainKey: sessionData?.publicKey
     }
   });
 
@@ -371,8 +368,7 @@ function ChatKitComponent({ sessionData }) {
 
   console.log('[ChatKit] Rendering ChatKit component with props:', {
     hasControl: !!control,
-    composerConfig: composerConfig,
-    hosted: { domainKey: sessionData?.publicKey?.substring?.(0, 16) + '...' }
+    composerConfig: composerConfig
   });
 
   return (
@@ -380,7 +376,6 @@ function ChatKitComponent({ sessionData }) {
       <ChatKit 
         control={control}
         composer={composerConfig}
-        hosted={{ domainKey: sessionData?.publicKey }}
         style={{ 
           height: '600px', 
           width: '100%', 
