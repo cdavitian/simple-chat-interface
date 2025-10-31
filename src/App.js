@@ -500,12 +500,37 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
     }
   }, [control, composerConfig]);
 
+  // Force getClientSecret to be called if ChatKit needs a token but hasn't called it
+  // This ensures tokens are available even if ChatKit doesn't auto-call getClientSecret
+  useEffect(() => {
+    if (!sessionData?.clientToken && getClientSecret) {
+      console.log('[ChatKit] 🔄 No initial token, calling getClientSecret proactively...');
+      getClientSecret(null).then(token => {
+        console.log('[ChatKit] ✅ Proactive getClientSecret returned token:', token?.substring(0, 30) + '...');
+        if (onSessionUpdate) {
+          onSessionUpdate({ clientToken: token, publicKey: sessionData?.publicKey });
+        }
+      }).catch(err => {
+        console.error('[ChatKit] ❌ Proactive getClientSecret failed:', err);
+      });
+    }
+  }, [sessionData, getClientSecret, onSessionUpdate]);
+
   console.log('[ChatKit] Rendering ChatKit component with props:', {
     hasControl: !!control,
     hasClientToken: !!sessionData?.clientToken,
     hasPublicKey: !!sessionData?.publicKey,
     composerConfig: composerConfig
   });
+
+  // Only render ChatKit when we have the required data
+  if (!sessionData?.publicKey) {
+    return (
+      <div style={{ width: '100%', height: '600px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p>Loading ChatKit configuration...</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ width: '100%', height: '600px', display: 'block' }}>
