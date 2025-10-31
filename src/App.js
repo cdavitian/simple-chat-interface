@@ -416,12 +416,16 @@ function ChatKitComponent({ sessionData }) {
 
   console.log('[ChatKit] Rendering ChatKit component with props:', {
     hasControl: !!control,
+    hasClientToken: !!sessionData?.clientToken,
+    hasPublicKey: !!sessionData?.publicKey,
     composerConfig: composerConfig
   });
 
   return (
     <div style={{ width: '100%', height: '600px', display: 'block' }}>
       <ChatKit 
+        clientToken={sessionData?.clientToken}
+        publicKey={sessionData?.publicKey}
         control={control}
         composer={composerConfig}
         style={{ 
