@@ -217,15 +217,61 @@ app.use('/styles.css', (req, res) => {
 
 // ============ Authentication Routes ============
 
+// Helper function to get the origin URL from request
+const getOriginUrl = (req) => {
+    // In production (Railway), trust proxy is enabled, so req.protocol should be correct
+    // Check X-Forwarded-Proto header first, then req.protocol, then default to https
+    const protocol = req.get('x-forwarded-proto') || req.protocol || (isProduction ? 'https' : 'http');
+    const host = req.get('host') || req.headers.host || req.get('x-forwarded-host');
+    
+    if (!host) {
+        console.error('Could not determine host from request');
+        // Fallback to environment variable or default
+        return process.env.RAILWAY_PUBLIC_DOMAIN 
+            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+            : 'https://simple-chat-interface-production.up.railway.app';
+    }
+    
+    return `${protocol}://${host}`;
+};
+
+// Helper function to get the appropriate redirect URI based on origin
+const getRedirectUri = (origin) => {
+    // Check if we have environment-specific redirect URIs
+    const stagingRedirectUri = process.env.COGNITO_REDIRECT_URI_STAGING;
+    const productionRedirectUri = process.env.COGNITO_REDIRECT_URI_PRODUCTION || process.env.COGNITO_REDIRECT_URI;
+    
+    // Detect if this is staging based on origin
+    if (origin && origin.includes('staging')) {
+        return stagingRedirectUri || `${origin}/auth/cognito/callback`;
+    }
+    
+    // Default to production or fallback to origin-based
+    return productionRedirectUri || `${origin}/auth/cognito/callback`;
+};
+
 // AWS Cognito Hosted UI Routes for Google OAuth
 app.get('/auth/cognito', (req, res) => {
     const cognitoDomain = process.env.COGNITO_HOSTED_UI_DOMAIN;
     const clientId = process.env.COGNITO_CLIENT_ID;
-    const redirectUri = process.env.COGNITO_REDIRECT_URI;
     
-    if (!cognitoDomain || !clientId || !redirectUri) {
+    if (!cognitoDomain || !clientId) {
         console.error('Missing Cognito configuration for Google OAuth');
         return res.status(500).json({ error: 'OAuth configuration missing' });
+    }
+    
+    // Get the origin URL from the request
+    const origin = getOriginUrl(req);
+    
+    // Store the origin in session so we can redirect back to the same environment
+    req.session.origin = origin;
+    
+    // Get the appropriate redirect URI based on origin
+    const redirectUri = getRedirectUri(origin);
+    
+    if (!redirectUri) {
+        console.error('No redirect URI configured');
+        return res.status(500).json({ error: 'OAuth redirect URI not configured' });
     }
     
     const authUrl = `https://${cognitoDomain}/oauth2/authorize?` +
@@ -234,7 +280,11 @@ app.get('/auth/cognito', (req, res) => {
         `scope=email+openid+profile&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}`;
     
-    console.log('Redirecting to Cognito OAuth:', authUrl);
+    console.log('Redirecting to Cognito OAuth:', {
+        origin,
+        redirectUri,
+        authUrl: authUrl.substring(0, 100) + '...'
+    });
     res.redirect(authUrl);
 });
 
@@ -244,10 +294,16 @@ app.get('/auth/cognito/callback', async (req, res) => {
         
         if (!code) {
             console.error('No authorization code received');
-            return res.redirect('/login?error=no_code');
+            // Get origin from session or request
+            const origin = req.session?.origin || getOriginUrl(req);
+            return res.redirect(`${origin}/login?error=no_code`);
         }
         
         console.log('Received authorization code:', code.substring(0, 10) + '...');
+        
+        // Get the origin from session or current request
+        const origin = req.session?.origin || getOriginUrl(req);
+        const redirectUri = getRedirectUri(origin);
         
         // Exchange code for tokens
         const tokenResponse = await fetch(`https://${process.env.COGNITO_HOSTED_UI_DOMAIN}/oauth2/token`, {
@@ -260,7 +316,7 @@ app.get('/auth/cognito/callback', async (req, res) => {
                 client_id: process.env.COGNITO_CLIENT_ID,
                 client_secret: process.env.COGNITO_CLIENT_SECRET,
                 code: code,
-                redirect_uri: process.env.COGNITO_REDIRECT_URI,
+                redirect_uri: redirectUri,
             }),
         });
         
@@ -268,7 +324,7 @@ app.get('/auth/cognito/callback', async (req, res) => {
         
         if (tokens.error) {
             console.error('Token exchange failed:', tokens);
-            return res.redirect('/login?error=token_exchange_failed');
+            return res.redirect(`${origin}/login?error=token_exchange_failed`);
         }
         
         console.log('Token exchange successful');
@@ -284,7 +340,7 @@ app.get('/auth/cognito/callback', async (req, res) => {
         
         if (userInfo.error) {
             console.error('Failed to get user info:', userInfo);
-            return res.redirect('/login?error=user_info_failed');
+            return res.redirect(`${origin}/login?error=user_info_failed`);
         }
         
         console.log('User info received:', { email: userInfo.email, name: userInfo.name });
@@ -295,7 +351,7 @@ app.get('/auth/cognito/callback', async (req, res) => {
         
         if (domain !== 'kyocare.com') {
             console.log('Domain restriction failed for:', domain);
-            return res.redirect('/login?error=access_denied');
+            return res.redirect(`${origin}/login?error=access_denied`);
         }
         
         // Store user in session
@@ -349,11 +405,18 @@ app.get('/auth/cognito/callback', async (req, res) => {
         }
         
         console.log('Google OAuth login successful for:', userInfo.email);
-        res.redirect('/homepage');
+        
+        // Redirect to homepage on the same origin (staging or production)
+        // Clear the origin from session after use
+        const redirectOrigin = req.session?.origin || origin;
+        delete req.session.origin;
+        res.redirect(`${redirectOrigin}/homepage`);
         
     } catch (error) {
         console.error('Cognito OAuth callback error:', error);
-        res.redirect('/login?error=oauth_failed');
+        const errorOrigin = req.session?.origin || getOriginUrl(req);
+        delete req.session.origin;
+        res.redirect(`${errorOrigin}/login?error=oauth_failed`);
     }
 });
 
@@ -476,7 +539,8 @@ app.post('/auth/login', async (req, res) => {
 
 // Add /logout route that redirects to /auth/logout
 app.get('/logout', (req, res) => {
-    res.redirect('/auth/logout');
+    const origin = getOriginUrl(req);
+    res.redirect(`${origin}/auth/logout`);
 });
 
 app.get('/auth/logout', async (req, res) => {
@@ -494,12 +558,14 @@ app.get('/auth/logout', async (req, res) => {
         });
     }
     
+    const origin = getOriginUrl(req);
+    
     req.session.destroy((err) => {
         if (err) {
             return res.status(500).json({ error: 'Logout failed' });
         }
-        // Redirect to login page instead of returning JSON
-        res.redirect('/login');
+        // Redirect to login page on the same origin
+        res.redirect(`${origin}/login`);
     });
 });
 
