@@ -642,7 +642,6 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
-                version: 'draft'  // <-- specify draft version to match workflow status
                 // optional: state_variables: { user_id: userId }
             },
             chatkit_configuration: {
@@ -776,7 +775,6 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
-                version: 'draft'  // <-- specify draft version to match workflow status
                 // optional: state_variables: { user_id: userId }
             },
             chatkit_configuration: {
