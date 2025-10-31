@@ -160,6 +160,14 @@
                     View all users who have accessed the application with their details
                 </div>
             </div>
+
+            <div class="menu-item" onclick="navigateToS3()">
+                <div class="menu-icon">🗄️</div>
+                <div class="menu-title">S3</div>
+                <div class="menu-description">
+                    Browse objects in the configured S3 bucket
+                </div>
+            </div>
         </div>
     </div>
 
@@ -202,6 +210,10 @@
         
         function navigateToUsers() {
             window.location.href = '/admin/users';
+        }
+
+        function navigateToS3() {
+            window.location.href = '/admin/s3';
         }
 
         // Initialize the page

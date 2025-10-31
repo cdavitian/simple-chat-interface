@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>S3 Admin Panel</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .back-btn {
+            background: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+            color: white;
+            text-decoration: none;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .table th, .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+        }
+        .loading, .error, .no-data {
+            padding: 20px;
+            text-align: center;
+            color: #666;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-radius: 4px;
+        }
+        .meta {
+            margin-bottom: 10px;
+            color: #555;
+            font-size: 14px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 320px;
+        }
+        button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover { background: #0056b3; }
+        .url-link { color: #007bff; text-decoration: none; }
+        .url-link:hover { text-decoration: underline; }
+    </style>
+    <script src="/constants.js"></script>
+    <script>
+        async function fetchObjects() {
+            const container = document.getElementById('tableContainer');
+            const meta = document.getElementById('meta');
+            const filterValue = document.getElementById('filterInput').value.trim().toLowerCase();
+            container.innerHTML = '<div class="loading">Loading S3 objects…</div>';
+
+            try {
+                const response = await fetch('/api/admin/s3/objects');
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to load S3 objects');
+                }
+
+                let objects = data.objects || [];
+                if (filterValue) {
+                    objects = objects.filter(o => o.name.toLowerCase().includes(filterValue));
+                }
+
+                meta.textContent = `Bucket: ${data.bucket} • Objects: ${objects.length}`;
+
+                if (objects.length === 0) {
+                    container.innerHTML = '<div class="no-data">No objects found.</div>';
+                    return;
+                }
+
+                const rows = objects.map(o => `
+                    <tr>
+                        <td>${escapeHtml(o.name)}</td>
+                        <td><a class="url-link" href="${o.url}" target="_blank" rel="noopener">${shortenUrl(o.url)}</a></td>
+                        <td>${o.creationDate ? new Date(o.creationDate).toLocaleString() : ''}</td>
+                    </tr>
+                `).join('');
+
+                container.innerHTML = `
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>URL</th>
+                                <th>Creation Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                `;
+            } catch (err) {
+                container.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
+                meta.textContent = '';
+            }
+        }
+
+        function escapeHtml(str) {
+            if (typeof str !== 'string') return str;
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function shortenUrl(url) {
+            if (!url) return '';
+            try {
+                const u = new URL(url);
+                const path = u.pathname.length > 60 ? (u.pathname.slice(0, 57) + '…') : u.pathname;
+                return `${u.hostname}${path}`;
+            } catch (_) {
+                return url.length > 72 ? url.slice(0, 69) + '…' : url;
+            }
+        }
+
+        function applyFilter() {
+            fetchObjects();
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchObjects();
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1 style="margin: 0;">S3 Admin Panel</h1>
+                <div id="meta" class="subtitle"></div>
+            </div>
+            <a href="/admin" class="back-btn" onmouseover="this.style.background='#5a6268'" onmouseout="this.style.background='#6c757d'">← Back to Admin Menu</a>
+        </div>
+
+        <div class="controls">
+            <input type="text" id="filterInput" placeholder="Filter by name…" oninput="applyFilter()" />
+            <button onclick="fetchObjects()">Refresh</button>
+        </div>
+
+        <div id="tableContainer" style="min-height: 120px;">
+            <div class="loading">Loading S3 objects…</div>
+        </div>
+    </div>
+</body>
+</html>
+
+

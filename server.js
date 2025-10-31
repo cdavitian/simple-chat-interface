@@ -1078,6 +1078,53 @@ app.post('/api/admin/users/update', requireAuth, checkUserPermissions, requireAd
     }
 });
 
+// List S3 objects (admin only)
+app.get('/api/admin/s3/objects', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        const bucketName = process.env.S3_BUCKET_NAME;
+        const region = process.env.AWS_REGION || 'us-east-1';
+
+        if (!bucketName) {
+            return res.status(500).json({ success: false, error: 'S3_BUCKET_NAME is not configured' });
+        }
+
+        const s3 = new AWS.S3({ region });
+
+        async function listAllObjects() {
+            let all = [];
+            let continuationToken = undefined;
+            do {
+                const params = { Bucket: bucketName };
+                if (continuationToken) params.ContinuationToken = continuationToken;
+                const resp = await s3.listObjectsV2(params).promise();
+                all = all.concat(resp.Contents || []);
+                continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+            } while (continuationToken);
+            return all;
+        }
+
+        const contents = await listAllObjects();
+
+        const objects = contents.map(obj => {
+            const url = s3.getSignedUrl('getObject', {
+                Bucket: bucketName,
+                Key: obj.Key,
+                Expires: 3600
+            });
+            return {
+                name: obj.Key,
+                url: url,
+                creationDate: obj.LastModified
+            };
+        });
+
+        res.json({ success: true, bucket: bucketName, objects });
+    } catch (error) {
+        console.error('Failed to list S3 objects:', error);
+        res.status(500).json({ success: false, error: 'Failed to list S3 objects' });
+    }
+});
+
 // Health check endpoint for Railway
 app.get('/health', (req, res) => {
     res.status(200).json({ 
@@ -1255,6 +1302,11 @@ app.get('/admin/access-log', requireAuth, checkUserPermissions, requireAdmin, (r
 // Admin users route - require admin access
 app.get('/admin/users', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, 'admin-users.html'));
+});
+
+// Admin S3 route - require admin access
+app.get('/admin/s3', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-s3.html'));
 });
 
 // New User Home route - for users with 'New' type
