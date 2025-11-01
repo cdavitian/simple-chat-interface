@@ -1332,8 +1332,25 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             return res.status(400).json({ error: 'Either text or staged_file_ids is required' });
         }
 
+        const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        const normalizeConversationItem = (item) => {
+            if (!item || typeof item !== 'object') {
+                return item;
+            }
+
+            if (item.id && item.id.startsWith('msg_')) {
+                return item;
+            }
+
+            return {
+                ...item,
+                id: generateMessageId(),
+            };
+        };
+
         const conversation = Array.isArray(req.session.sdkConversation)
-            ? [...req.session.sdkConversation]
+            ? req.session.sdkConversation.map(normalizeConversationItem)
             : [];
 
         const content = [];
@@ -1346,19 +1363,18 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             content.push({ type: 'input_file', file_id: fileId });
         }
 
-        const userItem = {
-            id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        const userItem = normalizeConversationItem({
             role: 'user',
             content,
             createdAt: new Date().toISOString(),
-        };
+        });
 
         conversation.push(userItem);
 
         const agentResult = await runAgentConversation(conversation);
 
         if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
-            conversation.push(...agentResult.newItems);
+            conversation.push(...agentResult.newItems.map(normalizeConversationItem));
         }
 
         req.session.sdkConversation = conversation;
