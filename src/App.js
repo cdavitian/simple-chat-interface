@@ -249,10 +249,9 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadedFileId, setUploadedFileId] = useState(null);
   const fileInputRef = useRef(null);
-  const chatkitInstanceRef = useRef(null);
   
   // S3 upload handler following the guidance pattern
-  const handleFileUpload = useCallback(async (file) => {
+  const handleFileUpload = useCallback(async (file, chatkitMethods) => {
     try {
       setUploadingFile(file.name);
       setUploadStatus('Getting upload URL...');
@@ -314,27 +313,15 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       setUploadStatus(`✓ ${file.name} uploaded! Sending to ChatKit...`);
       console.log('[ChatKit] File uploaded successfully:', { filename: file.name, file_id, objectKey });
       
-      // Send message with file_id to ChatKit
-      try {
-        if (chatkitInstanceRef.current) {
-          // Use ChatKit's send method to send a message with the file attachment
-          await chatkitInstanceRef.current.send({
-            content: [
-              { type: "input_text", text: `I've uploaded ${file.name}. Please analyze this file.` },
-              { type: "input_file", file_id: file_id }
-            ]
-          });
-          
-          setUploadStatus(`✓ File sent to ChatKit successfully!`);
-          console.log('[ChatKit] Message sent with file_id:', file_id);
-        } else {
-          console.warn('[ChatKit] ChatKit instance not available, file uploaded but message not sent');
-          setUploadStatus(`✓ ${file.name} uploaded! (File ID: ${file_id})\nPlease manually mention the file in your message.`);
-        }
-      } catch (sendError) {
-        console.error('[ChatKit] Failed to send message with file:', sendError);
-        setUploadStatus(`✓ File uploaded but failed to send message.\nFile ID: ${file_id}\nPlease manually mention the file.`);
-      }
+      // File uploaded successfully to OpenAI Files API
+      // ChatKit React doesn't have a programmatic send API, so we show the file_id
+      // and let the user type a message to analyze it
+      setUploadStatus(`✓ ${file.name} ready!\n\nFile ID: ${file_id}\n\nNow type: "Please analyze the file I just uploaded"`);
+      console.log('[ChatKit] File uploaded to OpenAI Files API. File ID:', file_id);
+      console.log('[ChatKit] File should be available to workflow with purpose=assistants');
+      
+      // Store the file_id
+      setUploadedFileId(file_id);
       
       setTimeout(() => {
         setUploadingFile(null);
@@ -355,13 +342,13 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   const onFileSelect = useCallback((e) => {
     const file = e.target.files?.[0];
     if (file) {
-      handleFileUpload(file);
+      handleFileUpload(file, chatkit);
     }
     // Reset input so same file can be selected again
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [handleFileUpload]);
+  }, [handleFileUpload, chatkit]);
   
   // Composer configuration - keep file_upload enabled for session but handle uploads manually
   const composerConfig = useMemo(() => ({
@@ -439,17 +426,20 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
 
   // getClientSecret: Always fetch a fresh token from server (never reuse stale tokens)
   // Pass composer via options so it is applied through setOptions
-  const { control } = useChatKit({
+  // Get the send method directly from useChatKit
+  const chatkit = useChatKit({
     api: {
       getClientSecret: getClientSecret
     },
     composer: composerConfig
   });
+  
+  const { control } = chatkit;
 
   console.log('[ChatKit] 🔐 useChatKit hook returned control:', control);
   console.log('[ChatKit] 🔐 Control methods available:', control ? Object.keys(control) : 'control is null/undefined');
   
-  // Log when control is first available and capture ChatKit instance
+  // Log when control is first available
   useEffect(() => {
     if (control) {
       console.log('[ChatKit] ✅ Control object is now available');
@@ -460,16 +450,6 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         optionsKeys: control.options ? Object.keys(control.options) : [],
         handlersKeys: control.handlers ? Object.keys(control.handlers) : []
       });
-      
-      // Store reference to ChatKit instance when setInstance is called
-      const originalSetInstance = control.setInstance;
-      if (typeof originalSetInstance === 'function') {
-        control.setInstance = (instance) => {
-          console.log('[ChatKit] ChatKit instance set:', instance);
-          chatkitInstanceRef.current = instance;
-          return originalSetInstance(instance);
-        };
-      }
     } else {
       console.warn('[ChatKit] ⚠️ Control object is not available yet');
     }
