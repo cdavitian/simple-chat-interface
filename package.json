@@ -27,7 +27,9 @@
   "author": "Colin Davitian",
   "license": "MIT",
   "dependencies": {
+    "@openai/agents": "^0.1.0",
     "@openai/chatkit-react": "^1.1.1",
+    "@openai/guardrails": "^0.1.0",
     "amazon-cognito-identity-js": "^6.3.0",
     "aws-sdk": "^2.1490.0",
     "cors": "^2.8.5",

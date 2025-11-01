@@ -1,0 +1,4 @@
+# Force LF line endings and UTF-8 encoding for server.js
+server.js text eol=lf
+* text=auto
+

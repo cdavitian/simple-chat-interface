@@ -4,6 +4,7 @@ const session = require('express-session');
 const cors = require('cors');
 const AWS = require('aws-sdk');
 const OpenAI = require('openai');
+const { runAgentConversation } = require('./sdk-agent');
 const crypto = require('crypto');
 const LoggingConfig = require('./logging-config');
 require('dotenv').config();
@@ -1290,6 +1291,89 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         res.status(500).json({ 
             error: 'Failed to send message to ChatKit', 
             details: error?.response?.data ?? error?.message ?? String(error)
+        });
+    }
+});
+
+app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, (req, res) => {
+    try {
+        if (!Array.isArray(req.session.sdkConversation)) {
+            req.session.sdkConversation = [];
+        }
+
+        res.json({
+            conversation: req.session.sdkConversation,
+        });
+    } catch (error) {
+        console.error('Failed to load SDK conversation:', error);
+        res.status(500).json({ error: 'Failed to load conversation history' });
+    }
+});
+
+app.post('/api/sdk/conversation/reset', requireAuth, checkUserPermissions, (req, res) => {
+    try {
+        req.session.sdkConversation = [];
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Failed to reset SDK conversation:', error);
+        res.status(500).json({ error: 'Failed to reset conversation history' });
+    }
+});
+
+app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res) => {
+    try {
+        const { text, staged_file_ids } = req.body || {};
+        const trimmedText = typeof text === 'string' ? text.trim() : '';
+        const fileIds = Array.isArray(staged_file_ids)
+            ? staged_file_ids.filter((fid) => typeof fid === 'string' && fid.trim())
+            : [];
+
+        if (!trimmedText && fileIds.length === 0) {
+            return res.status(400).json({ error: 'Either text or staged_file_ids is required' });
+        }
+
+        const conversation = Array.isArray(req.session.sdkConversation)
+            ? [...req.session.sdkConversation]
+            : [];
+
+        const content = [];
+
+        if (trimmedText) {
+            content.push({ type: 'input_text', text: trimmedText });
+        }
+
+        for (const fileId of fileIds) {
+            content.push({ type: 'input_file', file_id: fileId });
+        }
+
+        const userItem = {
+            id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            role: 'user',
+            content,
+            createdAt: new Date().toISOString(),
+        };
+
+        conversation.push(userItem);
+
+        const agentResult = await runAgentConversation(conversation);
+
+        if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
+            conversation.push(...agentResult.newItems);
+        }
+
+        req.session.sdkConversation = conversation;
+
+        res.json({
+            conversation,
+            final_output: agentResult?.finalOutput ?? null,
+            guardrail_results: agentResult?.guardrailResults ?? null,
+            usage: agentResult?.usage ?? null,
+        });
+    } catch (error) {
+        console.error('Failed to process SDK message:', error);
+        res.status(500).json({
+            error: 'Failed to process message',
+            details: error?.message || 'Unknown error',
         });
     }
 });
