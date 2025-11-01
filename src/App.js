@@ -456,89 +456,259 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     }
   }, [control]);
 
-  // Debug: Check element after render and inspect ChatKit state
+  // Intercept message sending to attach staged files
   useEffect(() => {
-    console.log('[ChatKit] 🔍 useEffect triggered, checking ChatKit element...');
-    console.log('[ChatKit] 🔍 SessionData in effect:', !!sessionData);
-    
+    if (!sessionData?.sessionId) {
+      console.log('[ChatKit] ⏳ Waiting for sessionId before setting up intercept...');
+      return;
+    }
+
+    console.log('[ChatKit] 🔍 Setting up message intercept with sessionId:', sessionData.sessionId);
+    console.log('[ChatKit] 🔍 Current staged files:', fileStager.list());
+
+    const sendMessageWithStagedFiles = async (text) => {
+      try {
+        const stagedFileIds = fileStager.list();
+        console.log('[ChatKit] 📤 Sending message with staged files:', {
+          text: text?.substring(0, 50),
+          stagedCount: stagedFileIds.length,
+          stagedIds: stagedFileIds
+        });
+
+        if (!text && stagedFileIds.length === 0) {
+          console.log('[ChatKit] ⚠️ No text and no staged files, skipping send');
+          return;
+        }
+
+        const resp = await fetch('/api/chatkit/message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            session_id: sessionData.sessionId,
+            text: text || undefined,
+            staged_file_ids: stagedFileIds
+          })
+        });
+
+        if (!resp.ok) {
+          const errorText = await resp.text();
+          console.error('[ChatKit] ❌ Message send failed:', errorText);
+          throw new Error(`Failed to send message: ${resp.status}`);
+        }
+
+        const result = await resp.json();
+        console.log('[ChatKit] ✅ Message sent successfully:', result);
+
+        // Clear staged files after sending
+        fileStager.clear();
+        console.log('[ChatKit] 🗑️ Cleared staged files');
+      } catch (e) {
+        console.error('[ChatKit] ❌ Message send error:', e);
+      }
+    };
+
     const attachInterceptIfPossible = () => {
       const el = document.querySelector('openai-chatkit');
-      if (!el || !el.shadowRoot) return false;
+      if (!el) {
+        console.log('[ChatKit] ⏳ ChatKit element not found yet');
+        return false;
+      }
 
-      // Find a likely composer text input/textarea inside the shadow DOM
-      const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"]');
-      if (!composerInput) return false;
+      if (!el.shadowRoot) {
+        console.log('[ChatKit] ⏳ ChatKit shadow root not available yet');
+        return false;
+      }
+
+      // Find the composer input
+      const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+      if (!composerInput) {
+        console.log('[ChatKit] ⏳ Composer input not found');
+        return false;
+      }
 
       // Avoid duplicate listeners
-      if (composerInput._quietIngestAttached) return true;
+      if (composerInput._fileStagerInterceptAttached) {
+        console.log('[ChatKit] ✅ Intercept already attached to this input');
+        return true;
+      }
 
-      const handler = async (evt) => {
-        try {
-          // Submit on Enter without Shift (allow Shift+Enter for newline)
-          if (evt.key === 'Enter' && !evt.shiftKey) {
-            evt.preventDefault();
-            const text = composerInput.value?.trim();
-            if (!text && fileStager.list().length === 0) return; // Allow sending with just files
+      console.log('[ChatKit] 🔧 Attaching intercept to composer input');
 
-            // Build content with prompt + all staged files
-            const stagedFileIds = fileStager.list();
-
-            // Send through our server to ensure all staged files are attached
-            const resp = await fetch('/api/chatkit/message', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({
-                session_id: sessionData?.sessionId,
-                text: text || undefined,
-                staged_file_ids: stagedFileIds
-              })
-            });
-
-            if (!resp.ok) {
-              const errorText = await resp.text();
-              console.error('[ChatKit] Message send failed:', errorText);
-              throw new Error(`Failed to send message: ${resp.status}`);
-            }
-
-            // Clear staged files after sending (so next prompt doesn't reattach the same files)
-            fileStager.clear();
-
-            // Clear the input so the user sees it sent
-            composerInput.value = '';
-            composerInput.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        } catch (e) {
-          console.error('[ChatKit] Message send error:', e);
+      // Intercept Enter key
+      const keydownHandler = async (evt) => {
+        if (evt.key === 'Enter' && !evt.shiftKey) {
+          evt.preventDefault();
+          evt.stopPropagation();
+          
+          const text = composerInput.value?.trim() || 
+                       composerInput.textContent?.trim() || 
+                       '';
+          
+          console.log('[ChatKit] ⌨️ Enter pressed, intercepted message:', text.substring(0, 50));
+          
+          await sendMessageWithStagedFiles(text);
+          
+          // Clear the input
+          composerInput.value = '';
+          if (composerInput.textContent) composerInput.textContent = '';
+          composerInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
       };
 
-      composerInput.addEventListener('keydown', handler, { capture: true });
-      composerInput._quietIngestAttached = true;
-      console.log('[ChatKit] ✅ Quiet ingest intercept attached to composer');
+      // Intercept send button clicks
+      const clickHandler = async (evt) => {
+        const target = evt.target;
+        // Look for send button (common patterns)
+        if (target.closest('button[type="submit"]') || 
+            target.closest('button')?.ariaLabel?.toLowerCase().includes('send') ||
+            target.closest('[role="button"]')?.getAttribute('aria-label')?.toLowerCase().includes('send')) {
+          
+          evt.preventDefault();
+          evt.stopPropagation();
+          
+          const text = composerInput.value?.trim() || 
+                       composerInput.textContent?.trim() || 
+                       '';
+          
+          console.log('[ChatKit] 🖱️ Send button clicked, intercepted message:', text.substring(0, 50));
+          
+          await sendMessageWithStagedFiles(text);
+          
+          // Clear the input
+          composerInput.value = '';
+          if (composerInput.textContent) composerInput.textContent = '';
+          composerInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      };
+
+      // Intercept form submissions (fallback)
+      const formSubmitHandler = async (evt) => {
+        if (evt.target.tagName === 'FORM' || evt.target.closest('form')) {
+          evt.preventDefault();
+          evt.stopPropagation();
+          
+          const text = composerInput.value?.trim() || 
+                       composerInput.textContent?.trim() || 
+                       '';
+          
+          console.log('[ChatKit] 📝 Form submit intercepted:', text.substring(0, 50));
+          
+          await sendMessageWithStagedFiles(text);
+          
+          // Clear the input
+          composerInput.value = '';
+          if (composerInput.textContent) composerInput.textContent = '';
+        }
+      };
+
+      // Attach all handlers
+      composerInput.addEventListener('keydown', keydownHandler, { capture: true, passive: false });
+      el.shadowRoot.addEventListener('click', clickHandler, { capture: true, passive: false });
+      el.shadowRoot.addEventListener('submit', formSubmitHandler, { capture: true, passive: false });
+      
+      // Also watch for any message sending events via MutationObserver (fallback)
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          // If ChatKit is trying to send a message, we want to intercept it
+          // This is a fallback in case our other intercepts miss it
+        });
+      });
+
+      // Observe the shadow root for changes
+      observer.observe(el.shadowRoot, {
+        childList: true,
+        subtree: true,
+        attributes: false
+      });
+
+      // Store observer for cleanup
+      composerInput._fileStagerObserver = observer;
+      composerInput._fileStagerInterceptAttached = true;
+      console.log('[ChatKit] ✅ Message intercept attached successfully');
       return true;
     };
 
-    // Try a few times in case the element renders later
-    const timeouts = [0, 300, 1000, 2000];
+    // Try multiple times with increasing delays
+    const timeouts = [0, 300, 1000, 2000, 3000];
     let attached = false;
+    const attempts = [];
+
     timeouts.forEach((t) => {
-      setTimeout(() => {
-        if (!attached) attached = attachInterceptIfPossible();
+      const timeoutId = setTimeout(() => {
+        if (!attached) {
+          console.log(`[ChatKit] 🔄 Attempting to attach intercept (delay: ${t}ms)...`);
+          attached = attachInterceptIfPossible();
+          if (attached) {
+            console.log('[ChatKit] ✅ Intercept attached on attempt');
+          }
+        }
       }, t);
+      attempts.push(timeoutId);
     });
 
-    return () => {
+    // Global intercept as last resort (catches events that bubble up)
+    const globalKeydownHandler = async (evt) => {
+      // Check if we're in the ChatKit context
       const el = document.querySelector('openai-chatkit');
-      if (el?.shadowRoot) {
-        const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"]');
-        if (composerInput && composerInput._quietIngestAttached) {
-          // We can't easily remove the anonymous handler reference; keep it simple and let it persist.
-          // In normal SPA usage this component won't unmount often.
+      if (!el) return;
+
+      // Check if the event is coming from ChatKit's shadow DOM
+      // We can't use contains() for shadow DOM, so check if active element is in ChatKit
+      const activeEl = document.activeElement;
+      if (activeEl !== el && !el.contains(activeEl)) {
+        // Also check if event target might be from shadow DOM (event.composedPath)
+        const path = evt.composedPath?.() || [];
+        const isFromChatKit = path.some(node => node === el || (node?.host === el));
+        if (!isFromChatKit) return;
+      }
+
+      if (evt.key === 'Enter' && !evt.shiftKey) {
+        const shadowRoot = el.shadowRoot;
+        if (!shadowRoot) return;
+
+        const composerInput = shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+        if (!composerInput) return;
+        
+        // Only use global intercept if shadow DOM intercept wasn't attached
+        if (!composerInput._fileStagerInterceptAttached) {
+          const text = composerInput?.value?.trim() || composerInput?.textContent?.trim() || '';
+          if (text || fileStager.list().length > 0) {
+            console.log('[ChatKit] 🌐 Global intercept triggered as fallback');
+            evt.preventDefault();
+            evt.stopPropagation();
+            await sendMessageWithStagedFiles(text);
+            
+            // Clear the input
+            composerInput.value = '';
+            if (composerInput.textContent) composerInput.textContent = '';
+          }
         }
       }
     };
-  }, [sessionData]);
+
+    // Add global listener with high priority
+    window.addEventListener('keydown', globalKeydownHandler, { capture: true, passive: false });
+
+    return () => {
+      attempts.forEach(id => clearTimeout(id));
+      window.removeEventListener('keydown', globalKeydownHandler, { capture: true });
+      
+      const el = document.querySelector('openai-chatkit');
+      if (el?.shadowRoot) {
+        const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+        if (composerInput) {
+          if (composerInput._fileStagerObserver) {
+            composerInput._fileStagerObserver.disconnect();
+            delete composerInput._fileStagerObserver;
+          }
+          if (composerInput._fileStagerInterceptAttached) {
+            delete composerInput._fileStagerInterceptAttached;
+          }
+        }
+      }
+    };
+  }, [sessionData?.sessionId]);
 
   // Log when component re-renders
   useEffect(() => {
