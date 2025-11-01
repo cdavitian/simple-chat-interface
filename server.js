@@ -1358,32 +1358,42 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 .filter(Boolean)
             : [];
 
+        // Build content array with strict validation
         const content = [];
 
         if (trimmedText) {
-            content.push({ type: 'input_text', text: trimmedText });
+            content.push({ 
+                type: 'input_text', 
+                text: trimmedText 
+            });
         }
 
+        // Add file IDs with strict validation
         for (const fileId of fileIds) {
-            if (fileId) {
-                content.push({ type: 'input_file', file_id: fileId });
+            if (fileId && typeof fileId === 'string' && fileId.trim()) {
+                content.push({ 
+                    type: 'input_file', 
+                    file_id: fileId.trim() 
+                });
             }
+        }
+
+        // Ensure content array is not empty
+        if (content.length === 0) {
+            return res.status(400).json({ error: 'Content array is empty after validation' });
         }
 
         console.log('SDK: Built content array:', JSON.stringify(content, null, 2));
 
-        const userItem = normalizeConversationItem({
+        // Create user item WITHOUT normalization first to avoid content filtering
+        const userItem = {
             role: 'user',
-            content,
+            content: content, // Use the validated content directly
             createdAt: new Date().toISOString(),
-        });
+            id: generateMessageId()
+        };
 
-        if (userItem) {
-            conversation.push(userItem);
-        } else {
-            console.error('SDK: userItem normalization returned null');
-            return res.status(500).json({ error: 'Failed to normalize user message' });
-        }
+        conversation.push(userItem);
 
         console.log('SDK conversation payload', JSON.stringify(conversation, null, 2));
 
