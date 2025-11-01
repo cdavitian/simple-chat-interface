@@ -1335,18 +1335,41 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
 
         const normalizeConversationItem = (item) => {
             if (!item || typeof item !== 'object') {
+                console.warn('SDK: Skipping non-object conversation item:', item);
                 return null;
             }
 
             const normalized = { ...item };
+            
+            // Ensure ID is valid
             if (typeof normalized.id !== 'string' || !normalized.id.startsWith('msg_')) {
                 normalized.id = generateMessageId();
             }
 
+            // Handle content based on type
             if (Array.isArray(normalized.content)) {
-                normalized.content = normalized.content
-                    .filter((entry) => entry && typeof entry === 'object')
+                // Filter out any undefined/null entries and validate structure
+                const validContent = normalized.content
+                    .filter((entry) => {
+                        if (!entry || typeof entry !== 'object') {
+                            console.warn('SDK: Filtering out invalid content entry:', entry);
+                            return false;
+                        }
+                        return true;
+                    })
                     .map((entry) => ({ ...entry }));
+                
+                // If content array becomes empty after filtering, convert to empty string
+                if (validContent.length === 0) {
+                    console.warn('SDK: Content array empty after filtering, converting to empty string');
+                    normalized.content = '';
+                } else {
+                    normalized.content = validContent;
+                }
+            } else if (typeof normalized.content !== 'string') {
+                // Content must be either string or array
+                console.warn('SDK: Invalid content type, converting to string:', typeof normalized.content);
+                normalized.content = String(normalized.content || '');
             }
 
             return normalized;
@@ -1358,40 +1381,50 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 .filter(Boolean)
             : [];
 
-        // Build content array with strict validation
-        const content = [];
-
-        if (trimmedText) {
-            content.push({ 
-                type: 'input_text', 
-                text: trimmedText 
-            });
-        }
-
-        // Add file IDs with strict validation
-        for (const fileId of fileIds) {
-            if (fileId && typeof fileId === 'string' && fileId.trim()) {
+        // For the OpenAI Agents SDK, content can be a string OR an array
+        // Try using just a string for text, and add file_ids as a separate property
+        let userItem;
+        
+        if (fileIds.length > 0) {
+            // When files are present, use array format with input_text and input_file
+            const content = [];
+            
+            if (trimmedText) {
                 content.push({ 
-                    type: 'input_file', 
-                    file_id: fileId.trim() 
+                    type: 'input_text', 
+                    text: trimmedText 
                 });
             }
+            
+            // Add each file as a separate content item
+            for (const fileId of fileIds) {
+                if (fileId && typeof fileId === 'string' && fileId.trim()) {
+                    content.push({ 
+                        type: 'input_file', 
+                        file_id: fileId.trim() 
+                    });
+                }
+            }
+            
+            console.log('SDK: Built content array (with files):', JSON.stringify(content, null, 2));
+            
+            userItem = {
+                role: 'user',
+                content: content,
+                createdAt: new Date().toISOString(),
+                id: generateMessageId()
+            };
+        } else {
+            // When no files, use simple string content
+            console.log('SDK: Using string content (no files):', trimmedText);
+            
+            userItem = {
+                role: 'user',
+                content: trimmedText, // Simple string for text-only messages
+                createdAt: new Date().toISOString(),
+                id: generateMessageId()
+            };
         }
-
-        // Ensure content array is not empty
-        if (content.length === 0) {
-            return res.status(400).json({ error: 'Content array is empty after validation' });
-        }
-
-        console.log('SDK: Built content array:', JSON.stringify(content, null, 2));
-
-        // Create user item WITHOUT normalization first to avoid content filtering
-        const userItem = {
-            role: 'user',
-            content: content, // Use the validated content directly
-            createdAt: new Date().toISOString(),
-            id: generateMessageId()
-        };
 
         conversation.push(userItem);
 
