@@ -1370,6 +1370,8 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
 
         conversation.push(userItem);
 
+        console.log('SDK conversation payload', JSON.stringify(conversation, null, 2));
+
         const agentResult = await runAgentConversation(conversation);
 
         if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
@@ -1391,6 +1393,11 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         });
     } catch (error) {
         console.error('Failed to process SDK message:', error);
+        try {
+            console.error('SDK message failure payload:', JSON.stringify(req.session.sdkConversation, null, 2));
+        } catch (logError) {
+            console.error('Unable to stringify SDK conversation for diagnostics:', logError);
+        }
         res.status(500).json({
             error: 'Failed to process message',
             details: error?.message || 'Unknown error',
