@@ -5,6 +5,7 @@ const cors = require('cors');
 const AWS = require('aws-sdk');
 const OpenAI = require('openai');
 const crypto = require('crypto');
+const mime = require('mime-types');
 const LoggingConfig = require('./logging-config');
 require('dotenv').config();
 

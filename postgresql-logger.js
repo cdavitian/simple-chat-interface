@@ -18,7 +18,10 @@ class PostgreSQLAccessLogger {
         });
         
         this.enableConsole = options.enableConsole || false;
-        this.initDatabase();
+        // Initialize database asynchronously - don't block constructor
+        this.initDatabase().catch(err => {
+            console.error('Failed to initialize database (non-critical):', err.message);
+        });
     }
 
     async initDatabase() {
