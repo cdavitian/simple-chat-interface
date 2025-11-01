@@ -279,7 +279,9 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
 }
 
 .message-pane {
-    flex: 1;
+    /* Make this a true flex scroll area */
+    flex: 1 1 0;
+    height: 0;
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
