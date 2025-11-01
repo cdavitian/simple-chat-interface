@@ -226,10 +226,14 @@ openai-chatkit::part(assistant-message) {
     color: #333333;
 }
 
+/* Hide composer - place in your app's CSS loaded after the component */
+openai-chatkit::part(composer) { 
+    display: none !important; 
+}
+
 /* Hide composer input and send button */
 openai-chatkit::part(input),
-openai-chatkit::part(send-button),
-openai-chatkit::part(composer) {
+openai-chatkit::part(send-button) {
     display: none !important;
     visibility: hidden !important;
     opacity: 0 !important;
