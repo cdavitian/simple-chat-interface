@@ -1365,8 +1365,12 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         }
 
         for (const fileId of fileIds) {
-            content.push({ type: 'input_file', file_id: fileId });
+            if (fileId) {
+                content.push({ type: 'input_file', file_id: fileId });
+            }
         }
+
+        console.log('SDK: Built content array:', JSON.stringify(content, null, 2));
 
         const userItem = normalizeConversationItem({
             role: 'user',
@@ -1374,7 +1378,12 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             createdAt: new Date().toISOString(),
         });
 
-        conversation.push(userItem);
+        if (userItem) {
+            conversation.push(userItem);
+        } else {
+            console.error('SDK: userItem normalization returned null');
+            return res.status(500).json({ error: 'Failed to normalize user message' });
+        }
 
         console.log('SDK conversation payload', JSON.stringify(conversation, null, 2));
 
