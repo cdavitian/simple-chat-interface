@@ -4,6 +4,7 @@ const session = require('express-session');
 const cors = require('cors');
 const AWS = require('aws-sdk');
 const OpenAI = require('openai');
+const { runAgentConversation } = require('./sdk-agent');
 const crypto = require('crypto');
 const mime = require('mime-types');
 const LoggingConfig = require('./logging-config');
@@ -701,7 +702,7 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true
+                    enabled: false  // your tool owns uploads
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
@@ -858,7 +859,7 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true
+                    enabled: false  // your tool owns uploads
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
@@ -1008,6 +1009,86 @@ app.post('/api/uploads/presign', requireAuth, async (req, res) => {
     }
 });
 
+// Quiet ingest endpoint (S3 → Files → return file_id)
+// No messages created, no responses created - just ingest and return file_id
+app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
+    try {
+        const bucketName = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET;
+        const region = process.env.AWS_REGION || 'us-east-1';
+        const { key, bucket, filename } = req.body || {};
+
+        const effectiveBucket = bucket || bucketName;
+        if (!effectiveBucket) {
+            return res.status(400).json({ error: 'S3 bucket is not configured' });
+        }
+
+        if (!key || typeof key !== 'string') {
+            return res.status(400).json({ error: 'Missing S3 key' });
+        }
+
+        if (!process.env.OPENAI_API_KEY) {
+            console.error('ingest-s3 failed: OpenAI API key missing');
+            return res.status(500).json({ error: 'OpenAI API Key not configured' });
+        }
+
+        const s3 = new AWS.S3({ region });
+        let objectData;
+
+        try {
+            objectData = await s3.getObject({ Bucket: effectiveBucket, Key: key }).promise();
+        } catch (error) {
+            console.error('Failed to read S3 object for ingest:', {
+                key,
+                bucket: effectiveBucket,
+                message: error.message,
+                code: error.code
+            });
+            return res.status(404).json({ error: 'Uploaded file not found in S3' });
+        }
+
+        const fileBuffer = await streamToBuffer(objectData.Body);
+
+        if (!fileBuffer?.length) {
+            console.error('ingest-s3 failed: Empty file buffer', { key });
+            return res.status(500).json({ error: 'Failed to read uploaded file from S3' });
+        }
+
+        const client = getOpenAIClient();
+
+        if (!client) {
+            console.error('ingest-s3 failed: OpenAI client unavailable');
+            return res.status(500).json({ error: 'OpenAI client unavailable' });
+        }
+
+        const resolvedFilename = filename || key.split('/').pop() || 'upload';
+        const resolvedContentType = objectData.ContentType || 'application/octet-stream';
+
+        // Convert buffer to File-like object for OpenAI
+        let fileForUpload;
+        if (typeof File !== 'undefined') {
+            fileForUpload = new File([fileBuffer], resolvedFilename, { type: resolvedContentType });
+        } else {
+            fileForUpload = fileBuffer;
+        }
+
+        const uploaded = await client.files.create({
+            file: fileForUpload,
+            filename: resolvedFilename,
+            purpose: 'assistants',
+        });
+
+        console.log('Quiet ingest successful:', {
+            file_id: uploaded.id,
+            filename: resolvedFilename
+        });
+
+        return res.json({ file_id: uploaded.id, filename: resolvedFilename });
+    } catch (e) {
+        console.error('ingest-s3 failed:', e);
+        return res.status(500).json({ error: 'Failed to ingest S3 object', details: e.message });
+    }
+});
+
 // Import from S3 to OpenAI Files API (following guidance pattern)
 app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
     try {
@@ -1121,7 +1202,7 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
 // Send message to ChatKit session with file attachment
 app.post('/api/chatkit/message', requireAuth, async (req, res) => {
     try {
-        const { session_id, file_id, text } = req.body || {};
+        const { session_id, file_id, text, staged_file_ids } = req.body || {};
         
         // Prefer explicit session_id from the client; fall back to the server-stored session id
         const effectiveSessionId = session_id || req.session?.chatkitSessionId;
@@ -1129,8 +1210,8 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             return res.status(400).json({ error: 'session_id is required and no fallback session found on server' });
         }
         
-        if (!file_id && !text) {
-            return res.status(400).json({ error: 'Either file_id or text (or both) is required' });
+        if (!text && (!staged_file_ids || staged_file_ids.length === 0) && !file_id) {
+            return res.status(400).json({ error: 'Either text or staged_file_ids (or both) is required' });
         }
         
         if (!process.env.OPENAI_API_KEY) {
@@ -1145,13 +1226,22 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             return res.status(500).json({ error: 'OpenAI client unavailable' });
         }
         
-        // Build content array; quietly inject all stashed files for this session
+        // Build content array from client-staged files + any legacy session files
         const content = [];
         if (text) {
             content.push({ type: 'input_text', text: text });
         }
 
         const injectedFileIds = new Set();
+        // Add client-staged files (new approach)
+        if (Array.isArray(staged_file_ids)) {
+            for (const fid of staged_file_ids) {
+                if (typeof fid === 'string' && fid.trim()) {
+                    injectedFileIds.add(fid);
+                }
+            }
+        }
+        // Legacy: also check session-stashed files (backward compatibility)
         if (Array.isArray(req.session?.chatkitFileIds)) {
             for (const fid of req.session.chatkitFileIds) {
                 if (typeof fid === 'string' && fid.trim()) {
@@ -1159,9 +1249,11 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
                 }
             }
         }
+        // Legacy: single file_id parameter
         if (file_id && typeof file_id === 'string') {
             injectedFileIds.add(file_id);
         }
+        
         for (const fid of injectedFileIds) {
             content.push({ type: 'input_file', file_id: fid });
         }
@@ -1171,7 +1263,7 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             contentTypes: content.map(c => c.type),
             injectedFiles: Array.from(injectedFileIds),
             hasText: !!text,
-            hasFile: !!file_id
+            stagedFileCount: staged_file_ids?.length || 0
         });
         
         // Send message using ChatKit API
@@ -1185,16 +1277,119 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             message_id: message.id,
             session_id: effectiveSessionId
         });
+
+        // Clear session-stashed files after sending (legacy cleanup)
+        try {
+            if (Array.isArray(req.session.chatkitFileIds)) {
+                req.session.chatkitFileIds = [];
+            }
+        } catch (e) {
+            console.warn('Unable to clear session file_ids:', e?.message);
+        }
+
+        // Generate the assistant's reply (visible to the user)
+        const response = await client.beta.chatkit.responses.create({
+            session_id: effectiveSessionId
+        });
+
+        console.log('Response created successfully:', {
+            response_id: response.id,
+            session_id: effectiveSessionId
+        });
         
         res.json({
             success: true,
-            message_id: message.id
+            message_id: message.id,
+            response_id: response.id
         });
     } catch (error) {
         console.error('Failed to send ChatKit message:', error?.response?.data ?? error);
         res.status(500).json({ 
             error: 'Failed to send message to ChatKit', 
             details: error?.response?.data ?? error?.message ?? String(error)
+        });
+    }
+});
+
+app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, (req, res) => {
+    try {
+        if (!Array.isArray(req.session.sdkConversation)) {
+            req.session.sdkConversation = [];
+        }
+
+        res.json({
+            conversation: req.session.sdkConversation,
+        });
+    } catch (error) {
+        console.error('Failed to load SDK conversation:', error);
+        res.status(500).json({ error: 'Failed to load conversation history' });
+    }
+});
+
+app.post('/api/sdk/conversation/reset', requireAuth, checkUserPermissions, (req, res) => {
+    try {
+        req.session.sdkConversation = [];
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Failed to reset SDK conversation:', error);
+        res.status(500).json({ error: 'Failed to reset conversation history' });
+    }
+});
+
+app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res) => {
+    try {
+        const { text, staged_file_ids } = req.body || {};
+        const trimmedText = typeof text === 'string' ? text.trim() : '';
+        const fileIds = Array.isArray(staged_file_ids)
+            ? staged_file_ids.filter((fid) => typeof fid === 'string' && fid.trim())
+            : [];
+
+        if (!trimmedText && fileIds.length === 0) {
+            return res.status(400).json({ error: 'Either text or staged_file_ids is required' });
+        }
+
+        const conversation = Array.isArray(req.session.sdkConversation)
+            ? [...req.session.sdkConversation]
+            : [];
+
+        const content = [];
+
+        if (trimmedText) {
+            content.push({ type: 'input_text', text: trimmedText });
+        }
+
+        for (const fileId of fileIds) {
+            content.push({ type: 'input_file', file_id: fileId });
+        }
+
+        const userItem = {
+            id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            role: 'user',
+            content,
+            createdAt: new Date().toISOString(),
+        };
+
+        conversation.push(userItem);
+
+        const agentResult = await runAgentConversation(conversation);
+
+        if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
+            conversation.push(...agentResult.newItems);
+        }
+
+        req.session.sdkConversation = conversation;
+
+        res.json({
+            conversation,
+            final_output: agentResult?.finalOutput ?? null,
+            guardrail_results: agentResult?.guardrailResults ?? null,
+            usage: agentResult?.usage ?? null,
+        });
+    } catch (error) {
+        console.error('Failed to process SDK message:', error);
+        res.status(500).json({
+            error: 'Failed to process message',
+            details: error?.message || 'Unknown error',
         });
     }
 });
@@ -1711,6 +1906,21 @@ app.get('/chat', requireAuth, checkUserPermissions, (req, res) => {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+// Chat SDK interface route - serve React SDK app (restricted to Admin and Standard users)
+app.get('/chat-sdk', requireAuth, checkUserPermissions, (req, res) => {
+    const userType = req.session.user.userType || req.session.userType;
+    
+    // Block New users from accessing chat
+    if (userType === 'New') {
+        return res.redirect('/new-user-home');
+    }
+    
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.sendFile(path.join(__dirname, 'dist', 'indexSDK.html'));
 });
 
 // Start the server

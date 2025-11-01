@@ -226,38 +226,21 @@ openai-chatkit::part(assistant-message) {
     color: #333333;
 }
 
-/* Input styling */
-openai-chatkit::part(input) {
-    border-radius: 25px;
-    border: 2px solid #e2e8f0;
-    padding: 12px 16px;
-    font-size: 14px;
-    transition: border-color 0.2s ease;
+/* Hide composer - place in your app's CSS loaded after the component */
+openai-chatkit::part(composer) { 
+    display: none !important; 
 }
 
-openai-chatkit::part(input):focus {
-    border-color: #667eea;
-    outline: none;
-}
-
-/* Button styling */
+/* Hide composer input and send button */
+openai-chatkit::part(input),
 openai-chatkit::part(send-button) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    color: white;
-    cursor: pointer;
-    transition: transform 0.2s ease;
-}
-
-openai-chatkit::part(send-button):hover {
-    transform: scale(1.05);
-}
-
-openai-chatkit::part(send-button):active {
-    transform: scale(0.95);
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    pointer-events: none !important;
 }
 
 /* Scrollbar styling for ChatKit */
@@ -284,6 +267,264 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
 }
 
+.chat-sdk-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+    background: #f8fafc;
+}
+
+.message-pane {
+    flex: 1;
+    overflow-y: auto;
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 24px;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.message-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.message-bubble {
+    max-width: 70%;
+    border-radius: 18px;
+    padding: 16px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.message-bubble.from-user {
+    margin-left: auto;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #ffffff;
+}
+
+.message-bubble.from-assistant {
+    margin-right: auto;
+    background: #f8fafc;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    color: #0f172a;
+}
+
+.message-bubble.from-tool,
+.message-bubble.from-system {
+    margin-right: auto;
+    background: #e2e8f0;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    color: #0f172a;
+}
+
+.message-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.message-role {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.message-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.message-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.message-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(148, 163, 184, 0.15);
+    font-size: 13px;
+}
+
+.message-tool,
+.message-raw {
+    background: rgba(15, 23, 42, 0.08);
+    padding: 12px;
+    border-radius: 12px;
+    font-family: monospace;
+    font-size: 12px;
+    overflow-x: auto;
+}
+
+.composer-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.composer-controls {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.composer-input {
+    flex: 1;
+    min-height: 48px;
+    max-height: 160px;
+    resize: vertical;
+    padding: 12px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    font-size: 15px;
+    line-height: 1.4;
+    color: #0f172a;
+    background: #ffffff;
+    box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.04);
+}
+
+.composer-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.icon-button,
+.send-button {
+    border: none;
+    border-radius: 16px;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.icon-button {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.icon-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.send-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #ffffff;
+    box-shadow: 0 12px 24px rgba(102, 126, 234, 0.25);
+}
+
+.send-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    box-shadow: none;
+}
+
+.banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 13px;
+}
+
+.banner button {
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.banner-error {
+    background: rgba(248, 113, 113, 0.15);
+    color: #b91c1c;
+    border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+.upload-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.upload-status {
+    font-size: 13px;
+    color: #0f172a;
+    background: rgba(102, 126, 234, 0.1);
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+
+.staged-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.staged-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: rgba(148, 163, 184, 0.2);
+    font-size: 13px;
+}
+
+.staged-file button {
+    border: none;
+    background: transparent;
+    color: #1d4ed8;
+    cursor: pointer;
+    font-size: 12px;
+    text-decoration: underline;
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    height: 100%;
+    color: #64748b;
+    text-align: center;
+}
+
+.empty-state h3 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.empty-state p {
+    font-size: 14px;
+    max-width: 320px;
+}
+
 /* Responsive design */
 @media (max-width: 900px) {
     .app-container {
@@ -299,6 +540,29 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     
     .app-header h1 {
         font-size: 20px;
+    }
+
+    .chat-sdk-container {
+        padding: 16px;
+        gap: 12px;
+    }
+
+    .message-pane {
+        padding: 16px;
+    }
+
+    .message-bubble {
+        max-width: 85%;
+    }
+
+    .composer-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .icon-button,
+    .send-button {
+        width: 100%;
     }
 }
 
@@ -332,5 +596,17 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     .logout-btn {
         padding: 4px 8px;
         font-size: 11px;
+    }
+
+    .message-pane {
+        padding: 12px;
+    }
+
+    .chat-sdk-container {
+        padding: 12px;
+    }
+
+    .message-bubble {
+        max-width: 100%;
     }
 }

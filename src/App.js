@@ -1,6 +1,27 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChatKit, useChatKit } from '@openai/chatkit-react';
+import { createFileStager } from './chatkitFiles';
+import { registerUploadedS3Object } from './api';
 import './App.css';
+
+// Create file stager instance (shared across component re-renders)
+const fileStager = createFileStager();
+
+/**
+ * Call this from your custom tool AFTER its presigned PUT to S3 succeeds.
+ */
+export async function onCustomToolS3UploadSuccess({ key, filename, bucket }) {
+  const { file_id } = await registerUploadedS3Object({ key, filename, bucket });
+  fileStager.add(file_id); // quietly stage it
+  return file_id;
+}
+
+/**
+ * Optional: for debugging/inspecting staged file_ids
+ */
+export function getStagedFileIds() {
+  return fileStager.list();
+}
 
 // Helper function to fetch a fresh ChatKit session
 // Always fetches from server with no caching to ensure fresh tokens
@@ -290,28 +311,18 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       
       setUploadStatus('Importing to OpenAI...');
 
-      // 3) Import from S3 to OpenAI Files API
-      const importResp = await fetch("/api/openai/import-s3", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ 
-          objectKey, 
-          filename: file.name, 
-          purpose: "assistants" 
-        })
+      // 3) Quiet ingest: register uploaded S3 object and stage file_id
+      await onCustomToolS3UploadSuccess({
+        key: objectKey,
+        filename: file.name
       });
-
-      if (!importResp.ok) {
-        const errorText = await importResp.text();
-        throw new Error(`Failed to import from S3: ${importResp.status} ${errorText}`);
-      }
-
-      const { file_id } = await importResp.json();
       
-      setUploadedFileId(file_id);
       setUploadStatus(`✓ ${file.name} uploaded! The file will be used on your next prompt.`);
-      console.log('[ChatKit] File uploaded successfully and stashed for quiet ingest:', { filename: file.name, file_id, objectKey });
+      console.log('[ChatKit] File uploaded successfully and staged for quiet ingest:', { 
+        filename: file.name, 
+        objectKey,
+        stagedCount: fileStager.list().length
+      });
       
       setTimeout(() => {
         setUploadingFile(null);
@@ -340,7 +351,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     }
   }, [handleFileUpload]);
   
-  // Composer configuration - keep file_upload enabled for session but handle uploads manually
+  // Composer configuration - disable attachments
   const composerConfig = useMemo(() => ({
     attachments: {
       enabled: false, // Disable to prevent built-in upload mechanism
@@ -440,87 +451,410 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         optionsKeys: control.options ? Object.keys(control.options) : [],
         handlersKeys: control.handlers ? Object.keys(control.handlers) : []
       });
+      
+      // Try to update composer options via control API if available
+      if (typeof control.setOptions === 'function') {
+        console.log('[ChatKit] 🔧 Setting composer options via control API');
+        try {
+          control.setOptions({
+            composer: composerConfig
+          });
+        } catch (err) {
+          console.warn('[ChatKit] ⚠️ Failed to set composer options via control API:', err);
+        }
+      }
     } else {
       console.warn('[ChatKit] ⚠️ Control object is not available yet');
     }
-  }, [control]);
-
-  // Debug: Check element after render and inspect ChatKit state
+  }, [control, composerConfig]);
+  
+  // Hide composer elements (input field and send button) after ChatKit renders
   useEffect(() => {
-    console.log('[ChatKit] 🔍 useEffect triggered, checking ChatKit element...');
-    console.log('[ChatKit] 🔍 SessionData in effect:', !!sessionData);
+    const hideComposer = () => {
+      const el = document.querySelector('openai-chatkit');
+      if (!el?.shadowRoot) {
+        return false;
+      }
+      
+      // Find and hide the composer container/elements
+      // Try multiple selectors to find the composer
+      const composerSelectors = [
+        '[class*="composer"]',
+        '[class*="Composer"]',
+        '[class*="input-container"]',
+        '[class*="InputContainer"]',
+        'form',
+        'textarea',
+        'input[type="text"]',
+        '[contenteditable="true"]',
+        'button[type="submit"]',
+        'button[aria-label*="send" i]',
+        'button[aria-label*="Send" i]'
+      ];
+      
+      let hidden = false;
+      composerSelectors.forEach(selector => {
+        const elements = el.shadowRoot.querySelectorAll(selector);
+        elements.forEach(elem => {
+          // Check if element is likely part of the composer
+          const isComposer = elem.closest('[class*="composer"]') || 
+                           elem.closest('form') ||
+                           elem.tagName === 'TEXTAREA' ||
+                           elem.tagName === 'INPUT' ||
+                           (elem.tagName === 'BUTTON' && (
+                             elem.getAttribute('type') === 'submit' ||
+                             elem.getAttribute('aria-label')?.toLowerCase().includes('send')
+                           ));
+          
+          if (isComposer) {
+            elem.style.display = 'none';
+            elem.style.visibility = 'hidden';
+            elem.style.opacity = '0';
+            elem.style.height = '0';
+            elem.style.padding = '0';
+            elem.style.margin = '0';
+            elem.setAttribute('disabled', 'true');
+            elem.setAttribute('aria-hidden', 'true');
+            hidden = true;
+          }
+        });
+      });
+      
+      // Also try to find parent composer container
+      const allElements = el.shadowRoot.querySelectorAll('*');
+      allElements.forEach(elem => {
+        const className = elem.className?.toLowerCase() || '';
+        const id = elem.id?.toLowerCase() || '';
+        
+        if ((className.includes('composer') || 
+             className.includes('input') ||
+             id.includes('composer') ||
+             id.includes('input')) &&
+            !className.includes('message') && 
+            !id.includes('message')) {
+          elem.style.display = 'none';
+          elem.style.visibility = 'hidden';
+          elem.style.opacity = '0';
+          elem.style.height = '0';
+          elem.style.padding = '0';
+          elem.style.margin = '0';
+          hidden = true;
+        }
+      });
+      
+      return hidden;
+    };
     
+    // Try multiple times with delays to catch ChatKit when it renders
+    const timeouts = [100, 300, 500, 1000, 2000, 3000];
+    timeouts.forEach(delay => {
+      setTimeout(() => {
+        const hidden = hideComposer();
+        if (hidden) {
+          console.log(`[ChatKit] ✅ Composer hidden successfully (delay: ${delay}ms)`);
+        }
+      }, delay);
+    });
+    
+    // Also use MutationObserver to catch dynamic additions
+    const el = document.querySelector('openai-chatkit');
+    if (el?.shadowRoot) {
+      const observer = new MutationObserver(() => {
+        hideComposer();
+      });
+      
+      observer.observe(el.shadowRoot, {
+        childList: true,
+        subtree: true,
+        attributes: false
+      });
+      
+      return () => {
+        observer.disconnect();
+      };
+    }
+  }, [sessionData?.sessionId]);
+
+  // CENTRALIZED MESSAGE SEND FUNCTION
+  // All messages must go through this function - no direct ChatKit API calls allowed
+  const sendUserPrompt = useCallback(async (event) => {
+    try {
+      // Prevent form submit or default key handling
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+
+      if (!sessionData?.sessionId) {
+        console.error('[ChatKit] ❌ Cannot send: no sessionId');
+        return;
+      }
+
+      // Get the input element from ChatKit's shadow DOM
+      const el = document.querySelector('openai-chatkit');
+      if (!el?.shadowRoot) {
+        console.error('[ChatKit] ❌ Cannot send: ChatKit element not found');
+        return;
+      }
+
+      const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+      if (!composerInput) {
+        console.error('[ChatKit] ❌ Cannot send: composer input not found');
+        return;
+      }
+
+      // Grab current input text
+      const userPrompt = composerInput.value?.trim() || 
+                         composerInput.textContent?.trim() || 
+                         '';
+
+      // Build content array: text + any staged files
+      const content = fileStager.toMessageContent(userPrompt);
+
+      if (content.length === 0) {
+        console.log('[ChatKit] ⚠️ No content to send (no text and no staged files)');
+        return;
+      }
+
+      console.log('[ChatKit] 📤 [SEND] Outgoing content:', content);
+
+      // Send the user message to the current session via our controlled endpoint
+      const resp = await fetch('/api/chatkit/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          session_id: sessionData.sessionId,
+          text: userPrompt || undefined,
+          staged_file_ids: fileStager.list()
+        })
+      });
+
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error('[ChatKit] ❌ Message send failed:', errorText);
+        throw new Error(`Failed to send message: ${resp.status} ${errorText}`);
+      }
+
+      const result = await resp.json();
+      console.log('[ChatKit] ✅ [SEND] Message sent successfully:', result);
+
+      // Clear the local input and staged files
+      composerInput.value = '';
+      if (composerInput.textContent) composerInput.textContent = '';
+      fileStager.clear();
+
+      // Trigger input event so ChatKit UI updates
+      composerInput.dispatchEvent(new Event('input', { bubbles: true }));
+      
+    } catch (err) {
+      console.error('[ChatKit] ❌ sendUserPrompt failed:', err);
+    }
+  }, [sessionData?.sessionId]);
+
+  // Block all direct ChatKit message API calls - force everything through our controlled endpoint
+  useEffect(() => {
+    if (!sessionData?.sessionId) {
+      return;
+    }
+
+    console.log('[ChatKit] 🔒 Blocking direct ChatKit message API calls...');
+
+    const originalFetch = window.fetch;
+    let blockActive = true;
+
+    const blockingFetch = async (...args) => {
+      const [url, options = {}] = args;
+      
+      // Check if this is a ChatKit message creation request
+      const urlString = typeof url === 'string' ? url : url?.toString() || '';
+      const isChatKitMessageCreate = urlString.includes('/chatkit') && 
+                                     urlString.includes('/messages') &&
+                                     (options.method === 'POST' || options.method === 'PUT');
+      
+      if (isChatKitMessageCreate && blockActive) {
+        console.warn('[ChatKit] 🚫 BLOCKED: Direct ChatKit messages.create() call detected');
+        console.warn('[ChatKit] 🚫 All messages must go through sendUserPrompt() function');
+        
+        // Return a rejected promise to prevent the call
+        return Promise.reject(new Error('Direct ChatKit message API calls are disabled. Use sendUserPrompt() instead.'));
+      }
+
+      // Allow all other requests to proceed normally
+      return originalFetch.apply(window, args);
+    };
+
+    // Override fetch
+    window.fetch = blockingFetch;
+
+    return () => {
+      window.fetch = originalFetch;
+      blockActive = false;
+      console.log('[ChatKit] 🧹 Message blocking removed');
+    };
+  }, [sessionData?.sessionId]);
+
+  // DOM interceptors: capture all message send attempts and route through sendUserPrompt
+  useEffect(() => {
+    if (!sessionData?.sessionId) {
+      return;
+    }
+
     const attachInterceptIfPossible = () => {
       const el = document.querySelector('openai-chatkit');
-      if (!el || !el.shadowRoot) return false;
+      if (!el) {
+        console.log('[ChatKit] ⏳ ChatKit element not found yet');
+        return false;
+      }
 
-      // Find a likely composer text input/textarea inside the shadow DOM
-      const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"]');
-      if (!composerInput) return false;
+      if (!el.shadowRoot) {
+        console.log('[ChatKit] ⏳ ChatKit shadow root not available yet');
+        return false;
+      }
+
+      // Find the composer input
+      const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+      if (!composerInput) {
+        console.log('[ChatKit] ⏳ Composer input not found');
+        return false;
+      }
 
       // Avoid duplicate listeners
-      if (composerInput._quietIngestAttached) return true;
+      if (composerInput._fileStagerInterceptAttached) {
+        console.log('[ChatKit] ✅ Intercept already attached to this input');
+        return true;
+      }
 
-      const handler = async (evt) => {
-        try {
-          // Submit on Enter without Shift (allow Shift+Enter for newline)
-          if (evt.key === 'Enter' && !evt.shiftKey) {
-            evt.preventDefault();
-            const text = composerInput.value?.trim();
-            if (!text) return;
+      console.log('[ChatKit] 🔧 Attaching intercept to composer input');
 
-            // Send through our server to ensure all stashed files are injected
-            const resp = await fetch('/api/chatkit/message', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({
-                session_id: sessionData?.sessionId,
-                text
-              })
-            });
-
-            if (!resp.ok) {
-              const errorText = await resp.text();
-              console.error('[ChatKit] Quiet ingest send failed:', errorText);
-              throw new Error(`Failed to send via quiet ingest: ${resp.status}`);
-            }
-
-            // Clear the input so the user sees it sent
-            composerInput.value = '';
-            composerInput.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        } catch (e) {
-          console.error('[ChatKit] Quiet ingest error:', e);
+      // Intercept Enter key - route through sendUserPrompt
+      const keydownHandler = async (evt) => {
+        if (evt.key === 'Enter' && !evt.shiftKey) {
+          console.log('[ChatKit] ⌨️ Enter pressed, routing through sendUserPrompt');
+          await sendUserPrompt(evt);
         }
       };
 
-      composerInput.addEventListener('keydown', handler, { capture: true });
-      composerInput._quietIngestAttached = true;
-      console.log('[ChatKit] ✅ Quiet ingest intercept attached to composer');
+      // Intercept send button clicks - route through sendUserPrompt
+      const clickHandler = async (evt) => {
+        const target = evt.target;
+        // Look for send button (common patterns)
+        if (target.closest('button[type="submit"]') || 
+            target.closest('button')?.ariaLabel?.toLowerCase().includes('send') ||
+            target.closest('[role="button"]')?.getAttribute('aria-label')?.toLowerCase().includes('send')) {
+          
+          console.log('[ChatKit] 🖱️ Send button clicked, routing through sendUserPrompt');
+          await sendUserPrompt(evt);
+        }
+      };
+
+      // Intercept form submissions - route through sendUserPrompt
+      const formSubmitHandler = async (evt) => {
+        if (evt.target.tagName === 'FORM' || evt.target.closest('form')) {
+          console.log('[ChatKit] 📝 Form submit intercepted, routing through sendUserPrompt');
+          await sendUserPrompt(evt);
+        }
+      };
+
+      // Attach all handlers
+      composerInput.addEventListener('keydown', keydownHandler, { capture: true, passive: false });
+      el.shadowRoot.addEventListener('click', clickHandler, { capture: true, passive: false });
+      el.shadowRoot.addEventListener('submit', formSubmitHandler, { capture: true, passive: false });
+      
+      // Also watch for any message sending events via MutationObserver (fallback)
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          // If ChatKit is trying to send a message, we want to intercept it
+          // This is a fallback in case our other intercepts miss it
+        });
+      });
+
+      // Observe the shadow root for changes
+      observer.observe(el.shadowRoot, {
+        childList: true,
+        subtree: true,
+        attributes: false
+      });
+
+      // Store observer for cleanup
+      composerInput._fileStagerObserver = observer;
+      composerInput._fileStagerInterceptAttached = true;
+      console.log('[ChatKit] ✅ Message intercept attached successfully');
       return true;
     };
 
-    // Try a few times in case the element renders later
-    const timeouts = [0, 300, 1000, 2000];
+    // Try multiple times with increasing delays
+    const timeouts = [0, 300, 1000, 2000, 3000];
     let attached = false;
+    const attempts = [];
+
     timeouts.forEach((t) => {
-      setTimeout(() => {
-        if (!attached) attached = attachInterceptIfPossible();
+      const timeoutId = setTimeout(() => {
+        if (!attached) {
+          console.log(`[ChatKit] 🔄 Attempting to attach intercept (delay: ${t}ms)...`);
+          attached = attachInterceptIfPossible();
+          if (attached) {
+            console.log('[ChatKit] ✅ Intercept attached on attempt');
+          }
+        }
       }, t);
+      attempts.push(timeoutId);
     });
 
-    return () => {
+    // Global intercept as last resort (catches events that bubble up)
+    const globalKeydownHandler = async (evt) => {
+      // Check if we're in the ChatKit context
       const el = document.querySelector('openai-chatkit');
-      if (el?.shadowRoot) {
-        const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"]');
-        if (composerInput && composerInput._quietIngestAttached) {
-          // We can't easily remove the anonymous handler reference; keep it simple and let it persist.
-          // In normal SPA usage this component won't unmount often.
+      if (!el) return;
+
+      // Check if the event is coming from ChatKit's shadow DOM
+      // We can't use contains() for shadow DOM, so check if active element is in ChatKit
+      const activeEl = document.activeElement;
+      if (activeEl !== el && !el.contains(activeEl)) {
+        // Also check if event target might be from shadow DOM (event.composedPath)
+        const path = evt.composedPath?.() || [];
+        const isFromChatKit = path.some(node => node === el || (node?.host === el));
+        if (!isFromChatKit) return;
+      }
+
+      if (evt.key === 'Enter' && !evt.shiftKey) {
+        const shadowRoot = el.shadowRoot;
+        if (!shadowRoot) return;
+
+        const composerInput = shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+        if (!composerInput) return;
+        
+        // Only use global intercept if shadow DOM intercept wasn't attached
+        if (!composerInput._fileStagerInterceptAttached) {
+          const text = composerInput?.value?.trim() || composerInput?.textContent?.trim() || '';
+          if (text || fileStager.list().length > 0) {
+            console.log('[ChatKit] 🌐 Global intercept triggered as fallback, routing through sendUserPrompt');
+            await sendUserPrompt(evt);
+          }
         }
       }
     };
-  }, [sessionData]);
+
+    // Add global listener with high priority
+    window.addEventListener('keydown', globalKeydownHandler, { capture: true, passive: false });
+
+    return () => {
+      attempts.forEach(id => clearTimeout(id));
+      window.removeEventListener('keydown', globalKeydownHandler, { capture: true });
+      
+      const el = document.querySelector('openai-chatkit');
+      if (el?.shadowRoot) {
+        const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+        if (composerInput) {
+          if (composerInput._fileStagerObserver) {
+            composerInput._fileStagerObserver.disconnect();
+            delete composerInput._fileStagerObserver;
+          }
+          if (composerInput._fileStagerInterceptAttached) {
+            delete composerInput._fileStagerInterceptAttached;
+          }
+        }
+      }
+    };
+  }, [sessionData?.sessionId, sendUserPrompt]);
 
   // Log when component re-renders
   useEffect(() => {
