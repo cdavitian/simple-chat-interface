@@ -1,6 +1,27 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChatKit, useChatKit } from '@openai/chatkit-react';
+import { createFileStager } from './chatkitFiles';
+import { registerUploadedS3Object } from './api';
 import './App.css';
+
+// Create file stager instance (shared across component re-renders)
+const fileStager = createFileStager();
+
+/**
+ * Call this from your custom tool AFTER its presigned PUT to S3 succeeds.
+ */
+export async function onCustomToolS3UploadSuccess({ key, filename, bucket }) {
+  const { file_id } = await registerUploadedS3Object({ key, filename, bucket });
+  fileStager.add(file_id); // quietly stage it
+  return file_id;
+}
+
+/**
+ * Optional: for debugging/inspecting staged file_ids
+ */
+export function getStagedFileIds() {
+  return fileStager.list();
+}
 
 // Helper function to fetch a fresh ChatKit session
 // Always fetches from server with no caching to ensure fresh tokens
@@ -290,28 +311,18 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       
       setUploadStatus('Importing to OpenAI...');
 
-      // 3) Import from S3 to OpenAI Files API
-      const importResp = await fetch("/api/openai/import-s3", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ 
-          objectKey, 
-          filename: file.name, 
-          purpose: "assistants" 
-        })
+      // 3) Quiet ingest: register uploaded S3 object and stage file_id
+      await onCustomToolS3UploadSuccess({
+        key: objectKey,
+        filename: file.name
       });
-
-      if (!importResp.ok) {
-        const errorText = await importResp.text();
-        throw new Error(`Failed to import from S3: ${importResp.status} ${errorText}`);
-      }
-
-      const { file_id } = await importResp.json();
       
-      setUploadedFileId(file_id);
       setUploadStatus(`✓ ${file.name} uploaded! The file will be used on your next prompt.`);
-      console.log('[ChatKit] File uploaded successfully and stashed for quiet ingest:', { filename: file.name, file_id, objectKey });
+      console.log('[ChatKit] File uploaded successfully and staged for quiet ingest:', { 
+        filename: file.name, 
+        objectKey,
+        stagedCount: fileStager.list().length
+      });
       
       setTimeout(() => {
         setUploadingFile(null);
@@ -467,31 +478,38 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
           if (evt.key === 'Enter' && !evt.shiftKey) {
             evt.preventDefault();
             const text = composerInput.value?.trim();
-            if (!text) return;
+            if (!text && fileStager.list().length === 0) return; // Allow sending with just files
 
-            // Send through our server to ensure all stashed files are injected
+            // Build content with prompt + all staged files
+            const stagedFileIds = fileStager.list();
+
+            // Send through our server to ensure all staged files are attached
             const resp = await fetch('/api/chatkit/message', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               body: JSON.stringify({
                 session_id: sessionData?.sessionId,
-                text
+                text: text || undefined,
+                staged_file_ids: stagedFileIds
               })
             });
 
             if (!resp.ok) {
               const errorText = await resp.text();
-              console.error('[ChatKit] Quiet ingest send failed:', errorText);
-              throw new Error(`Failed to send via quiet ingest: ${resp.status}`);
+              console.error('[ChatKit] Message send failed:', errorText);
+              throw new Error(`Failed to send message: ${resp.status}`);
             }
+
+            // Clear staged files after sending (so next prompt doesn't reattach the same files)
+            fileStager.clear();
 
             // Clear the input so the user sees it sent
             composerInput.value = '';
             composerInput.dispatchEvent(new Event('input', { bubbles: true }));
           }
         } catch (e) {
-          console.error('[ChatKit] Quiet ingest error:', e);
+          console.error('[ChatKit] Message send error:', e);
         }
       };
 
