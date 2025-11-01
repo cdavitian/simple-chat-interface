@@ -1615,43 +1615,43 @@ function _withTokenRefresh() {
     var retries,
       isUnauthorized,
       _args6 = arguments,
-      _t5,
       _t6,
-      _t7;
+      _t7,
+      _t8;
     return _regenerator().w(function (_context6) {
       while (1) switch (_context6.p = _context6.n) {
         case 0:
           retries = _args6.length > 2 && _args6[2] !== undefined ? _args6[2] : 1;
           _context6.p = 1;
-          _t5 = operationFn;
+          _t6 = operationFn;
           _context6.n = 2;
           return getTokenFn();
         case 2:
           _context6.n = 3;
-          return _t5(_context6.v);
+          return _t6(_context6.v);
         case 3:
           return _context6.a(2, _context6.v);
         case 4:
           _context6.p = 4;
-          _t6 = _context6.v;
+          _t7 = _context6.v;
           // Detect 401 or unauthorized errors
-          isUnauthorized = (_t6 === null || _t6 === void 0 ? void 0 : _t6.status) === 401 || (_t6 === null || _t6 === void 0 ? void 0 : _t6.statusCode) === 401 || /unauthorized/i.test(String(_t6)) || /401/i.test(String(_t6));
+          isUnauthorized = (_t7 === null || _t7 === void 0 ? void 0 : _t7.status) === 401 || (_t7 === null || _t7 === void 0 ? void 0 : _t7.statusCode) === 401 || /unauthorized/i.test(String(_t7)) || /401/i.test(String(_t7));
           if (!(isUnauthorized && retries > 0)) {
             _context6.n = 7;
             break;
           }
           console.log('[ChatKit] 🔄 401 detected, refreshing token and retrying...');
           // Refresh token and retry once
-          _t7 = operationFn;
+          _t8 = operationFn;
           _context6.n = 5;
           return getTokenFn();
         case 5:
           _context6.n = 6;
-          return _t7(_context6.v);
+          return _t8(_context6.v);
         case 6:
           return _context6.a(2, _context6.v);
         case 7:
-          throw _t6;
+          throw _t7;
         case 8:
           return _context6.a(2);
       }
@@ -1899,12 +1899,17 @@ function ChatKitComponent(_ref3) {
     _useState12 = _slicedToArray(_useState11, 2),
     uploadStatus = _useState12[0],
     setUploadStatus = _useState12[1];
+  var _useState13 = (0,react.useState)(null),
+    _useState14 = _slicedToArray(_useState13, 2),
+    uploadedFileId = _useState14[0],
+    setUploadedFileId = _useState14[1];
   var fileInputRef = (0,react.useRef)(null);
+  var chatkitInstanceRef = (0,react.useRef)(null);
 
   // S3 upload handler following the guidance pattern
   var handleFileUpload = (0,react.useCallback)(/*#__PURE__*/function () {
     var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(file) {
-      var presignResp, errorText, _yield$presignResp$js, uploadUrl, objectKey, uploadResp, importResp, _errorText, _yield$importResp$jso, file_id, _t3;
+      var presignResp, errorText, _yield$presignResp$js, uploadUrl, objectKey, uploadResp, importResp, _errorText, _yield$importResp$jso, file_id, _t3, _t4;
       return _regenerator().w(function (_context3) {
         while (1) switch (_context3.p = _context3.n) {
           case 0:
@@ -1996,35 +2001,67 @@ function ChatKitComponent(_ref3) {
           case 10:
             _yield$importResp$jso = _context3.v;
             file_id = _yield$importResp$jso.file_id;
-            setUploadStatus("\u2713 ".concat(file.name, " uploaded successfully! File ID: ").concat(file_id));
+            setUploadedFileId(file_id);
+            setUploadStatus("\u2713 ".concat(file.name, " uploaded! Sending to ChatKit..."));
             console.log('[ChatKit] File uploaded successfully:', {
               filename: file.name,
               file_id: file_id,
               objectKey: objectKey
             });
 
-            // TODO: Send message with file_id to ChatKit
-            // This will require access to ChatKit's send method
-            alert("File uploaded successfully!\n\nFile ID: ".concat(file_id, "\n\nYou can now reference this file in your messages."));
+            // Send message with file_id to ChatKit
+            _context3.p = 11;
+            if (!chatkitInstanceRef.current) {
+              _context3.n = 13;
+              break;
+            }
+            _context3.n = 12;
+            return chatkitInstanceRef.current.send({
+              content: [{
+                type: "input_text",
+                text: "I've uploaded ".concat(file.name, ". Please analyze this file.")
+              }, {
+                type: "input_file",
+                file_id: file_id
+              }]
+            });
+          case 12:
+            setUploadStatus("\u2713 File sent to ChatKit successfully!");
+            console.log('[ChatKit] Message sent with file_id:', file_id);
+            _context3.n = 14;
+            break;
+          case 13:
+            console.warn('[ChatKit] ChatKit instance not available, file uploaded but message not sent');
+            setUploadStatus("\u2713 ".concat(file.name, " uploaded! (File ID: ").concat(file_id, ")\nPlease manually mention the file in your message."));
+          case 14:
+            _context3.n = 16;
+            break;
+          case 15:
+            _context3.p = 15;
+            _t3 = _context3.v;
+            console.error('[ChatKit] Failed to send message with file:', _t3);
+            setUploadStatus("\u2713 File uploaded but failed to send message.\nFile ID: ".concat(file_id, "\nPlease manually mention the file."));
+          case 16:
             setTimeout(function () {
               setUploadingFile(null);
               setUploadStatus('');
-            }, 3000);
-            _context3.n = 12;
+              setUploadedFileId(null);
+            }, 5000);
+            _context3.n = 18;
             break;
-          case 11:
-            _context3.p = 11;
-            _t3 = _context3.v;
-            console.error('[ChatKit] Upload error:', _t3);
-            setUploadStatus("\u2717 Error: ".concat(_t3.message));
+          case 17:
+            _context3.p = 17;
+            _t4 = _context3.v;
+            console.error('[ChatKit] Upload error:', _t4);
+            setUploadStatus("\u2717 Error: ".concat(_t4.message));
             setTimeout(function () {
               setUploadingFile(null);
               setUploadStatus('');
             }, 5000);
-          case 12:
+          case 18:
             return _context3.a(2);
         }
-      }, _callee3, null, [[0, 11]]);
+      }, _callee3, null, [[11, 15], [0, 17]]);
     }));
     return function (_x3) {
       return _ref4.apply(this, arguments);
@@ -2075,7 +2112,7 @@ function ChatKitComponent(_ref3) {
   var getClientSecret = (0,react.useMemo)(function () {
     return /*#__PURE__*/function () {
       var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(currentClientSecret) {
-        var freshSession, expiry, expiryDate, now, _t4;
+        var freshSession, expiry, expiryDate, now, _t5;
         return _regenerator().w(function (_context4) {
           while (1) switch (_context4.p = _context4.n) {
             case 0:
@@ -2123,9 +2160,9 @@ function ChatKitComponent(_ref3) {
               return _context4.a(2, freshSession.clientToken);
             case 4:
               _context4.p = 4;
-              _t4 = _context4.v;
-              console.error('[ChatKit] ❌ Failed to fetch fresh token:', _t4);
-              throw _t4;
+              _t5 = _context4.v;
+              console.error('[ChatKit] ❌ Failed to fetch fresh token:', _t5);
+              throw _t5;
             case 5:
               return _context4.a(2);
           }
@@ -2149,7 +2186,7 @@ function ChatKitComponent(_ref3) {
   console.log('[ChatKit] 🔐 useChatKit hook returned control:', control);
   console.log('[ChatKit] 🔐 Control methods available:', control ? Object.keys(control) : 'control is null/undefined');
 
-  // Log when control is first available
+  // Log when control is first available and capture ChatKit instance
   (0,react.useEffect)(function () {
     if (control) {
       console.log('[ChatKit] ✅ Control object is now available');
@@ -2160,6 +2197,16 @@ function ChatKitComponent(_ref3) {
         optionsKeys: control.options ? Object.keys(control.options) : [],
         handlersKeys: control.handlers ? Object.keys(control.handlers) : []
       });
+
+      // Store reference to ChatKit instance when setInstance is called
+      var originalSetInstance = control.setInstance;
+      if (typeof originalSetInstance === 'function') {
+        control.setInstance = function (instance) {
+          console.log('[ChatKit] ChatKit instance set:', instance);
+          chatkitInstanceRef.current = instance;
+          return originalSetInstance(instance);
+        };
+      }
     } else {
       console.warn('[ChatKit] ⚠️ Control object is not available yet');
     }

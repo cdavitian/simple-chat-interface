@@ -247,7 +247,9 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   
   const [uploadingFile, setUploadingFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadedFileId, setUploadedFileId] = useState(null);
   const fileInputRef = useRef(null);
+  const chatkitInstanceRef = useRef(null);
   
   // S3 upload handler following the guidance pattern
   const handleFileUpload = useCallback(async (file) => {
@@ -308,17 +310,37 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
 
       const { file_id } = await importResp.json();
       
-      setUploadStatus(`✓ ${file.name} uploaded successfully! File ID: ${file_id}`);
+      setUploadedFileId(file_id);
+      setUploadStatus(`✓ ${file.name} uploaded! Sending to ChatKit...`);
       console.log('[ChatKit] File uploaded successfully:', { filename: file.name, file_id, objectKey });
       
-      // TODO: Send message with file_id to ChatKit
-      // This will require access to ChatKit's send method
-      alert(`File uploaded successfully!\n\nFile ID: ${file_id}\n\nYou can now reference this file in your messages.`);
+      // Send message with file_id to ChatKit
+      try {
+        if (chatkitInstanceRef.current) {
+          // Use ChatKit's send method to send a message with the file attachment
+          await chatkitInstanceRef.current.send({
+            content: [
+              { type: "input_text", text: `I've uploaded ${file.name}. Please analyze this file.` },
+              { type: "input_file", file_id: file_id }
+            ]
+          });
+          
+          setUploadStatus(`✓ File sent to ChatKit successfully!`);
+          console.log('[ChatKit] Message sent with file_id:', file_id);
+        } else {
+          console.warn('[ChatKit] ChatKit instance not available, file uploaded but message not sent');
+          setUploadStatus(`✓ ${file.name} uploaded! (File ID: ${file_id})\nPlease manually mention the file in your message.`);
+        }
+      } catch (sendError) {
+        console.error('[ChatKit] Failed to send message with file:', sendError);
+        setUploadStatus(`✓ File uploaded but failed to send message.\nFile ID: ${file_id}\nPlease manually mention the file.`);
+      }
       
       setTimeout(() => {
         setUploadingFile(null);
         setUploadStatus('');
-      }, 3000);
+        setUploadedFileId(null);
+      }, 5000);
       
     } catch (error) {
       console.error('[ChatKit] Upload error:', error);
@@ -427,7 +449,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   console.log('[ChatKit] 🔐 useChatKit hook returned control:', control);
   console.log('[ChatKit] 🔐 Control methods available:', control ? Object.keys(control) : 'control is null/undefined');
   
-  // Log when control is first available
+  // Log when control is first available and capture ChatKit instance
   useEffect(() => {
     if (control) {
       console.log('[ChatKit] ✅ Control object is now available');
@@ -438,6 +460,16 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         optionsKeys: control.options ? Object.keys(control.options) : [],
         handlersKeys: control.handlers ? Object.keys(control.handlers) : []
       });
+      
+      // Store reference to ChatKit instance when setInstance is called
+      const originalSetInstance = control.setInstance;
+      if (typeof originalSetInstance === 'function') {
+        control.setInstance = (instance) => {
+          console.log('[ChatKit] ChatKit instance set:', instance);
+          chatkitInstanceRef.current = instance;
+          return originalSetInstance(instance);
+        };
+      }
     } else {
       console.warn('[ChatKit] ⚠️ Control object is not available yet');
     }
