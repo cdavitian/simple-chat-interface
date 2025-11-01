@@ -1343,6 +1343,12 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 normalized.id = generateMessageId();
             }
 
+            if (Array.isArray(normalized.content)) {
+                normalized.content = normalized.content
+                    .filter((entry) => entry && typeof entry === 'object')
+                    .map((entry) => ({ ...entry }));
+            }
+
             return normalized;
         };
 
