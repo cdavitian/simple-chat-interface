@@ -948,20 +948,48 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
 
 .chat-sdk-container {
     flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 16px;
     padding: 24px;
     background: #f8fafc;
+    overflow: hidden;
 }
 
 .message-pane {
-    flex: 1;
+    /* Make this a true flex scroll area */
+    flex: 1 1 0;
+    height: 0;
+    min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     border-radius: 16px;
     background: #ffffff;
     padding: 24px;
     box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+    /* Custom scrollbar styling */
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.message-pane::-webkit-scrollbar {
+    width: 8px;
+    display: block;
+}
+
+.message-pane::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+.message-pane::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.message-pane::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 
 .message-list {
