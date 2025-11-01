@@ -1332,6 +1332,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         }
 
         const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const generateToolCallId = () => `mcpl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
         const normalizeConversationItem = (item) => {
             if (!item || typeof item !== 'object') {
@@ -1340,10 +1341,28 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             }
 
             const normalized = { ...item };
+            const existingId = typeof normalized.id === 'string' ? normalized.id.trim() : '';
+            const itemType = normalized.type || null;
+            const itemRole = normalized.role || null;
+            const isToolCall = itemType === 'hosted_tool_call' || itemRole === 'tool';
+            const isRecognizedId = (id) => {
+                if (typeof id !== 'string' || !id) return false;
+                return id.startsWith('msg_') || id.startsWith('mcp');
+            };
             
             // Ensure ID is valid
-            if (typeof normalized.id !== 'string' || !normalized.id.startsWith('msg_')) {
-                normalized.id = generateMessageId();
+            if (existingId) {
+                if (isToolCall) {
+                    normalized.id = existingId;
+                } else if (isRecognizedId(existingId)) {
+                    normalized.id = existingId;
+                } else if (itemRole === 'user' || itemRole === 'assistant' || itemRole === 'system') {
+                    normalized.id = generateMessageId();
+                } else {
+                    normalized.id = existingId;
+                }
+            } else {
+                normalized.id = isToolCall ? generateToolCallId() : generateMessageId();
             }
 
             // Handle content based on type
