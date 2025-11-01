@@ -300,6 +300,9 @@
             <button class="mcp-test-btn" onclick="openChatInterface()">
                 MCP Test
             </button>
+            <button class="mcp-test-btn" onclick="openChatSDKInterface()" style="margin-top: 16px;">
+                MCP Test - SDK
+            </button>
         </div>
         
         <div class="loading" id="loading">
@@ -368,6 +371,11 @@
         function openChatInterface() {
             // Navigate to the chat interface in the same tab
             window.location.href = '/chat';
+        }
+
+        function openChatSDKInterface() {
+            // Navigate to the SDK chat interface in the same tab
+            window.location.href = '/chat-sdk';
         }
 
         // Initialize the page
