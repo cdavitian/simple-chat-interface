@@ -1057,7 +1057,6 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
 
         const uploaded = await client.files.create({
             file: fileForUpload,
-            filename: resolvedFilename,
             purpose: 'assistants',
         });
 
