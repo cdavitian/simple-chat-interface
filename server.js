@@ -15,9 +15,21 @@ const PORT = process.env.PORT || 3000;
 const loggingConfig = new LoggingConfig();
 const accessLogger = loggingConfig.getLogger();
 
-// Run database migration for Google OAuth attributes
+// Run database migration for Google OAuth attributes (non-blocking)
 const runMigration = async () => {
     try {
+        // Only run migration if using PostgreSQL logger
+        if (loggingConfig.loggerType !== 'postgresql') {
+            console.log('Skipping migration - not using PostgreSQL logger');
+            return;
+        }
+
+        // Check if logger has pool property (PostgreSQL logger)
+        if (!loggingConfig.logger || !loggingConfig.logger.pool) {
+            console.log('Logger not ready for migration, skipping...');
+            return;
+        }
+
         console.log('Checking for Google OAuth attributes migration...');
         
         // Check if the new columns exist
@@ -67,13 +79,16 @@ const runMigration = async () => {
             console.log('✅ Google OAuth columns already exist, migration not needed');
         }
     } catch (error) {
-        console.error('Migration check failed:', error.message);
+        console.error('Migration check failed (non-critical):', error.message);
+        console.error('Stack:', error.stack);
         // Don't fail the app startup if migration fails
     }
 };
 
-// Run migration on startup
-runMigration();
+// Run migration on startup (non-blocking - don't await)
+runMigration().catch(err => {
+    console.error('Migration failed to start (non-critical):', err.message);
+});
 
 // Configure AWS
 AWS.config.update({
