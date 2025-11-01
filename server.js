@@ -1335,21 +1335,21 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
 
         const normalizeConversationItem = (item) => {
             if (!item || typeof item !== 'object') {
-                return item;
+                return null;
             }
 
-            if (item.id && item.id.startsWith('msg_')) {
-                return item;
+            const normalized = { ...item };
+            if (typeof normalized.id !== 'string' || !normalized.id.startsWith('msg_')) {
+                normalized.id = generateMessageId();
             }
 
-            return {
-                ...item,
-                id: generateMessageId(),
-            };
+            return normalized;
         };
 
         const conversation = Array.isArray(req.session.sdkConversation)
-            ? req.session.sdkConversation.map(normalizeConversationItem)
+            ? req.session.sdkConversation
+                .map(normalizeConversationItem)
+                .filter(Boolean)
             : [];
 
         const content = [];
@@ -1373,7 +1373,12 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         const agentResult = await runAgentConversation(conversation);
 
         if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
-            conversation.push(...agentResult.newItems.map(normalizeConversationItem));
+            const normalizedAgentItems = agentResult.newItems
+                .map(normalizeConversationItem)
+                .filter(Boolean);
+            if (normalizedAgentItems.length > 0) {
+                conversation.push(...normalizedAgentItems);
+            }
         }
 
         req.session.sdkConversation = conversation;
