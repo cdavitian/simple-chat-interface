@@ -454,10 +454,129 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         optionsKeys: control.options ? Object.keys(control.options) : [],
         handlersKeys: control.handlers ? Object.keys(control.handlers) : []
       });
+      
+      // Try to update composer options via control API if available
+      if (typeof control.setOptions === 'function') {
+        console.log('[ChatKit] 🔧 Setting composer options via control API');
+        try {
+          control.setOptions({
+            composer: composerConfig
+          });
+        } catch (err) {
+          console.warn('[ChatKit] ⚠️ Failed to set composer options via control API:', err);
+        }
+      }
     } else {
       console.warn('[ChatKit] ⚠️ Control object is not available yet');
     }
-  }, [control]);
+  }, [control, composerConfig]);
+  
+  // Hide composer elements (input field and send button) after ChatKit renders
+  useEffect(() => {
+    const hideComposer = () => {
+      const el = document.querySelector('openai-chatkit');
+      if (!el?.shadowRoot) {
+        return false;
+      }
+      
+      // Find and hide the composer container/elements
+      // Try multiple selectors to find the composer
+      const composerSelectors = [
+        '[class*="composer"]',
+        '[class*="Composer"]',
+        '[class*="input-container"]',
+        '[class*="InputContainer"]',
+        'form',
+        'textarea',
+        'input[type="text"]',
+        '[contenteditable="true"]',
+        'button[type="submit"]',
+        'button[aria-label*="send" i]',
+        'button[aria-label*="Send" i]'
+      ];
+      
+      let hidden = false;
+      composerSelectors.forEach(selector => {
+        const elements = el.shadowRoot.querySelectorAll(selector);
+        elements.forEach(elem => {
+          // Check if element is likely part of the composer
+          const isComposer = elem.closest('[class*="composer"]') || 
+                           elem.closest('form') ||
+                           elem.tagName === 'TEXTAREA' ||
+                           elem.tagName === 'INPUT' ||
+                           (elem.tagName === 'BUTTON' && (
+                             elem.getAttribute('type') === 'submit' ||
+                             elem.getAttribute('aria-label')?.toLowerCase().includes('send')
+                           ));
+          
+          if (isComposer) {
+            elem.style.display = 'none';
+            elem.style.visibility = 'hidden';
+            elem.style.opacity = '0';
+            elem.style.height = '0';
+            elem.style.padding = '0';
+            elem.style.margin = '0';
+            elem.setAttribute('disabled', 'true');
+            elem.setAttribute('aria-hidden', 'true');
+            hidden = true;
+          }
+        });
+      });
+      
+      // Also try to find parent composer container
+      const allElements = el.shadowRoot.querySelectorAll('*');
+      allElements.forEach(elem => {
+        const className = elem.className?.toLowerCase() || '';
+        const id = elem.id?.toLowerCase() || '';
+        
+        if ((className.includes('composer') || 
+             className.includes('input') ||
+             id.includes('composer') ||
+             id.includes('input')) &&
+            !className.includes('message') && 
+            !id.includes('message')) {
+          elem.style.display = 'none';
+          elem.style.visibility = 'hidden';
+          elem.style.opacity = '0';
+          elem.style.height = '0';
+          elem.style.padding = '0';
+          elem.style.margin = '0';
+          hidden = true;
+        }
+      });
+      
+      return hidden;
+    };
+    
+    // Try multiple times with delays to catch ChatKit when it renders
+    const timeouts = [100, 300, 500, 1000, 2000, 3000];
+    timeouts.forEach(delay => {
+      setTimeout(() => {
+        const hidden = hideComposer();
+        if (hidden) {
+          console.log(`[ChatKit] ✅ Composer hidden successfully (delay: ${delay}ms)`);
+        }
+      }, delay);
+    });
+    
+    // Also use MutationObserver to catch dynamic additions
+    const el = document.querySelector('openai-chatkit');
+    if (el?.shadowRoot) {
+      const observer = new MutationObserver(() => {
+        hideComposer();
+      });
+      
+      observer.observe(el.shadowRoot, {
+        childList: true,
+        subtree: true,
+        attributes: false
+      });
+      
+      return () => {
+        observer.disconnect();
+      };
+    }
+  }, [sessionData?.sessionId]);
 
   // CENTRALIZED MESSAGE SEND FUNCTION
   // All messages must go through this function - no direct ChatKit API calls allowed
