@@ -225,6 +225,7 @@ function App() {
           <ChatKitComponent 
             sessionData={sessionData} 
             onSessionUpdate={(freshSession) => setSessionData(freshSession)}
+            user={user}
           />
         )}
       </div>
@@ -232,7 +233,7 @@ function App() {
   );
 }
 
-function ChatKitComponent({ sessionData, onSessionUpdate }) {
+function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   console.log('[ChatKit] ========================================');
   console.log('[ChatKit] Component rendering with sessionData:', sessionData);
   console.log('[ChatKit] SessionData details:', {
@@ -244,14 +245,21 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
     sessionDataKeys: sessionData ? Object.keys(sessionData) : []
   });
   
-  // S3-presigned upload strategy function (following guidance)
-  const uploadStrategy = useCallback(async (file) => {
+  const [uploadingFile, setUploadingFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const fileInputRef = useRef(null);
+  
+  // S3 upload handler following the guidance pattern
+  const handleFileUpload = useCallback(async (file) => {
     try {
+      setUploadingFile(file.name);
+      setUploadStatus('Getting upload URL...');
+      
       // 1) Get presigned PUT URL from server
       const presignResp = await fetch("/api/uploads/presign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // Ensure cookies are sent
+        credentials: "include",
         body: JSON.stringify({ 
           filename: file.name, 
           mime: file.type,
@@ -265,6 +273,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
       }
 
       const { uploadUrl, objectKey } = await presignResp.json();
+      
+      setUploadStatus('Uploading to S3...');
 
       // 2) Upload file directly to S3
       const uploadResp = await fetch(uploadUrl, {
@@ -274,14 +284,16 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
       });
 
       if (!uploadResp.ok) {
-        throw new Error(`Failed to upload to S3: ${uploadResp.status} ${await uploadResp.text()}`);
+        throw new Error(`Failed to upload to S3: ${uploadResp.status}`);
       }
+      
+      setUploadStatus('Importing to OpenAI...');
 
-      // 3) Import from S3 to OpenAI Files API (server streams S3 object)
+      // 3) Import from S3 to OpenAI Files API
       const importResp = await fetch("/api/openai/import-s3", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // Ensure cookies are sent
+        credentials: "include",
         body: JSON.stringify({ 
           objectKey, 
           filename: file.name, 
@@ -295,26 +307,44 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
       }
 
       const { file_id } = await importResp.json();
-
-      // 4) Return message parts that ChatKit will use
-      return {
-        content: [
-          { type: "input_text", text: `Please analyze ${file.name}` },
-          { type: "input_file", file_id } // The key bit - using file_id instead of file_data
-        ]
-      };
+      
+      setUploadStatus(`✓ ${file.name} uploaded successfully! File ID: ${file_id}`);
+      console.log('[ChatKit] File uploaded successfully:', { filename: file.name, file_id, objectKey });
+      
+      // TODO: Send message with file_id to ChatKit
+      // This will require access to ChatKit's send method
+      alert(`File uploaded successfully!\n\nFile ID: ${file_id}\n\nYou can now reference this file in your messages.`);
+      
+      setTimeout(() => {
+        setUploadingFile(null);
+        setUploadStatus('');
+      }, 3000);
+      
     } catch (error) {
-      console.error('[ChatKit] Upload strategy error:', error);
-      throw error;
+      console.error('[ChatKit] Upload error:', error);
+      setUploadStatus(`✗ Error: ${error.message}`);
+      setTimeout(() => {
+        setUploadingFile(null);
+        setUploadStatus('');
+      }, 5000);
     }
   }, []);
-
-  // Composer configuration with attachments enabled
-  // Use useMemo to prevent recreating the object on every render
+  
+  const onFileSelect = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+    // Reset input so same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [handleFileUpload]);
+  
+  // Composer configuration - keep file_upload enabled for session but handle uploads manually
   const composerConfig = useMemo(() => ({
     attachments: {
-      enabled: true,
-      uploadStrategy: uploadStrategy,
+      enabled: false, // Disable to prevent built-in upload mechanism
       maxSize: 20 * 1024 * 1024, // 20MB per file
       maxCount: 3,
       accept: {
@@ -328,7 +358,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]
       },
     },
-  }), [uploadStrategy]);
+  }), []);
   
   console.log('[ChatKit] Composer configuration:', JSON.stringify(composerConfig, null, 2));
   
@@ -574,7 +604,58 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
   }
 
   return (
-    <div style={{ width: '100%', height: '600px', display: 'block' }}>
+    <div style={{ width: '100%', height: '600px', display: 'block', position: 'relative' }}>
+      {/* Custom file upload UI */}
+      <div style={{ 
+        position: 'absolute', 
+        top: '10px', 
+        right: '10px', 
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        alignItems: 'flex-end'
+      }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.csv,.xls,.xlsx"
+          onChange={onFileSelect}
+          style={{ display: 'none' }}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!!uploadingFile}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: uploadingFile ? '#ccc' : '#0066cc',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: uploadingFile ? 'not-allowed' : 'pointer',
+            fontSize: '14px',
+            fontWeight: '500',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}
+        >
+          {uploadingFile ? '📤 Uploading...' : '📎 Upload File'}
+        </button>
+        {uploadStatus && (
+          <div style={{
+            padding: '10px 15px',
+            backgroundColor: 'white',
+            border: '1px solid #ddd',
+            borderRadius: '5px',
+            fontSize: '12px',
+            maxWidth: '300px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            wordBreak: 'break-word'
+          }}>
+            {uploadStatus}
+          </div>
+        )}
+      </div>
+      
       <ChatKit 
         control={control}
         style={{ 
