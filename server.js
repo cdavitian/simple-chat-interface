@@ -1357,7 +1357,16 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                         }
                         return true;
                     })
-                    .map((entry) => ({ ...entry }));
+                    .map((entry) => {
+                        const cloned = { ...entry };
+                        if (entry.file && typeof entry.file === 'object') {
+                            cloned.file = { ...entry.file };
+                        }
+                        if (entry.image && typeof entry.image === 'object') {
+                            cloned.image = { ...entry.image };
+                        }
+                        return cloned;
+                    });
                 
                 // If content array becomes empty after filtering, convert to empty string
                 if (validContent.length === 0) {
@@ -1401,7 +1410,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 if (fileId && typeof fileId === 'string' && fileId.trim()) {
                     content.push({ 
                         type: 'input_file', 
-                        file_id: fileId.trim() 
+                        file: { id: fileId.trim() }
                     });
                 }
             }
