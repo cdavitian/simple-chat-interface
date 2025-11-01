@@ -1073,7 +1073,6 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
 
         const uploaded = await client.files.create({
             file: fileForUpload,
-            filename: resolvedFilename,
             purpose: 'assistants',
         });
 
@@ -1348,33 +1347,142 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             return res.status(400).json({ error: 'Either text or staged_file_ids is required' });
         }
 
-        const conversation = Array.isArray(req.session.sdkConversation)
-            ? [...req.session.sdkConversation]
-            : [];
+        const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const generateToolCallId = () => `mcpl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-        const content = [];
+        const normalizeConversationItem = (item) => {
+            if (!item || typeof item !== 'object') {
+                console.warn('SDK: Skipping non-object conversation item:', item);
+                return null;
+            }
 
-        if (trimmedText) {
-            content.push({ type: 'input_text', text: trimmedText });
-        }
+            const normalized = { ...item };
+            const existingId = typeof normalized.id === 'string' ? normalized.id.trim() : '';
+            const itemType = normalized.type || null;
+            const itemRole = normalized.role || null;
+            const isToolCall = itemType === 'hosted_tool_call' || itemRole === 'tool';
+            const isRecognizedId = (id) => {
+                if (typeof id !== 'string' || !id) return false;
+                return id.startsWith('msg_') || id.startsWith('mcp');
+            };
+            
+            // Ensure ID is valid
+            if (existingId) {
+                if (isToolCall) {
+                    normalized.id = existingId;
+                } else if (isRecognizedId(existingId)) {
+                    normalized.id = existingId;
+                } else if (itemRole === 'user' || itemRole === 'assistant' || itemRole === 'system') {
+                    normalized.id = generateMessageId();
+                } else {
+                    normalized.id = existingId;
+                }
+            } else {
+                normalized.id = isToolCall ? generateToolCallId() : generateMessageId();
+            }
 
-        for (const fileId of fileIds) {
-            content.push({ type: 'input_file', file_id: fileId });
-        }
+            // Handle content based on type
+            if (Array.isArray(normalized.content)) {
+                // Filter out any undefined/null entries and validate structure
+                const validContent = normalized.content
+                    .filter((entry) => {
+                        if (!entry || typeof entry !== 'object') {
+                            console.warn('SDK: Filtering out invalid content entry:', entry);
+                            return false;
+                        }
+                        return true;
+                    })
+                    .map((entry) => {
+                        const cloned = { ...entry };
+                        if (entry.file && typeof entry.file === 'object') {
+                            cloned.file = { ...entry.file };
+                        }
+                        if (entry.image && typeof entry.image === 'object') {
+                            cloned.image = { ...entry.image };
+                        }
+                        return cloned;
+                    });
+                
+                // If content array becomes empty after filtering, convert to empty string
+                if (validContent.length === 0) {
+                    console.warn('SDK: Content array empty after filtering, converting to empty string');
+                    normalized.content = '';
+                } else {
+                    normalized.content = validContent;
+                }
+            } else if (typeof normalized.content !== 'string') {
+                // Content must be either string or array
+                console.warn('SDK: Invalid content type, converting to string:', typeof normalized.content);
+                normalized.content = String(normalized.content || '');
+            }
 
-        const userItem = {
-            id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            role: 'user',
-            content,
-            createdAt: new Date().toISOString(),
+            return normalized;
         };
 
+        const conversation = Array.isArray(req.session.sdkConversation)
+            ? req.session.sdkConversation
+                .map(normalizeConversationItem)
+                .filter(Boolean)
+            : [];
+
+        // For the OpenAI Agents SDK, content can be a string OR an array
+        // Try using just a string for text, and add file_ids as a separate property
+        let userItem;
+        
+        if (fileIds.length > 0) {
+            // When files are present, use array format with input_text and input_file
+            const content = [];
+            
+            if (trimmedText) {
+                content.push({ 
+                    type: 'input_text', 
+                    text: trimmedText 
+                });
+            }
+            
+            // Add each file as a separate content item
+            for (const fileId of fileIds) {
+                if (fileId && typeof fileId === 'string' && fileId.trim()) {
+                    content.push({ 
+                        type: 'input_file', 
+                        file: { id: fileId.trim() }
+                    });
+                }
+            }
+            
+            console.log('SDK: Built content array (with files):', JSON.stringify(content, null, 2));
+            
+            userItem = {
+                role: 'user',
+                content: content,
+                createdAt: new Date().toISOString(),
+                id: generateMessageId()
+            };
+        } else {
+            // When no files, use simple string content
+            console.log('SDK: Using string content (no files):', trimmedText);
+            
+            userItem = {
+                role: 'user',
+                content: trimmedText, // Simple string for text-only messages
+                createdAt: new Date().toISOString(),
+                id: generateMessageId()
+            };
+        }
+
         conversation.push(userItem);
+
+        console.log('SDK conversation payload', JSON.stringify(conversation, null, 2));
 
         const agentResult = await runAgentConversation(conversation);
 
         if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
-            conversation.push(...agentResult.newItems);
+            const normalizedAgentItems = agentResult.newItems
+                .map(normalizeConversationItem)
+                .filter(Boolean);
+            if (normalizedAgentItems.length > 0) {
+                conversation.push(...normalizedAgentItems);
+            }
         }
 
         req.session.sdkConversation = conversation;
@@ -1387,6 +1495,11 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         });
     } catch (error) {
         console.error('Failed to process SDK message:', error);
+        try {
+            console.error('SDK message failure payload:', JSON.stringify(req.session.sdkConversation, null, 2));
+        } catch (logError) {
+            console.error('Unable to stringify SDK conversation for diagnostics:', logError);
+        }
         res.status(500).json({
             error: 'Failed to process message',
             details: error?.message || 'Unknown error',

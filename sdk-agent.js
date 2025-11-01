@@ -106,7 +106,7 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     const newItems = (result?.newItems || []).map((item) => {
       const rawItem = item?.rawItem || item;
       const timestamp = rawItem?.createdAt || new Date().toISOString();
-      const identifier = rawItem?.id || `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const identifier = rawItem?.id || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
       return {
         ...rawItem,
