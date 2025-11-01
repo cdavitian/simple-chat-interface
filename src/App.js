@@ -456,184 +456,128 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     }
   }, [control]);
 
-  // Intercept message sending to attach staged files
+  // CENTRALIZED MESSAGE SEND FUNCTION
+  // All messages must go through this function - no direct ChatKit API calls allowed
+  const sendUserPrompt = useCallback(async (event) => {
+    try {
+      // Prevent form submit or default key handling
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+
+      if (!sessionData?.sessionId) {
+        console.error('[ChatKit] ❌ Cannot send: no sessionId');
+        return;
+      }
+
+      // Get the input element from ChatKit's shadow DOM
+      const el = document.querySelector('openai-chatkit');
+      if (!el?.shadowRoot) {
+        console.error('[ChatKit] ❌ Cannot send: ChatKit element not found');
+        return;
+      }
+
+      const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+      if (!composerInput) {
+        console.error('[ChatKit] ❌ Cannot send: composer input not found');
+        return;
+      }
+
+      // Grab current input text
+      const userPrompt = composerInput.value?.trim() || 
+                         composerInput.textContent?.trim() || 
+                         '';
+
+      // Build content array: text + any staged files
+      const content = fileStager.toMessageContent(userPrompt);
+
+      if (content.length === 0) {
+        console.log('[ChatKit] ⚠️ No content to send (no text and no staged files)');
+        return;
+      }
+
+      console.log('[ChatKit] 📤 [SEND] Outgoing content:', content);
+
+      // Send the user message to the current session via our controlled endpoint
+      const resp = await fetch('/api/chatkit/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          session_id: sessionData.sessionId,
+          text: userPrompt || undefined,
+          staged_file_ids: fileStager.list()
+        })
+      });
+
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error('[ChatKit] ❌ Message send failed:', errorText);
+        throw new Error(`Failed to send message: ${resp.status} ${errorText}`);
+      }
+
+      const result = await resp.json();
+      console.log('[ChatKit] ✅ [SEND] Message sent successfully:', result);
+
+      // Clear the local input and staged files
+      composerInput.value = '';
+      if (composerInput.textContent) composerInput.textContent = '';
+      fileStager.clear();
+
+      // Trigger input event so ChatKit UI updates
+      composerInput.dispatchEvent(new Event('input', { bubbles: true }));
+      
+    } catch (err) {
+      console.error('[ChatKit] ❌ sendUserPrompt failed:', err);
+    }
+  }, [sessionData?.sessionId]);
+
+  // Block all direct ChatKit message API calls - force everything through our controlled endpoint
   useEffect(() => {
     if (!sessionData?.sessionId) {
-      console.log('[ChatKit] ⏳ Waiting for sessionId before setting up intercept...');
       return;
     }
 
-    console.log('[ChatKit] 🔍 Setting up message intercept with sessionId:', sessionData.sessionId);
-    console.log('[ChatKit] 🔍 Current staged files:', fileStager.list());
+    console.log('[ChatKit] 🔒 Blocking direct ChatKit message API calls...');
 
-    // Intercept fetch requests to OpenAI ChatKit API to inject file_ids
     const originalFetch = window.fetch;
-    let interceptActive = true;
+    let blockActive = true;
 
-    const interceptedFetch = async (...args) => {
+    const blockingFetch = async (...args) => {
       const [url, options = {}] = args;
       
-      // Check if this is a ChatKit message/conversation request
-      // Match URLs like: /v1/chatkit/conversation or /chatkit/conversation
+      // Check if this is a ChatKit message creation request
       const urlString = typeof url === 'string' ? url : url?.toString() || '';
-      const isChatKitConversation = urlString.includes('/chatkit/conversation') || 
-                                    urlString.includes('/chatkit/') && 
-                                    (options.method === 'POST' || options.method === 'PUT' || !options.method);
+      const isChatKitMessageCreate = urlString.includes('/chatkit') && 
+                                     urlString.includes('/messages') &&
+                                     (options.method === 'POST' || options.method === 'PUT');
       
-      if (isChatKitConversation) {
-        const stagedFileIds = fileStager.list();
+      if (isChatKitMessageCreate && blockActive) {
+        console.warn('[ChatKit] 🚫 BLOCKED: Direct ChatKit messages.create() call detected');
+        console.warn('[ChatKit] 🚫 All messages must go through sendUserPrompt() function');
         
-        console.log('[ChatKit] 🌐 Intercepted ChatKit API request:', {
-          url: urlString.substring(0, 100),
-          method: options.method || 'GET',
-          hasStagedFiles: stagedFileIds.length > 0,
-          stagedCount: stagedFileIds.length
-        });
-        
-        if (stagedFileIds.length > 0 && interceptActive && (options.method === 'POST' || options.method === 'PUT')) {
-          console.log('[ChatKit] 🌐 Injecting staged files into request');
-          console.log('[ChatKit] 🌐 Staged files:', stagedFileIds);
-          
-          try {
-            // Parse the request body if it exists
-            let requestBody = {};
-            if (options.body) {
-              try {
-                requestBody = typeof options.body === 'string' 
-                  ? JSON.parse(options.body) 
-                  : options.body;
-              } catch (e) {
-                console.warn('[ChatKit] Could not parse request body, treating as new:', e);
-                // If parsing fails, might be FormData or other format - check if it's a message send
-                if (options.body instanceof FormData || typeof options.body !== 'object') {
-                  console.log('[ChatKit] Request body is not JSON, skipping modification');
-                  return originalFetch.apply(window, args);
-                }
-              }
-            }
-
-            // Check if this looks like a message send (has text or is creating a message)
-            const isMessageSend = requestBody.text || 
-                                  requestBody.content || 
-                                  requestBody.message || 
-                                  urlString.includes('/messages');
-
-            if (!isMessageSend) {
-              console.log('[ChatKit] Not a message send request, skipping');
-              return originalFetch.apply(window, args);
-            }
-
-            // Inject file_ids into the request
-            if (!requestBody.content) {
-              requestBody.content = [];
-            }
-            
-            // Add text content if it exists
-            if (requestBody.text) {
-              if (!requestBody.content.find(c => c.type === 'input_text')) {
-                requestBody.content.push({ type: 'input_text', text: requestBody.text });
-              }
-              // Remove text field as we're using content array
-              delete requestBody.text;
-            }
-
-            // Add staged files to content (avoid duplicates)
-            const existingFileIds = new Set(
-              requestBody.content
-                .filter(c => c.type === 'input_file' && c.file_id)
-                .map(c => c.file_id)
-            );
-
-            stagedFileIds.forEach(fileId => {
-              if (!existingFileIds.has(fileId)) {
-                requestBody.content.push({ type: 'input_file', file_id: fileId });
-                console.log('[ChatKit] 🌐 Added file_id to request:', fileId);
-              }
-            });
-
-            console.log('[ChatKit] 🌐 Modified request body:', JSON.stringify(requestBody, null, 2));
-            console.log('[ChatKit] 🌐 Final content array:', requestBody.content);
-
-            // Update options with modified body
-            options.body = JSON.stringify(requestBody);
-            options.headers = {
-              ...options.headers,
-              'Content-Type': 'application/json'
-            };
-
-            // Clear staged files after intercepting (but only if we successfully modified)
-            fileStager.clear();
-            console.log('[ChatKit] 🗑️ Cleared staged files after fetch intercept');
-          } catch (e) {
-            console.error('[ChatKit] ❌ Error modifying fetch request:', e);
-            // Don't clear files if modification failed
-          }
-        }
+        // Return a rejected promise to prevent the call
+        return Promise.reject(new Error('Direct ChatKit message API calls are disabled. Use sendUserPrompt() instead.'));
       }
 
-      // Call original fetch
+      // Allow all other requests to proceed normally
       return originalFetch.apply(window, args);
     };
 
     // Override fetch
-    window.fetch = interceptedFetch;
-    console.log('[ChatKit] ✅ Fetch intercept installed');
+    window.fetch = blockingFetch;
 
     return () => {
-      // Restore original fetch on cleanup
       window.fetch = originalFetch;
-      interceptActive = false;
-      console.log('[ChatKit] 🧹 Fetch intercept removed');
+      blockActive = false;
+      console.log('[ChatKit] 🧹 Message blocking removed');
     };
   }, [sessionData?.sessionId]);
 
-  // Keep DOM intercept as backup, but fetch intercept is primary
+  // DOM interceptors: capture all message send attempts and route through sendUserPrompt
   useEffect(() => {
     if (!sessionData?.sessionId) {
       return;
     }
-
-    const sendMessageWithStagedFiles = async (text) => {
-      try {
-        const stagedFileIds = fileStager.list();
-        console.log('[ChatKit] 📤 Sending message with staged files:', {
-          text: text?.substring(0, 50),
-          stagedCount: stagedFileIds.length,
-          stagedIds: stagedFileIds
-        });
-
-        if (!text && stagedFileIds.length === 0) {
-          console.log('[ChatKit] ⚠️ No text and no staged files, skipping send');
-          return;
-        }
-
-        const resp = await fetch('/api/chatkit/message', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            session_id: sessionData.sessionId,
-            text: text || undefined,
-            staged_file_ids: stagedFileIds
-          })
-        });
-
-        if (!resp.ok) {
-          const errorText = await resp.text();
-          console.error('[ChatKit] ❌ Message send failed:', errorText);
-          throw new Error(`Failed to send message: ${resp.status}`);
-        }
-
-        const result = await resp.json();
-        console.log('[ChatKit] ✅ Message sent successfully:', result);
-
-        // Clear staged files after sending
-        fileStager.clear();
-        console.log('[ChatKit] 🗑️ Cleared staged files');
-      } catch (e) {
-        console.error('[ChatKit] ❌ Message send error:', e);
-      }
-    };
 
     const attachInterceptIfPossible = () => {
       const el = document.querySelector('openai-chatkit');
@@ -662,28 +606,15 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
 
       console.log('[ChatKit] 🔧 Attaching intercept to composer input');
 
-      // Intercept Enter key
+      // Intercept Enter key - route through sendUserPrompt
       const keydownHandler = async (evt) => {
         if (evt.key === 'Enter' && !evt.shiftKey) {
-          evt.preventDefault();
-          evt.stopPropagation();
-          
-          const text = composerInput.value?.trim() || 
-                       composerInput.textContent?.trim() || 
-                       '';
-          
-          console.log('[ChatKit] ⌨️ Enter pressed, intercepted message:', text.substring(0, 50));
-          
-          await sendMessageWithStagedFiles(text);
-          
-          // Clear the input
-          composerInput.value = '';
-          if (composerInput.textContent) composerInput.textContent = '';
-          composerInput.dispatchEvent(new Event('input', { bubbles: true }));
+          console.log('[ChatKit] ⌨️ Enter pressed, routing through sendUserPrompt');
+          await sendUserPrompt(evt);
         }
       };
 
-      // Intercept send button clicks
+      // Intercept send button clicks - route through sendUserPrompt
       const clickHandler = async (evt) => {
         const target = evt.target;
         // Look for send button (common patterns)
@@ -691,41 +622,16 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
             target.closest('button')?.ariaLabel?.toLowerCase().includes('send') ||
             target.closest('[role="button"]')?.getAttribute('aria-label')?.toLowerCase().includes('send')) {
           
-          evt.preventDefault();
-          evt.stopPropagation();
-          
-          const text = composerInput.value?.trim() || 
-                       composerInput.textContent?.trim() || 
-                       '';
-          
-          console.log('[ChatKit] 🖱️ Send button clicked, intercepted message:', text.substring(0, 50));
-          
-          await sendMessageWithStagedFiles(text);
-          
-          // Clear the input
-          composerInput.value = '';
-          if (composerInput.textContent) composerInput.textContent = '';
-          composerInput.dispatchEvent(new Event('input', { bubbles: true }));
+          console.log('[ChatKit] 🖱️ Send button clicked, routing through sendUserPrompt');
+          await sendUserPrompt(evt);
         }
       };
 
-      // Intercept form submissions (fallback)
+      // Intercept form submissions - route through sendUserPrompt
       const formSubmitHandler = async (evt) => {
         if (evt.target.tagName === 'FORM' || evt.target.closest('form')) {
-          evt.preventDefault();
-          evt.stopPropagation();
-          
-          const text = composerInput.value?.trim() || 
-                       composerInput.textContent?.trim() || 
-                       '';
-          
-          console.log('[ChatKit] 📝 Form submit intercepted:', text.substring(0, 50));
-          
-          await sendMessageWithStagedFiles(text);
-          
-          // Clear the input
-          composerInput.value = '';
-          if (composerInput.textContent) composerInput.textContent = '';
+          console.log('[ChatKit] 📝 Form submit intercepted, routing through sendUserPrompt');
+          await sendUserPrompt(evt);
         }
       };
 
@@ -801,14 +707,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         if (!composerInput._fileStagerInterceptAttached) {
           const text = composerInput?.value?.trim() || composerInput?.textContent?.trim() || '';
           if (text || fileStager.list().length > 0) {
-            console.log('[ChatKit] 🌐 Global intercept triggered as fallback');
-            evt.preventDefault();
-            evt.stopPropagation();
-            await sendMessageWithStagedFiles(text);
-            
-            // Clear the input
-            composerInput.value = '';
-            if (composerInput.textContent) composerInput.textContent = '';
+            console.log('[ChatKit] 🌐 Global intercept triggered as fallback, routing through sendUserPrompt');
+            await sendUserPrompt(evt);
           }
         }
       }
@@ -835,7 +735,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         }
       }
     };
-  }, [sessionData?.sessionId]);
+  }, [sessionData?.sessionId, sendUserPrompt]);
 
   // Log when component re-renders
   useEffect(() => {
