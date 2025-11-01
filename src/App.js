@@ -251,7 +251,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   const fileInputRef = useRef(null);
   
   // S3 upload handler following the guidance pattern
-  const handleFileUpload = useCallback(async (file, chatkitMethods) => {
+  const handleFileUpload = useCallback(async (file) => {
     try {
       setUploadingFile(file.name);
       setUploadStatus('Getting upload URL...');
@@ -310,18 +310,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       const { file_id } = await importResp.json();
       
       setUploadedFileId(file_id);
-      setUploadStatus(`✓ ${file.name} uploaded! Sending to ChatKit...`);
-      console.log('[ChatKit] File uploaded successfully:', { filename: file.name, file_id, objectKey });
-      
-      // File uploaded successfully to OpenAI Files API
-      // ChatKit React doesn't have a programmatic send API, so we show the file_id
-      // and let the user type a message to analyze it
-      setUploadStatus(`✓ ${file.name} ready!\n\nFile ID: ${file_id}\n\nNow type: "Please analyze the file I just uploaded"`);
-      console.log('[ChatKit] File uploaded to OpenAI Files API. File ID:', file_id);
-      console.log('[ChatKit] File should be available to workflow with purpose=assistants');
-      
-      // Store the file_id
-      setUploadedFileId(file_id);
+      setUploadStatus(`✓ ${file.name} uploaded! The file will be used on your next prompt.`);
+      console.log('[ChatKit] File uploaded successfully and stashed for quiet ingest:', { filename: file.name, file_id, objectKey });
       
       setTimeout(() => {
         setUploadingFile(null);
@@ -337,18 +327,18 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         setUploadStatus('');
       }, 5000);
     }
-  }, []);
+  }, [sessionData]);
   
   const onFileSelect = useCallback((e) => {
     const file = e.target.files?.[0];
     if (file) {
-      handleFileUpload(file, chatkit);
+      handleFileUpload(file);
     }
     // Reset input so same file can be selected again
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [handleFileUpload, chatkit]);
+  }, [handleFileUpload]);
   
   // Composer configuration - keep file_upload enabled for session but handle uploads manually
   const composerConfig = useMemo(() => ({
@@ -460,118 +450,77 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     console.log('[ChatKit] 🔍 useEffect triggered, checking ChatKit element...');
     console.log('[ChatKit] 🔍 SessionData in effect:', !!sessionData);
     
-    const checkElement = () => {
+    const attachInterceptIfPossible = () => {
       const el = document.querySelector('openai-chatkit');
-      console.log('[ChatKit] Element search result:', el ? 'Found' : 'Not found');
-      
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        console.log('[ChatKit] Element bounds:', {
-          width: rect.width,
-          height: rect.height,
-          top: rect.top,
-          left: rect.left,
-          visible: rect.width > 0 && rect.height > 0
-        });
-        
-        console.log('[ChatKit] Element attributes:', Array.from(el.attributes).map(attr => `${attr.name}="${attr.value}"`));
-        
-        // Check shadow DOM
-        const shadowRoot = el.shadowRoot;
-        console.log('[ChatKit] Shadow DOM:', shadowRoot ? 'Present' : 'Missing');
-        
-        if (shadowRoot) {
-          // Look for composer elements in shadow DOM
-          const composer = shadowRoot.querySelector('[data-testid*="composer"], [class*="composer"], textarea, input[type="text"]');
-          console.log('[ChatKit] Composer element in shadow DOM:', composer ? 'Found' : 'Not found');
-          
-          if (composer) {
-            console.log('[ChatKit] Composer element:', {
-              tagName: composer.tagName,
-              className: composer.className,
-              attributes: Array.from(composer.attributes).map(attr => `${attr.name}="${attr.value}"`)
+      if (!el || !el.shadowRoot) return false;
+
+      // Find a likely composer text input/textarea inside the shadow DOM
+      const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"]');
+      if (!composerInput) return false;
+
+      // Avoid duplicate listeners
+      if (composerInput._quietIngestAttached) return true;
+
+      const handler = async (evt) => {
+        try {
+          // Submit on Enter without Shift (allow Shift+Enter for newline)
+          if (evt.key === 'Enter' && !evt.shiftKey) {
+            evt.preventDefault();
+            const text = composerInput.value?.trim();
+            if (!text) return;
+
+            // Send through our server to ensure all stashed files are injected
+            const resp = await fetch('/api/chatkit/message', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                session_id: sessionData?.sessionId,
+                text
+              })
             });
+
+            if (!resp.ok) {
+              const errorText = await resp.text();
+              console.error('[ChatKit] Quiet ingest send failed:', errorText);
+              throw new Error(`Failed to send via quiet ingest: ${resp.status}`);
+            }
+
+            // Clear the input so the user sees it sent
+            composerInput.value = '';
+            composerInput.dispatchEvent(new Event('input', { bubbles: true }));
           }
-          
-          // Look for attachment/paperclip button
-          const attachmentButton = shadowRoot.querySelector('[data-testid*="attach"], [data-testid*="attachment"], [aria-label*="attach"], [class*="attach"], [class*="paperclip"], button[title*="attach"]');
-          console.log('[ChatKit] Attachment button in shadow DOM:', attachmentButton ? 'Found' : 'Not found');
-          
-          if (attachmentButton) {
-            console.log('[ChatKit] Attachment button element:', {
-              tagName: attachmentButton.tagName,
-              className: attachmentButton.className,
-              ariaLabel: attachmentButton.getAttribute('aria-label'),
-              title: attachmentButton.getAttribute('title'),
-              hidden: attachmentButton.hasAttribute('hidden'),
-              style: attachmentButton.style.display,
-              computedStyle: getComputedStyle(attachmentButton).display
-            });
-          } else {
-            // Log all buttons in the composer area to see what's available
-            const allButtons = shadowRoot.querySelectorAll('button');
-            console.log('[ChatKit] All buttons in shadow DOM:', allButtons.length);
-            allButtons.forEach((btn, idx) => {
-              console.log(`[ChatKit] Button ${idx}:`, {
-                text: btn.textContent?.trim(),
-                ariaLabel: btn.getAttribute('aria-label'),
-                title: btn.getAttribute('title'),
-                className: btn.className,
-                hidden: btn.hasAttribute('hidden'),
-                display: getComputedStyle(btn).display
-              });
-            });
-          }
-          
-          // Log all elements with common attachment-related classes/attributes
-          const attachmentElements = shadowRoot.querySelectorAll('[class*="attach"], [data-testid*="attach"], [aria-label*="file"], [title*="file"]');
-          console.log('[ChatKit] Elements with attachment-related attributes:', attachmentElements.length);
-          attachmentElements.forEach((elem, idx) => {
-            console.log(`[ChatKit] Attachment element ${idx}:`, {
-              tagName: elem.tagName,
-              className: elem.className,
-              ariaLabel: elem.getAttribute('aria-label'),
-              title: elem.getAttribute('title'),
-              hidden: elem.hasAttribute('hidden'),
-              display: getComputedStyle(elem).display
-            });
-          });
+        } catch (e) {
+          console.error('[ChatKit] Quiet ingest error:', e);
         }
-        
-        // Avoid calling setOptions directly here; the React wrapper applies options
-        
-        // Check element's internal state if accessible
-        if (el._options || el.options || el.config) {
-          console.log('[ChatKit] Element internal options/config:', {
-            has_options: !!el._options,
-            has_options_prop: !!el.options,
-            has_config: !!el.config
-          });
+      };
+
+      composerInput.addEventListener('keydown', handler, { capture: true });
+      composerInput._quietIngestAttached = true;
+      console.log('[ChatKit] ✅ Quiet ingest intercept attached to composer');
+      return true;
+    };
+
+    // Try a few times in case the element renders later
+    const timeouts = [0, 300, 1000, 2000];
+    let attached = false;
+    timeouts.forEach((t) => {
+      setTimeout(() => {
+        if (!attached) attached = attachInterceptIfPossible();
+      }, t);
+    });
+
+    return () => {
+      const el = document.querySelector('openai-chatkit');
+      if (el?.shadowRoot) {
+        const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"]');
+        if (composerInput && composerInput._quietIngestAttached) {
+          // We can't easily remove the anonymous handler reference; keep it simple and let it persist.
+          // In normal SPA usage this component won't unmount often.
         }
-        
-        console.log('[ChatKit] Element styles:', {
-          display: getComputedStyle(el).display,
-          visibility: getComputedStyle(el).visibility,
-          opacity: getComputedStyle(el).opacity,
-          height: getComputedStyle(el).height,
-          width: getComputedStyle(el).width
-        });
-      } else {
-        console.warn('[ChatKit] No ChatKit element found in DOM');
       }
     };
-    
-    // Check immediately, after a short delay, and after longer delay
-    checkElement();
-    setTimeout(() => {
-      console.log('[ChatKit] Re-checking after 500ms...');
-      checkElement();
-    }, 500);
-    setTimeout(() => {
-      console.log('[ChatKit] Re-checking after 2000ms...');
-      checkElement();
-    }, 2000);
-  }, [sessionData, composerConfig]);
+  }, [sessionData]);
 
   // Log when component re-renders
   useEffect(() => {

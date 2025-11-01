@@ -1076,8 +1076,25 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
             bytes: uploadedFile.bytes
         });
 
+        // Quiet ingest: stash file_id in the user's session for later injection
+        try {
+            if (!Array.isArray(req.session.chatkitFileIds)) {
+                req.session.chatkitFileIds = [];
+            }
+            if (!req.session.chatkitFileIds.includes(uploadedFile.id)) {
+                req.session.chatkitFileIds.push(uploadedFile.id);
+            }
+            console.log('Stashed file_id for quiet ingest:', {
+                file_id: uploadedFile.id,
+                totalStashed: req.session.chatkitFileIds.length
+            });
+        } catch (e) {
+            console.warn('Unable to stash file_id in session:', e?.message);
+        }
+
         res.json({
-            file_id: uploadedFile.id
+            file_id: uploadedFile.id,
+            stashed_count: Array.isArray(req.session.chatkitFileIds) ? req.session.chatkitFileIds.length : 0
         });
     } catch (error) {
         console.error('Failed to import S3 file to OpenAI:', error);
@@ -1112,18 +1129,31 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             return res.status(500).json({ error: 'OpenAI client unavailable' });
         }
         
-        // Build content array
+        // Build content array; quietly inject all stashed files for this session
         const content = [];
         if (text) {
             content.push({ type: 'input_text', text: text });
         }
-        if (file_id) {
-            content.push({ type: 'input_file', file_id: file_id });
+
+        const injectedFileIds = new Set();
+        if (Array.isArray(req.session?.chatkitFileIds)) {
+            for (const fid of req.session.chatkitFileIds) {
+                if (typeof fid === 'string' && fid.trim()) {
+                    injectedFileIds.add(fid);
+                }
+            }
+        }
+        if (file_id && typeof file_id === 'string') {
+            injectedFileIds.add(file_id);
+        }
+        for (const fid of injectedFileIds) {
+            content.push({ type: 'input_file', file_id: fid });
         }
         
         console.log('Sending message to ChatKit session:', {
             session_id: effectiveSessionId,
             contentTypes: content.map(c => c.type),
+            injectedFiles: Array.from(injectedFileIds),
             hasText: !!text,
             hasFile: !!file_id
         });
