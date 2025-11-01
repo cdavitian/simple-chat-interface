@@ -82,6 +82,45 @@ AWS.config.update({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
 });
 
+// S3 upload configuration constants
+const S3_UPLOAD_PREFIX = process.env.S3_CHATKIT_UPLOAD_PREFIX || 'chatkit-uploads';
+const S3_MAX_FILE_BYTES = Number(process.env.S3_CHATKIT_MAX_FILE_BYTES || 20 * 1024 * 1024);
+const S3_UPLOAD_URL_TTL = Number(process.env.S3_CHATKIT_UPLOAD_URL_TTL || 15 * 60);
+const S3_DOWNLOAD_URL_TTL = Number(process.env.S3_CHATKIT_DOWNLOAD_URL_TTL || 60 * 60);
+
+// Helper function to convert S3 stream to buffer
+const streamToBuffer = async (stream) => {
+    if (!stream) {
+        return Buffer.alloc(0);
+    }
+
+    if (Buffer.isBuffer(stream)) {
+        return stream;
+    }
+
+    if (typeof stream.transformToByteArray === 'function') {
+        const array = await stream.transformToByteArray();
+        return Buffer.from(array);
+    }
+
+    if (typeof stream.arrayBuffer === 'function') {
+        const arrayBuffer = await stream.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+    }
+
+    if (typeof stream.pipe === 'function') {
+        return await new Promise((resolve, reject) => {
+            const chunks = [];
+            stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+            stream.once('error', (err) => reject(err));
+            stream.once('end', () => resolve(Buffer.concat(chunks)));
+        });
+    }
+
+    // Fallback: assume it's already a buffer or can be converted
+    return Buffer.from(stream);
+};
+
 // Lazy OpenAI client initialization - only create when needed
 let openaiClient = null;
 const getOpenAIClient = () => {
@@ -867,6 +906,165 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             error: 'Failed to process request',
             details: error.message 
         });
+    }
+});
+
+// ============ S3 Upload Endpoints ============
+// Presign S3 upload for ChatKit attachments (following guidance pattern)
+app.post('/api/uploads/presign', requireAuth, async (req, res) => {
+    try {
+        const bucketName = process.env.S3_BUCKET_NAME;
+        const region = process.env.AWS_REGION || 'us-east-1';
+
+        if (!bucketName) {
+            console.error('S3 presign failed: S3_BUCKET_NAME not configured');
+            return res.status(500).json({ error: 'S3 bucket is not configured (S3_BUCKET_NAME)' });
+        }
+
+        if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+            console.error('S3 presign failed: AWS credentials missing');
+            return res.status(500).json({ error: 'AWS credentials are not configured' });
+        }
+
+        const { filename, mime, size } = req.body || {};
+        if (!filename) {
+            return res.status(400).json({ error: 'filename is required' });
+        }
+
+        const safeContentType = (mime && typeof mime === 'string' && mime.trim() !== '')
+            ? mime
+            : 'application/octet-stream';
+
+        if (Number.isFinite(S3_MAX_FILE_BYTES) && S3_MAX_FILE_BYTES > 0 && Number(size) > S3_MAX_FILE_BYTES) {
+            const maxMb = Math.round((S3_MAX_FILE_BYTES / (1024 * 1024)) * 10) / 10;
+            return res.status(413).json({ error: `File exceeds maximum size of ${maxMb} MB` });
+        }
+
+        // Sanitize filename and build an object key namespaced by user
+        const safeName = String(filename).replace(/[^A-Za-z0-9._-]/g, '_');
+        const userId = req.session.user?.id || 'anonymous';
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).slice(2, 8);
+        const normalizedPrefix = S3_UPLOAD_PREFIX.endsWith('/') ? S3_UPLOAD_PREFIX.slice(0, -1) : S3_UPLOAD_PREFIX;
+        const objectKey = `${normalizedPrefix}/${userId}/${timestamp}-${random}-${safeName}`;
+
+        const s3 = new AWS.S3({ region });
+        const uploadUrl = await s3.getSignedUrlPromise('putObject', {
+            Bucket: bucketName,
+            Key: objectKey,
+            Expires: Math.max(S3_UPLOAD_URL_TTL, 60), // ensure at least 60 seconds
+            ContentType: safeContentType
+        });
+
+        console.log('Generated S3 presign for ChatKit upload:', {
+            userId,
+            objectKey,
+            contentType: safeContentType,
+            size,
+            bucketName,
+            region
+        });
+
+        res.json({
+            uploadUrl,
+            objectKey
+        });
+    } catch (error) {
+        console.error('Failed to presign S3 upload:', error);
+        res.status(500).json({ error: 'Failed to presign upload', details: error.message });
+    }
+});
+
+// Import from S3 to OpenAI Files API (following guidance pattern)
+app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
+    try {
+        const bucketName = process.env.S3_BUCKET_NAME;
+        const region = process.env.AWS_REGION || 'us-east-1';
+        const { objectKey, filename, purpose = 'assistants' } = req.body || {};
+
+        if (!bucketName) {
+            console.error('S3 import failed: S3_BUCKET_NAME not configured');
+            return res.status(500).json({ error: 'S3 bucket is not configured (S3_BUCKET_NAME)' });
+        }
+
+        if (!objectKey || typeof objectKey !== 'string') {
+            return res.status(400).json({ error: 'objectKey is required' });
+        }
+
+        if (!process.env.OPENAI_API_KEY) {
+            console.error('S3 import failed: OpenAI API key missing');
+            return res.status(500).json({ error: 'OpenAI API Key not configured' });
+        }
+
+        const s3 = new AWS.S3({ region });
+        let objectData;
+
+        try {
+            objectData = await s3.getObject({ Bucket: bucketName, Key: objectKey }).promise();
+        } catch (error) {
+            console.error('Failed to read S3 object for import:', {
+                objectKey,
+                bucketName,
+                message: error.message,
+                code: error.code
+            });
+            return res.status(404).json({ error: 'Uploaded file not found in S3' });
+        }
+
+        const fileBuffer = await streamToBuffer(objectData.Body);
+
+        if (!fileBuffer?.length) {
+            console.error('S3 import failed: Empty file buffer', { objectKey });
+            return res.status(500).json({ error: 'Failed to read uploaded file from S3' });
+        }
+
+        const client = getOpenAIClient();
+
+        if (!client) {
+            console.error('S3 import failed: OpenAI client unavailable');
+            return res.status(500).json({ error: 'OpenAI client unavailable' });
+        }
+
+        const resolvedFilename = filename || path.basename(objectKey);
+        const resolvedContentType = objectData.ContentType || 'application/octet-stream';
+
+        console.log('Importing S3 file to OpenAI Files API:', {
+            objectKey,
+            resolvedFilename,
+            resolvedContentType,
+            purpose,
+            size: fileBuffer.length
+        });
+
+        // Convert buffer to File-like object for OpenAI
+        // Node.js 18+ has File API, but for compatibility we'll use a File-like object
+        // OpenAI SDK accepts File, Blob, or Buffer
+        let fileForUpload;
+        if (typeof File !== 'undefined') {
+            // Node.js 18+ has native File API
+            fileForUpload = new File([fileBuffer], resolvedFilename, { type: resolvedContentType });
+        } else {
+            // Fallback: use Buffer directly (OpenAI SDK should accept it)
+            fileForUpload = fileBuffer;
+        }
+
+        const uploadedFile = await client.files.create({
+            file: fileForUpload,
+            purpose: purpose
+        });
+
+        console.log('Successfully imported file to OpenAI:', {
+            file_id: uploadedFile.id,
+            filename: uploadedFile.filename,
+            bytes: uploadedFile.bytes
+        });
+
+        res.json({
+            file_id: uploadedFile.id
+        });
+    } catch (error) {
+        console.error('Failed to import S3 file to OpenAI:', error);
+        res.status(500).json({ error: 'Failed to import file from S3 to OpenAI', details: error.message });
     }
 });
 

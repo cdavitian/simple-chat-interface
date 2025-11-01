@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChatKit, useChatKit } from '@openai/chatkit-react';
 import './App.css';
 
@@ -244,14 +244,77 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
     sessionDataKeys: sessionData ? Object.keys(sessionData) : []
   });
   
+  // S3-presigned upload strategy function (following guidance)
+  const uploadStrategy = useCallback(async (file) => {
+    try {
+      // 1) Get presigned PUT URL from server
+      const presignResp = await fetch("/api/uploads/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // Ensure cookies are sent
+        body: JSON.stringify({ 
+          filename: file.name, 
+          mime: file.type,
+          size: file.size
+        })
+      });
+
+      if (!presignResp.ok) {
+        const errorText = await presignResp.text();
+        throw new Error(`Failed to presign upload: ${presignResp.status} ${errorText}`);
+      }
+
+      const { uploadUrl, objectKey } = await presignResp.json();
+
+      // 2) Upload file directly to S3
+      const uploadResp = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type }
+      });
+
+      if (!uploadResp.ok) {
+        throw new Error(`Failed to upload to S3: ${uploadResp.status} ${await uploadResp.text()}`);
+      }
+
+      // 3) Import from S3 to OpenAI Files API (server streams S3 object)
+      const importResp = await fetch("/api/openai/import-s3", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // Ensure cookies are sent
+        body: JSON.stringify({ 
+          objectKey, 
+          filename: file.name, 
+          purpose: "assistants" 
+        })
+      });
+
+      if (!importResp.ok) {
+        const errorText = await importResp.text();
+        throw new Error(`Failed to import from S3: ${importResp.status} ${errorText}`);
+      }
+
+      const { file_id } = await importResp.json();
+
+      // 4) Return message parts that ChatKit will use
+      return {
+        content: [
+          { type: "input_text", text: `Please analyze ${file.name}` },
+          { type: "input_file", file_id } // The key bit - using file_id instead of file_data
+        ]
+      };
+    } catch (error) {
+      console.error('[ChatKit] Upload strategy error:', error);
+      throw error;
+    }
+  }, []);
+
   // Composer configuration with attachments enabled
   // Use useMemo to prevent recreating the object on every render
   const composerConfig = useMemo(() => ({
     attachments: {
       enabled: true,
-      uploadStrategy: {
-        type: 'hosted'
-      },
+      uploadStrategy: uploadStrategy,
       maxSize: 20 * 1024 * 1024, // 20MB per file
       maxCount: 3,
       accept: {
@@ -265,7 +328,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate }) {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]
       },
     },
-  }), []);
+  }), [uploadStrategy]);
   
   console.log('[ChatKit] Composer configuration:', JSON.stringify(composerConfig, null, 2));
   
