@@ -351,7 +351,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     }
   }, [handleFileUpload]);
   
-  // Composer configuration - disable send function by disabling input and attachments
+  // Composer configuration - disable attachments
   const composerConfig = useMemo(() => ({
     attachments: {
       enabled: false, // Disable to prevent built-in upload mechanism
@@ -367,9 +367,6 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         "application/octet-stream": [".csv", ".xls", ".xlsx"],
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]
       },
-    },
-    input: {
-      enabled: false, // Disable input to deactivate send function
     },
   }), []);
   
