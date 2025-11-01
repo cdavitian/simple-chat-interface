@@ -694,6 +694,7 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         console.log('Session created successfully:', {
             hasClientToken: Boolean(session.clientToken),
             hasClientSecret: Boolean(session.client_secret),
+            hasSessionId: Boolean(session.id),
             clientTokenType: typeof session.clientToken,
             clientSecretType: typeof session.client_secret,
             sessionKeys: Object.keys(session)
@@ -701,11 +702,32 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         
         // ChatKit API returns client_secret, not clientToken
         const clientToken = session.clientToken || session.client_secret;
+        const sessionId = session.id;
+        // Persist the latest ChatKit session id in the user's server session for reuse/fallbacks
+        try {
+            req.session.chatkitSessionId = sessionId;
+        } catch (e) {
+            console.warn('Unable to persist chatkitSessionId in session (POST):', e?.message);
+        }
+        // Persist the latest ChatKit session id in the user's server session for reuse/fallbacks
+        try {
+            req.session.chatkitSessionId = sessionId;
+        } catch (e) {
+            console.warn('Unable to persist chatkitSessionId in session (GET):', e?.message);
+        }
         
         if (!clientToken) {
             console.error('ERROR: Neither clientToken nor client_secret found!');
             return res.status(500).json({ 
                 error: 'Session created but no client token found',
+                sessionKeys: Object.keys(session)
+            });
+        }
+        
+        if (!sessionId) {
+            console.error('ERROR: Session ID not found in session response!');
+            return res.status(500).json({ 
+                error: 'Session created but no session ID found',
                 sessionKeys: Object.keys(session)
             });
         }
@@ -737,12 +759,14 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         // Return the session information that ChatKit needs
         const sessionData = {
             clientToken: clientToken,
-            publicKey: publicKey
+            publicKey: publicKey,
+            sessionId: sessionId
         };
         
         console.log('Sending ChatKit session data:', {
             clientToken: clientToken.substring(0, 20) + '...',
-            publicKey: sessionData.publicKey.substring(0, 20) + '...'
+            publicKey: sessionData.publicKey.substring(0, 20) + '...',
+            sessionId: sessionId
         });
         
         res.json(sessionData);
@@ -827,6 +851,7 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         console.log('Session created successfully:', {
             hasClientToken: Boolean(session.clientToken),
             hasClientSecret: Boolean(session.client_secret),
+            hasSessionId: Boolean(session.id),
             clientTokenType: typeof session.clientToken,
             clientSecretType: typeof session.client_secret,
             sessionKeys: Object.keys(session)
@@ -834,11 +859,20 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         
         // ChatKit API returns client_secret, not clientToken
         const clientToken = session.clientToken || session.client_secret;
+        const sessionId = session.id;
         
         if (!clientToken) {
             console.error('ERROR: Neither clientToken nor client_secret found!');
             return res.status(500).json({ 
                 error: 'Session created but no client token found',
+                sessionKeys: Object.keys(session)
+            });
+        }
+        
+        if (!sessionId) {
+            console.error('ERROR: Session ID not found in session response!');
+            return res.status(500).json({ 
+                error: 'Session created but no session ID found',
                 sessionKeys: Object.keys(session)
             });
         }
@@ -870,12 +904,14 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         // Return the session information that ChatKit needs
         const sessionData = {
             clientToken: clientToken,
-            publicKey: publicKey
+            publicKey: publicKey,
+            sessionId: sessionId
         };
         
         console.log('Sending ChatKit session data:', {
             clientToken: clientToken.substring(0, 20) + '...',
-            publicKey: sessionData.publicKey.substring(0, 20) + '...'
+            publicKey: sessionData.publicKey.substring(0, 20) + '...',
+            sessionId: sessionId
         });
         
         res.json(sessionData);
@@ -885,25 +921,6 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         console.error("session.create failed:", error?.response?.data ?? error?.message ?? error);
         res.status(500).json({ 
             error: 'Internal server error',
-            details: error.message 
-        });
-    }
-});
-
-// Simple ChatKit endpoint - just returns success for the web component
-app.post('/api/chatkit/message', requireAuth, async (req, res) => {
-    try {
-        // The ChatKit web component handles the actual chat logic
-        // This endpoint just needs to return success for authentication
-        res.json({
-            success: true,
-            message: 'ChatKit web component will handle the chat'
-        });
-
-    } catch (error) {
-        console.error('ChatKit endpoint error:', error);
-        res.status(500).json({ 
-            error: 'Failed to process request',
             details: error.message 
         });
     }
@@ -1065,6 +1082,74 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
     } catch (error) {
         console.error('Failed to import S3 file to OpenAI:', error);
         res.status(500).json({ error: 'Failed to import file from S3 to OpenAI', details: error.message });
+    }
+});
+
+// Send message to ChatKit session with file attachment
+app.post('/api/chatkit/message', requireAuth, async (req, res) => {
+    try {
+        const { session_id, file_id, text } = req.body || {};
+        
+        // Prefer explicit session_id from the client; fall back to the server-stored session id
+        const effectiveSessionId = session_id || req.session?.chatkitSessionId;
+        if (!effectiveSessionId) {
+            return res.status(400).json({ error: 'session_id is required and no fallback session found on server' });
+        }
+        
+        if (!file_id && !text) {
+            return res.status(400).json({ error: 'Either file_id or text (or both) is required' });
+        }
+        
+        if (!process.env.OPENAI_API_KEY) {
+            console.error('ChatKit message failed: OpenAI API key missing');
+            return res.status(500).json({ error: 'OpenAI API Key not configured' });
+        }
+        
+        const client = getOpenAIClient();
+        
+        if (!client) {
+            console.error('ChatKit message failed: OpenAI client unavailable');
+            return res.status(500).json({ error: 'OpenAI client unavailable' });
+        }
+        
+        // Build content array
+        const content = [];
+        if (text) {
+            content.push({ type: 'input_text', text: text });
+        }
+        if (file_id) {
+            content.push({ type: 'input_file', file_id: file_id });
+        }
+        
+        console.log('Sending message to ChatKit session:', {
+            session_id: effectiveSessionId,
+            contentTypes: content.map(c => c.type),
+            hasText: !!text,
+            hasFile: !!file_id
+        });
+        
+        // Send message using ChatKit API
+        const message = await client.beta.chatkit.messages.create({
+            session_id: effectiveSessionId,
+            role: 'user',
+            content: content
+        });
+        
+        console.log('Message sent successfully:', {
+            message_id: message.id,
+            session_id: effectiveSessionId
+        });
+        
+        res.json({
+            success: true,
+            message_id: message.id
+        });
+    } catch (error) {
+        console.error('Failed to send ChatKit message:', error?.response?.data ?? error);
+        res.status(500).json({ 
+            error: 'Failed to send message to ChatKit', 
+            details: error?.response?.data ?? error?.message ?? String(error)
+        });
     }
 });
 
