@@ -1518,7 +1518,7 @@ app.post('/api/sdk/conversation/reset', requireAuth, checkUserPermissions, (req,
 
 app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res) => {
     try {
-        const { text, staged_file_ids } = req.body || {};
+        const { text, staged_file_ids, staged_files } = req.body || {};
         const trimmedText = typeof text === 'string' ? text.trim() : '';
         const fileIds = Array.isArray(staged_file_ids)
             ? staged_file_ids.filter((fid) => typeof fid === 'string' && fid.trim())
@@ -1526,6 +1526,30 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
 
         if (!trimmedText && fileIds.length === 0) {
             return res.status(400).json({ error: 'Either text or staged_file_ids is required' });
+        }
+        
+        // Build file metadata map from staged_files and session
+        const fileMetadataMap = new Map();
+        
+        // First, load from staged_files if provided by client
+        if (Array.isArray(staged_files)) {
+            staged_files.forEach(fileData => {
+                if (fileData && fileData.file_id) {
+                    fileMetadataMap.set(fileData.file_id, fileData);
+                }
+            });
+        }
+        
+        // Then, overlay with session metadata if available
+        if (req.session.chatkitFilesMetadata) {
+            Object.entries(req.session.chatkitFilesMetadata).forEach(([fileId, metadata]) => {
+                if (fileIds.includes(fileId)) {
+                    fileMetadataMap.set(fileId, {
+                        file_id: fileId,
+                        ...metadata
+                    });
+                }
+            });
         }
 
         const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1611,8 +1635,9 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         let userItem;
         
         if (fileIds.length > 0) {
-            // When files are present, use array format with input_text and input_file
+            // When files are present, use array format with input_text and input_file/context_file
             const content = [];
+            const attachments = [];
             
             if (trimmedText) {
                 content.push({ 
@@ -1621,17 +1646,43 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 });
             }
             
-            // Add each file as a separate content item
+            // Add each file as a separate content item with proper type and attachments
             for (const fileId of fileIds) {
                 if (fileId && typeof fileId === 'string' && fileId.trim()) {
-                    content.push({ 
-                        type: 'input_file', 
-                        file: { id: fileId.trim() }
+                    const trimmedFileId = fileId.trim();
+                    const metadata = fileMetadataMap.get(trimmedFileId);
+                    
+                    // Use getFileConfig to determine category and type
+                    const fileConfig = getFileConfig(metadata || {});
+                    const category = fileConfig?.category || 'default';
+                    const messageType = fileConfig?.messageType || 'input_file';
+                    
+                    console.log(`SDK: Processing file ${trimmedFileId}:`, {
+                        category,
+                        messageType,
+                        metadata
                     });
+                    
+                    // Add to content array with correct type
+                    content.push({ 
+                        type: messageType,
+                        file: { id: trimmedFileId }
+                    });
+                    
+                    // For code_interpreter files, add attachments
+                    if (category === 'code_interpreter') {
+                        attachments.push({
+                            file_id: trimmedFileId,
+                            tools: [{ type: 'code_interpreter' }]
+                        });
+                    }
                 }
             }
             
             console.log('SDK: Built content array (with files):', JSON.stringify(content, null, 2));
+            if (attachments.length > 0) {
+                console.log('SDK: Built attachments array:', JSON.stringify(attachments, null, 2));
+            }
             
             userItem = {
                 role: 'user',
@@ -1639,6 +1690,11 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 createdAt: new Date().toISOString(),
                 id: generateMessageId()
             };
+            
+            // Add attachments if present
+            if (attachments.length > 0) {
+                userItem.attachments = attachments;
+            }
         } else {
             // When no files, use simple string content
             console.log('SDK: Using string content (no files):', trimmedText);
