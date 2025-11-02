@@ -8,6 +8,15 @@ const {
 const { OpenAI } = require('openai');
 const { runGuardrails } = require('@openai/guardrails');
 
+// Try to import fileSearchTool from @openai/agents-openai
+let fileSearchTool = null;
+try {
+  const { fileSearchTool: fileSearchToolImport } = require('@openai/agents-openai');
+  fileSearchTool = fileSearchToolImport;
+} catch (e) {
+  console.warn('@openai/agents-openai not available, file_search will not be enabled:', e?.message);
+}
+
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const guardrailsConfig = {
@@ -64,28 +73,41 @@ function createHostedMcpTool() {
   });
 }
 
-const tools = [codeInterpreter];
-const hostedMcp = createHostedMcpTool();
-if (hostedMcp) {
-  tools.push(hostedMcp);
+function createAgent(vectorStoreId = null) {
+  const tools = [codeInterpreter];
+  const hostedMcp = createHostedMcpTool();
+  if (hostedMcp) {
+    tools.push(hostedMcp);
+  }
+
+  // Add file search tool if vector store is provided and fileSearchTool is available
+  if (vectorStoreId && fileSearchTool) {
+    try {
+      const fileSearch = fileSearchTool(vectorStoreId);
+      tools.push(fileSearch);
+      console.log('SDK Agent: Added fileSearchTool with vector store:', vectorStoreId);
+    } catch (e) {
+      console.warn('Failed to create fileSearchTool:', e?.message);
+    }
+  }
+
+  return new Agent({
+    name: process.env.SDK_AGENT_NAME || 'My agent',
+    instructions:
+      process.env.SDK_AGENT_INSTRUCTIONS || 'Allow the user to query the MCP data sources.',
+    model: process.env.SDK_AGENT_MODEL || 'gpt-5',
+    tools,
+    modelSettings: {
+      reasoning: {
+        effort: 'low',
+        summary: 'auto',
+      },
+      store: true,
+    },
+  });
 }
 
-const agent = new Agent({
-  name: process.env.SDK_AGENT_NAME || 'My agent',
-  instructions:
-    process.env.SDK_AGENT_INSTRUCTIONS || 'Allow the user to query the MCP data sources.',
-  model: process.env.SDK_AGENT_MODEL || 'gpt-5',
-  tools,
-  modelSettings: {
-    reasoning: {
-      effort: 'low',
-      summary: 'auto',
-    },
-    store: true,
-  },
-});
-
-async function runAgentConversation(conversationHistory, traceName = 'MCP Prod Test') {
+async function runAgentConversation(conversationHistory, traceName = 'MCP Prod Test', vectorStoreId = null) {
   console.log('runAgentConversation called with:', {
     isArray: Array.isArray(conversationHistory),
     length: conversationHistory?.length,
@@ -100,6 +122,9 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
   console.log('Agent receiving conversation:', JSON.stringify(conversationHistory, null, 2));
 
   return withTrace(traceName, async () => {
+    // Create agent with vector store if provided
+    const agent = createAgent(vectorStoreId);
+    
     const runner = new Runner({
       traceMetadata: {
         __trace_source__: 'agent-builder',

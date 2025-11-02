@@ -625,6 +625,47 @@ app.get('/api/user', (req, res) => {
     res.status(401).json({ error: 'Authentication required' });
 });
 
+// Helper function to get or create vector store for a session
+async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
+    try {
+        // Check if we already have a vector store for this session
+        if (sessionObj?.vectorStoreId) {
+            try {
+                // Verify the vector store still exists
+                await client.beta.vectorStores.retrieve(sessionObj.vectorStoreId);
+                console.log('Using existing vector store:', sessionObj.vectorStoreId);
+                return sessionObj.vectorStoreId;
+            } catch (e) {
+                console.warn('Existing vector store not found, creating new one:', e?.message);
+                // If it doesn't exist, create a new one
+            }
+        }
+
+        // Create a new vector store for this session
+        const vectorStoreName = `session:${sessionId || `user_${userId}_${Date.now()}`}`;
+        const vectorStore = await client.beta.vectorStores.create({
+            name: vectorStoreName,
+        });
+
+        console.log('Created new vector store:', {
+            vectorStoreId: vectorStore.id,
+            name: vectorStoreName
+        });
+
+        // Store vector store ID in session
+        try {
+            sessionObj.vectorStoreId = vectorStore.id;
+        } catch (e) {
+            console.warn('Unable to persist vectorStoreId in session:', e?.message);
+        }
+
+        return vectorStore.id;
+    } catch (error) {
+        console.error('Failed to get or create vector store:', error);
+        throw error;
+    }
+}
+
 // ChatKit session endpoint - generates client tokens for ChatKit
 // Supports both GET and POST for flexibility
 app.get('/api/chatkit/session', requireAuth, async (req, res) => {
@@ -715,12 +756,19 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         // ChatKit API returns client_secret, not clientToken
         const clientToken = session.clientToken || session.client_secret;
         const sessionId = session.id;
-        // Persist the latest ChatKit session id in the user's server session for reuse/fallbacks
+        
+        // Create or get vector store for this session
         try {
-            req.session.chatkitSessionId = sessionId;
-        } catch (e) {
-            console.warn('Unable to persist chatkitSessionId in session (POST):', e?.message);
+            const vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
+            console.log('Vector store ready for session:', {
+                sessionId,
+                vectorStoreId
+            });
+        } catch (vectorStoreError) {
+            console.warn('Failed to create vector store (non-fatal):', vectorStoreError?.message);
+            // Continue even if vector store creation fails
         }
+        
         // Persist the latest ChatKit session id in the user's server session for reuse/fallbacks
         try {
             req.session.chatkitSessionId = sessionId;
@@ -882,6 +930,18 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         // ChatKit API returns client_secret, not clientToken
         const clientToken = session.clientToken || session.client_secret;
         const sessionId = session.id;
+        
+        // Create or get vector store for this session
+        try {
+            const vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
+            console.log('Vector store ready for session (POST):', {
+                sessionId,
+                vectorStoreId
+            });
+        } catch (vectorStoreError) {
+            console.warn('Failed to create vector store (non-fatal):', vectorStoreError?.message);
+            // Continue even if vector store creation fails
+        }
         
         if (!clientToken) {
             console.error('ERROR: Neither clientToken nor client_secret found!');
@@ -1106,6 +1166,25 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
             content_type: resolvedContentType
         });
 
+        // Add file to session's vector store for persistent file awareness
+        try {
+            const vectorStoreId = req.session?.vectorStoreId;
+            if (vectorStoreId) {
+                await client.beta.vectorStores.files.create(vectorStoreId, {
+                    file_id: uploaded.id
+                });
+                console.log('Added file to vector store (ingest-s3):', {
+                    file_id: uploaded.id,
+                    vectorStoreId
+                });
+            } else {
+                console.warn('No vector store found in session, file not added to vector store');
+            }
+        } catch (vectorStoreError) {
+            console.warn('Failed to add file to vector store (non-fatal):', vectorStoreError?.message);
+            // Continue even if vector store addition fails
+        }
+
         let fileConfig;
 
         try {
@@ -1231,7 +1310,26 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
             bytes: uploadedFile.bytes
         });
 
-        // Quiet ingest: stash file_id in the user's session for later injection
+        // Add file to session's vector store for persistent file awareness
+        try {
+            const vectorStoreId = req.session?.vectorStoreId;
+            if (vectorStoreId) {
+                await client.beta.vectorStores.files.create(vectorStoreId, {
+                    file_id: uploadedFile.id
+                });
+                console.log('Added file to vector store:', {
+                    file_id: uploadedFile.id,
+                    vectorStoreId
+                });
+            } else {
+                console.warn('No vector store found in session, file not added to vector store');
+            }
+        } catch (vectorStoreError) {
+            console.warn('Failed to add file to vector store (non-fatal):', vectorStoreError?.message);
+            // Continue even if vector store addition fails
+        }
+
+        // Quiet ingest: stash file_id in the user's session for later injection (legacy support)
         try {
             if (!Array.isArray(req.session.chatkitFileIds)) {
                 req.session.chatkitFileIds = [];
@@ -1475,10 +1573,26 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         // Generate the assistant's reply (visible to the user)
         // store: true ensures logs are stored in OpenAI Platform (default behavior)
         // Note: If Zero Data Retention (ZDR) is enabled at org level, store will be treated as false
-        const response = await client.beta.chatkit.responses.create({
+        const responseConfig = {
             session_id: effectiveSessionId,
             store: true  // Explicitly enable logging - logs stored for up to 30 days
-        });
+        };
+
+        // Add file_search tool with vector store if available
+        const vectorStoreId = req.session?.vectorStoreId;
+        if (vectorStoreId) {
+            responseConfig.tool_resources = {
+                file_search: {
+                    vector_store_ids: [vectorStoreId]
+                }
+            };
+            console.log('ChatKit response will use vector store for file_search:', {
+                session_id: effectiveSessionId,
+                vectorStoreId
+            });
+        }
+
+        const response = await client.beta.chatkit.responses.create(responseConfig);
 
         console.log('Response created successfully:', {
             response_id: response.id,
@@ -1534,6 +1648,18 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
 
         if (!trimmedText && fileIds.length === 0) {
             return res.status(400).json({ error: 'Either text or staged_file_ids is required' });
+        }
+
+        // Ensure vector store exists for SDK conversations
+        const client = getOpenAIClient();
+        if (client) {
+            try {
+                const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const sdkSessionId = `sdk_${userId}_${req.sessionID}`;
+                await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
+            } catch (vectorStoreError) {
+                console.warn('Failed to ensure vector store for SDK (non-fatal):', vectorStoreError?.message);
+            }
         }
         
         // Build file metadata map from staged_files and session
@@ -1764,7 +1890,15 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         console.log('Cleaned conversation length:', cleanedConversation.length);
         console.log('Cleaned conversation has attachments:', cleanedConversation[0]?.attachments?.length > 0);
 
-        const agentResult = await runAgentConversation(cleanedConversation);
+        // Get vector store ID from session for persistent file awareness
+        const vectorStoreId = req.session?.vectorStoreId;
+        if (vectorStoreId) {
+            console.log('SDK: Using vector store for file awareness:', vectorStoreId);
+        } else {
+            console.warn('SDK: No vector store found in session');
+        }
+
+        const agentResult = await runAgentConversation(cleanedConversation, 'SDK Conversation', vectorStoreId);
 
         if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
             const normalizedAgentItems = agentResult.newItems
