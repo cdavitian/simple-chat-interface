@@ -628,6 +628,31 @@ app.get('/api/user', (req, res) => {
 // Helper function to get or create vector store for a session
 async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
     try {
+        // Validate client
+        if (!client) {
+            throw new Error('OpenAI client is null or undefined');
+        }
+
+        // Log client structure for debugging
+        console.log('🔍 Checking OpenAI client structure:', {
+            hasClient: !!client,
+            hasBeta: !!client.beta,
+            betaKeys: client.beta ? Object.keys(client.beta) : [],
+            hasVectorStores: !!(client.beta?.vectorStores),
+            clientType: client?.constructor?.name
+        });
+
+        // Validate that the vectorStores API is available
+        if (!client.beta || !client.beta.vectorStores) {
+            const errorMsg = 'Vector stores API not available in OpenAI client. ' +
+                `Client structure: ${client ? 'exists' : 'null'}, ` +
+                `beta: ${client?.beta ? 'exists' : 'null'}, ` +
+                `vectorStores: ${client?.beta?.vectorStores ? 'exists' : 'null'}, ` +
+                `Available beta APIs: ${client?.beta ? Object.keys(client.beta).join(', ') : 'none'}`;
+            console.error('❌ Vector stores API not available:', errorMsg);
+            throw new Error(errorMsg);
+        }
+
         // Check if we already have a vector store for this session
         if (sessionObj?.vectorStoreId) {
             try {
