@@ -625,18 +625,19 @@ app.get('/api/user', (req, res) => {
     res.status(401).json({ error: 'Authentication required' });
 });
 
-// Helper function to create/retrieve vector store via HTTP API (fallback when SDK doesn't support it)
+// Helper functions for vector store operations via HTTP API
+// Used when the SDK doesn't expose beta.vectorStores (e.g., SDK v6.5.0)
+// Following OpenAI API: POST https://api.openai.com/v1/vector_stores
+
 async function createVectorStoreViaHTTP(name, apiKey) {
     const https = require('https');
-    const { URL } = require('url');
     
     return new Promise((resolve, reject) => {
-        const apiUrl = new URL('https://api.openai.com/v1/vector_stores');
         const postData = JSON.stringify({ name });
         
         const options = {
-            hostname: apiUrl.hostname,
-            path: apiUrl.pathname,
+            hostname: 'api.openai.com',
+            path: '/v1/vector_stores',
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -652,33 +653,53 @@ async function createVectorStoreViaHTTP(name, apiKey) {
             res.on('end', () => {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     try {
-                        resolve(JSON.parse(data));
+                        const parsed = JSON.parse(data);
+                        console.log('✅ HTTP API vector store operation successful:', {
+                            statusCode: res.statusCode,
+                            operation: 'create',
+                            vectorStoreId: parsed.id
+                        });
+                        resolve(parsed);
                     } catch (e) {
-                        reject(new Error(`Failed to parse response: ${e.message}`));
+                        console.error('❌ Failed to parse HTTP response:', {
+                            error: e.message,
+                            body: data,
+                            statusCode: res.statusCode
+                        });
+                        reject(new Error(`Failed to parse response: ${e.message}, body: ${data}`));
                     }
                 } else {
+                    console.error('❌ HTTP API error response:', {
+                        statusCode: res.statusCode,
+                        headers: res.headers,
+                        body: data,
+                        operation: 'create vector store'
+                    });
                     reject(new Error(`HTTP ${res.statusCode}: ${data}`));
                 }
             });
         });
         
-        req.on('error', reject);
+        req.on('error', (error) => {
+            console.error('❌ HTTP request error:', {
+                error: error.message,
+                stack: error.stack,
+                operation: 'create vector store'
+            });
+            reject(error);
+        });
         req.write(postData);
         req.end();
     });
 }
 
-// Helper function to retrieve vector store via HTTP API
 async function retrieveVectorStoreViaHTTP(vectorStoreId, apiKey) {
     const https = require('https');
-    const { URL } = require('url');
     
     return new Promise((resolve, reject) => {
-        const apiUrl = new URL(`https://api.openai.com/v1/vector_stores/${vectorStoreId}`);
-        
         const options = {
-            hostname: apiUrl.hostname,
-            path: apiUrl.pathname,
+            hostname: 'api.openai.com',
+            path: `/v1/vector_stores/${vectorStoreId}`,
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -692,33 +713,54 @@ async function retrieveVectorStoreViaHTTP(vectorStoreId, apiKey) {
             res.on('end', () => {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     try {
-                        resolve(JSON.parse(data));
+                        const parsed = JSON.parse(data);
+                        console.log('✅ HTTP API vector store operation successful:', {
+                            statusCode: res.statusCode,
+                            operation: 'retrieve',
+                            vectorStoreId: parsed.id
+                        });
+                        resolve(parsed);
                     } catch (e) {
-                        reject(new Error(`Failed to parse response: ${e.message}`));
+                        console.error('❌ Failed to parse HTTP response:', {
+                            error: e.message,
+                            body: data,
+                            statusCode: res.statusCode
+                        });
+                        reject(new Error(`Failed to parse response: ${e.message}, body: ${data}`));
                     }
                 } else {
+                    console.error('❌ HTTP API error response:', {
+                        statusCode: res.statusCode,
+                        headers: res.headers,
+                        body: data,
+                        operation: 'retrieve vector store'
+                    });
                     reject(new Error(`HTTP ${res.statusCode}: ${data}`));
                 }
             });
         });
         
-        req.on('error', reject);
+        req.on('error', (error) => {
+            console.error('❌ HTTP request error:', {
+                error: error.message,
+                stack: error.stack,
+                operation: 'retrieve vector store'
+            });
+            reject(error);
+        });
         req.end();
     });
 }
 
-// Helper function to add file to vector store via HTTP API
 async function addFileToVectorStoreViaHTTP(vectorStoreId, fileId, apiKey) {
     const https = require('https');
-    const { URL } = require('url');
     
     return new Promise((resolve, reject) => {
-        const apiUrl = new URL(`https://api.openai.com/v1/vector_stores/${vectorStoreId}/files`);
         const postData = JSON.stringify({ file_id: fileId });
         
         const options = {
-            hostname: apiUrl.hostname,
-            path: apiUrl.pathname,
+            hostname: 'api.openai.com',
+            path: `/v1/vector_stores/${vectorStoreId}/files`,
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -734,23 +776,50 @@ async function addFileToVectorStoreViaHTTP(vectorStoreId, fileId, apiKey) {
             res.on('end', () => {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     try {
-                        resolve(JSON.parse(data));
+                        const parsed = JSON.parse(data);
+                        console.log('✅ HTTP API vector store operation successful:', {
+                            statusCode: res.statusCode,
+                            operation: 'addFile',
+                            vectorStoreId: vectorStoreId,
+                            fileId: fileId
+                        });
+                        resolve(parsed);
                     } catch (e) {
-                        reject(new Error(`Failed to parse response: ${e.message}`));
+                        console.error('❌ Failed to parse HTTP response:', {
+                            error: e.message,
+                            body: data,
+                            statusCode: res.statusCode
+                        });
+                        reject(new Error(`Failed to parse response: ${e.message}, body: ${data}`));
                     }
                 } else {
+                    console.error('❌ HTTP API error response:', {
+                        statusCode: res.statusCode,
+                        headers: res.headers,
+                        body: data,
+                        operation: 'add file to vector store'
+                    });
                     reject(new Error(`HTTP ${res.statusCode}: ${data}`));
                 }
             });
         });
         
-        req.on('error', reject);
+        req.on('error', (error) => {
+            console.error('❌ HTTP request error:', {
+                error: error.message,
+                stack: error.stack,
+                operation: 'add file to vector store'
+            });
+            reject(error);
+        });
         req.write(postData);
         req.end();
     });
 }
 
 // Helper function to get or create vector store for a session
+// Uses core OpenAI client's beta.vectorStores API, with HTTP fallback if SDK doesn't support it
+// Following pattern: Use core OpenAI client for vector stores, Agents SDK for orchestration
 async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
     try {
         // Validate client
@@ -766,12 +835,13 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
         // Check if we already have a vector store for this session
         if (sessionObj?.vectorStoreId) {
             try {
-                // Try SDK method first
+                // Try SDK method first (if available in this SDK version)
                 let existing;
-                if (client.beta?.vectorStores) {
+                if (client.beta?.vectorStores?.retrieve) {
                     existing = await client.beta.vectorStores.retrieve(sessionObj.vectorStoreId);
                 } else {
-                    // Fallback to HTTP API
+                    // Fallback to HTTP API when SDK doesn't expose beta.vectorStores
+                    console.log('📡 Using HTTP API to retrieve vector store (SDK fallback)');
                     existing = await retrieveVectorStoreViaHTTP(sessionObj.vectorStoreId, apiKey);
                 }
                 console.log('✅ Using existing vector store:', {
@@ -790,18 +860,20 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
         }
 
         // Create a new vector store for this session
+        // Pattern: Use core OpenAI client for vector stores (not Agents SDK)
         const vectorStoreName = `session:${sessionId || `user_${userId}_${Date.now()}`}`;
         console.log('🔨 Creating new vector store:', { name: vectorStoreName });
         
         let vectorStore;
-        if (client.beta?.vectorStores) {
-            // Use SDK if available
+        if (client.beta?.vectorStores?.create) {
+            // Use SDK if available (core OpenAI client should have this)
+            console.log('📦 Using SDK beta.vectorStores API');
             vectorStore = await client.beta.vectorStores.create({
                 name: vectorStoreName,
             });
         } else {
-            // Fallback to HTTP API
-            console.log('📡 Using HTTP API fallback for vector store creation');
+            // Fallback to HTTP API when SDK doesn't expose beta.vectorStores
+            console.log('📡 Using HTTP API fallback for vector store creation (SDK v6.5.0 limitation)');
             vectorStore = await createVectorStoreViaHTTP(vectorStoreName, apiKey);
         }
 
@@ -826,7 +898,8 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
             error: error?.message,
             stack: error?.stack,
             sessionId,
-            userId
+            userId,
+            httpError: error?.message?.includes('HTTP') ? error.message : undefined
         });
         throw error;
     }
