@@ -1310,8 +1310,11 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         }
 
         // Generate the assistant's reply (visible to the user)
+        // store: true ensures logs are stored in OpenAI Platform (default behavior)
+        // Note: If Zero Data Retention (ZDR) is enabled at org level, store will be treated as false
         const response = await client.beta.chatkit.responses.create({
-            session_id: effectiveSessionId
+            session_id: effectiveSessionId,
+            store: true  // Explicitly enable logging - logs stored for up to 30 days
         });
 
         console.log('Response created successfully:', {
