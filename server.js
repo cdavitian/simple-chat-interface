@@ -686,7 +686,17 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: false  // your tool owns uploads
+                    enabled: false,  // your tool owns uploads
+                    accept: [
+                        "text/csv",
+                        "application/csv",
+                        "application/vnd.ms-excel",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "application/octet-stream",  // fallback for some CSV/XLS files
+                        "application/pdf",
+                        "image/*"
+                    ],
+                    max_file_size_megabytes: 50
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
@@ -843,7 +853,17 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: false  // your tool owns uploads
+                    enabled: false,  // your tool owns uploads
+                    accept: [
+                        "text/csv",
+                        "application/csv",
+                        "application/vnd.ms-excel",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "application/octet-stream",  // fallback for some CSV/XLS files
+                        "application/pdf",
+                        "image/*"
+                    ],
+                    max_file_size_megabytes: 50
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
