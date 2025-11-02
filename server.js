@@ -1740,7 +1740,22 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
 
         console.log('SDK conversation payload', JSON.stringify(conversation, null, 2));
 
-        const agentResult = await runAgentConversation(conversation);
+        // Clean conversation for OpenAI Agents SDK - remove extra fields
+        const cleanedConversation = conversation.map(item => {
+            const cleaned = {
+                role: item.role,
+                content: item.content
+            };
+            // Only add attachments if they exist
+            if (item.attachments && item.attachments.length > 0) {
+                cleaned.attachments = item.attachments;
+            }
+            return cleaned;
+        });
+
+        console.log('Cleaned conversation for agent:', JSON.stringify(cleanedConversation, null, 2));
+
+        const agentResult = await runAgentConversation(cleanedConversation);
 
         if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
             const normalizedAgentItems = agentResult.newItems
