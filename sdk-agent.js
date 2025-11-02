@@ -34,7 +34,6 @@ function getGuardrailSafeText(results, fallbackText) {
 const codeInterpreter = codeInterpreterTool({
   container: {
     type: 'auto',
-    file_ids: [],
   },
 });
 
