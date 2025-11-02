@@ -1212,8 +1212,31 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
         });
 
         // Add file to session's vector store for persistent file awareness
+        // Create vector store if it doesn't exist (files are ingested before messages are sent)
         try {
-            const vectorStoreId = req.session?.vectorStoreId;
+            let vectorStoreId = req.session?.vectorStoreId;
+            
+            // If no vector store exists, create one now so files can be added
+            if (!vectorStoreId) {
+                console.log('🔍 ingest-s3: No vector store found, creating one...');
+                try {
+                    const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    const sessionId = `ingest_${userId}_${req.sessionID}`;
+                    vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
+                    console.log('✅ ingest-s3: Created vector store for file:', {
+                        vectorStoreId,
+                        file_id: uploaded.id
+                    });
+                } catch (createError) {
+                    console.error('❌ ingest-s3: Failed to create vector store:', {
+                        error: createError?.message,
+                        stack: createError?.stack,
+                        file_id: uploaded.id
+                    });
+                    // Continue - file still uploaded, just not in vector store
+                }
+            }
+            
             console.log('🔍 ingest-s3: Checking for vector store:', {
                 hasVectorStoreId: !!vectorStoreId,
                 vectorStoreId: vectorStoreId || 'NONE',
@@ -1234,7 +1257,7 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
                     status: vsFile.status
                 });
             } else {
-                console.warn('⚠️ No vector store found in session, file not added to vector store. File will only be available for immediate use.', {
+                console.warn('⚠️ No vector store available after creation attempt, file not added to vector store. File will only be available for immediate use.', {
                     file_id: uploaded.id,
                     sessionKeys: Object.keys(req.session || {})
                 });
