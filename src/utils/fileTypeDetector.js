@@ -1,6 +1,23 @@
 import fileTypeRules from '../../file-type-rules.json';
 
 const toLower = (value) => (typeof value === 'string' ? value.toLowerCase() : '');
+const normalizeCategoryLabel = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  const normalized = toLower(value).replace(/[^a-z0-9]+/g, '_');
+
+  if (normalized === 'code_interpreter' || normalized === 'codeinterpreter') {
+    return 'code_interpreter';
+  }
+
+  if (normalized === 'context' || normalized === 'context_file') {
+    return 'context';
+  }
+
+  return normalized;
+};
 
 const CONTEXT_EXTENSIONS = new Set((fileTypeRules?.context?.extensions || []).map(toLower));
 const CONTEXT_MIME_TYPES = new Set((fileTypeRules?.context?.mimeTypes || []).map(toLower));
@@ -47,10 +64,13 @@ export const normalizeFileMetadata = (file = {}) => {
     extension = deriveExtension(filename);
   }
 
+  const category = normalizeCategoryLabel(file.category || file.file_category || '');
+
   return {
     filename,
     contentType,
     extension,
+    category,
   };
 };
 
@@ -76,6 +96,16 @@ export const isCodeInterpreterCategory = (metadata = {}) => {
 };
 
 export const determineCategory = (metadata = {}) => {
+  const explicitCategory = normalizeCategoryLabel(metadata.category || '');
+
+  if (explicitCategory === 'code_interpreter') {
+    return 'code_interpreter';
+  }
+
+  if (explicitCategory === 'context') {
+    return 'context';
+  }
+
   if (isContextCategory(metadata)) {
     return 'context';
   }

@@ -9,8 +9,8 @@ const fileStager = createFileStager();
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
 export async function onCustomToolS3UploadSuccess({ key, filename, bucket }) {
-  const { file_id, content_type } = await registerUploadedS3Object({ key, filename, bucket });
-  fileStager.add(file_id, { content_type, filename });
+  const { file_id, content_type, category } = await registerUploadedS3Object({ key, filename, bucket });
+  fileStager.add(file_id, { content_type, filename, category });
   return file_id;
 }
 

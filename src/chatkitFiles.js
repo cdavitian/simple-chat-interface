@@ -15,6 +15,7 @@ export function createFileStager() {
     const normalizedMetadata = {
       content_type: metadata.content_type || metadata.contentType || '',
       filename: metadata.filename || metadata.name || '',
+      category: metadata.category || metadata.file_category || '',
     };
 
     const category = determineCategory(

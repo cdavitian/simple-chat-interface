@@ -12,8 +12,8 @@ const fileStager = createFileStager();
  * Call this from your custom tool AFTER its presigned PUT to S3 succeeds.
  */
 export async function onCustomToolS3UploadSuccess({ key, filename, bucket }) {
-  const { file_id, content_type } = await registerUploadedS3Object({ key, filename, bucket });
-  fileStager.add(file_id, { content_type, filename }); // quietly stage it with metadata
+  const { file_id, content_type, category } = await registerUploadedS3Object({ key, filename, bucket });
+  fileStager.add(file_id, { content_type, filename, category }); // quietly stage it with metadata
   return file_id;
 }
 

@@ -1128,7 +1128,8 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
         return res.json({ 
             file_id: uploaded.id, 
             filename: resolvedFilename,
-            content_type: resolvedContentType
+            content_type: resolvedContentType,
+            category: fileConfig?.category || null,
         });
     } catch (e) {
         console.error('ingest-s3 failed:', e);
@@ -1336,7 +1337,13 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
                     injectedFileIds.add(fid);
                     const metadata = {
                         content_type: fileInfo.content_type || fileInfo.contentType || null,
-                        filename: fileInfo.filename || fileInfo.name || null
+                        filename: fileInfo.filename || fileInfo.name || null,
+                        category:
+                            typeof fileInfo.category === 'string'
+                                ? fileInfo.category
+                                : typeof fileInfo.file_category === 'string'
+                                ? fileInfo.file_category
+                                : null,
                     };
                     fileMetadataMap.set(fid, metadata);
                 }
@@ -1368,9 +1375,21 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
 
         // Merge in metadata from session where missing
         for (const fid of injectedFileIds) {
-            if (!fileMetadataMap.has(fid) && sessionFileMetadata[fid]) {
-                fileMetadataMap.set(fid, sessionFileMetadata[fid]);
+            const sessionMetadata = sessionFileMetadata[fid];
+            if (!sessionMetadata) {
+                continue;
             }
+
+            const existingMetadata = fileMetadataMap.get(fid) || {};
+            const mergedCategory = typeof existingMetadata.category === 'string' && existingMetadata.category
+                ? existingMetadata.category
+                : sessionMetadata.category || null;
+
+            fileMetadataMap.set(fid, {
+                ...sessionMetadata,
+                ...existingMetadata,
+                category: mergedCategory,
+            });
         }
         
         // Route files by content type
