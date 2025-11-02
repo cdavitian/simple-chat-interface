@@ -91,6 +91,9 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     throw new Error('conversationHistory must be an array of AgentInputItem objects');
   }
 
+  // Log the conversation history to debug file attachments
+  console.log('Agent receiving conversation:', JSON.stringify(conversationHistory, null, 2));
+
   return withTrace(traceName, async () => {
     const runner = new Runner({
       traceMetadata: {

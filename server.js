@@ -1680,7 +1680,8 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                     });
                     
                     if (category === 'code_interpreter') {
-                        // Code interpreter files: only in attachments, NOT in content
+                        // Code interpreter files: add to attachments for tool access
+                        // Note: These files should NOT be in content to avoid context stuffing errors
                         attachments.push({
                             file_id: trimmedFileId,
                             tools: [{ type: 'code_interpreter' }]
@@ -1700,6 +1701,16 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 console.log('SDK: Built attachments array:', JSON.stringify(attachments, null, 2));
             }
             
+            // If content is empty but we have attachments, add a minimal text entry
+            // This ensures the agent knows there's something to process
+            if (content.length === 0 && attachments.length > 0) {
+                console.log('SDK: Content empty but attachments present, adding placeholder text');
+                content.push({
+                    type: 'input_text',
+                    text: trimmedText || '[File attached]'
+                });
+            }
+            
             userItem = {
                 role: 'user',
                 content: content,
@@ -1711,6 +1722,8 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             if (attachments.length > 0) {
                 userItem.attachments = attachments;
             }
+            
+            console.log('SDK: Final userItem:', JSON.stringify(userItem, null, 2));
         } else {
             // When no files, use simple string content
             console.log('SDK: Using string content (no files):', trimmedText);
