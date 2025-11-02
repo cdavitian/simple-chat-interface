@@ -1101,10 +1101,15 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
 
         console.log('Quiet ingest successful:', {
             file_id: uploaded.id,
-            filename: resolvedFilename
+            filename: resolvedFilename,
+            content_type: resolvedContentType
         });
 
-        return res.json({ file_id: uploaded.id, filename: resolvedFilename });
+        return res.json({ 
+            file_id: uploaded.id, 
+            filename: resolvedFilename,
+            content_type: resolvedContentType
+        });
     } catch (e) {
         console.error('ingest-s3 failed:', e);
         return res.status(500).json({ error: 'Failed to ingest S3 object', details: e.message });
@@ -1232,8 +1237,12 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             return res.status(400).json({ error: 'session_id is required and no fallback session found on server' });
         }
         
-        if (!text && (!staged_file_ids || staged_file_ids.length === 0) && !file_id) {
-            return res.status(400).json({ error: 'Either text or staged_file_ids (or both) is required' });
+        // Check for files in new format (with metadata) or legacy format
+        const hasStagedFiles = Array.isArray(req.body.staged_files) && req.body.staged_files.length > 0;
+        const hasStagedFileIds = Array.isArray(staged_file_ids) && staged_file_ids.length > 0;
+        
+        if (!text && !hasStagedFiles && !hasStagedFileIds && !file_id) {
+            return res.status(400).json({ error: 'Either text or staged_files/staged_file_ids (or both) is required' });
         }
         
         if (!process.env.OPENAI_API_KEY) {
@@ -1254,12 +1263,37 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             content.push({ type: 'input_text', text: text });
         }
 
+        // Function to route files by content type: PDF → context_file, others → input_file
+        const addFileToContent = (fileId, contentType = '') => {
+            if (contentType === 'application/pdf') {
+                // PDFs go into context (stuffing)
+                content.push({ type: 'context_file', file_id: fileId });
+            } else {
+                // CSV/XLS/XLSX and other files go as regular attachments (Code Interpreter)
+                content.push({ type: 'input_file', file_id: fileId });
+            }
+        };
+
         const injectedFileIds = new Set();
-        // Add client-staged files (new approach)
+        const fileMetadataMap = new Map(); // Map<file_id, { content_type }>
+        
+        // Add client-staged files with metadata (new approach)
+        if (Array.isArray(req.body.staged_files)) {
+            for (const fileInfo of req.body.staged_files) {
+                if (fileInfo && typeof fileInfo.file_id === 'string' && fileInfo.file_id.trim()) {
+                    const fid = fileInfo.file_id.trim();
+                    injectedFileIds.add(fid);
+                    if (fileInfo.content_type) {
+                        fileMetadataMap.set(fid, { content_type: fileInfo.content_type });
+                    }
+                }
+            }
+        }
+        // Fallback: also handle staged_file_ids array (backward compatibility)
         if (Array.isArray(staged_file_ids)) {
             for (const fid of staged_file_ids) {
                 if (typeof fid === 'string' && fid.trim()) {
-                    injectedFileIds.add(fid);
+                    injectedFileIds.add(fid.trim());
                 }
             }
         }
@@ -1267,17 +1301,19 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         if (Array.isArray(req.session?.chatkitFileIds)) {
             for (const fid of req.session.chatkitFileIds) {
                 if (typeof fid === 'string' && fid.trim()) {
-                    injectedFileIds.add(fid);
+                    injectedFileIds.add(fid.trim());
                 }
             }
         }
         // Legacy: single file_id parameter
         if (file_id && typeof file_id === 'string') {
-            injectedFileIds.add(file_id);
+            injectedFileIds.add(file_id.trim());
         }
         
+        // Route files by content type
         for (const fid of injectedFileIds) {
-            content.push({ type: 'input_file', file_id: fid });
+            const metadata = fileMetadataMap.get(fid);
+            addFileToContent(fid, metadata?.content_type);
         }
         
         console.log('Sending message to ChatKit session:', {

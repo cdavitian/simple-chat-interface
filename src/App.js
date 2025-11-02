@@ -11,8 +11,8 @@ const fileStager = createFileStager();
  * Call this from your custom tool AFTER its presigned PUT to S3 succeeds.
  */
 export async function onCustomToolS3UploadSuccess({ key, filename, bucket }) {
-  const { file_id } = await registerUploadedS3Object({ key, filename, bucket });
-  fileStager.add(file_id); // quietly stage it
+  const { file_id, content_type } = await registerUploadedS3Object({ key, filename, bucket });
+  fileStager.add(file_id, { content_type, filename }); // quietly stage it with metadata
   return file_id;
 }
 
@@ -629,7 +629,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         body: JSON.stringify({
           session_id: sessionData.sessionId,
           text: userPrompt || undefined,
-          staged_file_ids: fileStager.list()
+          staged_file_ids: fileStager.list(),
+          staged_files: fileStager.listWithMetadata()  // Send metadata for content type routing
         })
       });
 
