@@ -86,6 +86,12 @@ const agent = new Agent({
 });
 
 async function runAgentConversation(conversationHistory, traceName = 'MCP Prod Test') {
+  console.log('runAgentConversation called with:', {
+    isArray: Array.isArray(conversationHistory),
+    length: conversationHistory?.length,
+    type: typeof conversationHistory
+  });
+  
   if (!Array.isArray(conversationHistory)) {
     throw new Error('conversationHistory must be an array of AgentInputItem objects');
   }

@@ -1742,22 +1742,27 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
 
         // Clean conversation for OpenAI Agents SDK - send ONLY the current user message
         // Strictly pick allowed fields and coerce content shape
-        const cleanedConversation = [(() => {
-            const cleaned = { role: 'user' };
-            if (Array.isArray(userItem.content)) {
-                cleaned.content = userItem.content;
-            } else if (typeof userItem.content === 'string') {
-                cleaned.content = [{ type: 'input_text', text: userItem.content }];
-            } else {
-                cleaned.content = [{ type: 'input_text', text: '' }];
-            }
-            if (Array.isArray(userItem.attachments) && userItem.attachments.length > 0) {
-                cleaned.attachments = userItem.attachments;
-            }
-            return cleaned;
-        })()];
+        const cleanedMessage = { role: 'user' };
+        
+        // Ensure content is always an array
+        if (Array.isArray(userItem.content)) {
+            cleanedMessage.content = userItem.content;
+        } else if (typeof userItem.content === 'string') {
+            cleanedMessage.content = [{ type: 'input_text', text: userItem.content }];
+        } else {
+            cleanedMessage.content = [{ type: 'input_text', text: '' }];
+        }
+        
+        // Add attachments if present
+        if (Array.isArray(userItem.attachments) && userItem.attachments.length > 0) {
+            cleanedMessage.attachments = userItem.attachments;
+        }
+        
+        const cleanedConversation = [cleanedMessage];
 
         console.log('Cleaned conversation for agent:', JSON.stringify(cleanedConversation, null, 2));
+        console.log('Cleaned conversation length:', cleanedConversation.length);
+        console.log('Cleaned conversation has attachments:', cleanedConversation[0]?.attachments?.length > 0);
 
         const agentResult = await runAgentConversation(cleanedConversation);
 
