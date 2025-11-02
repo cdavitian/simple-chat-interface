@@ -1106,12 +1106,14 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
             content_type: resolvedContentType
         });
 
+        let fileConfig;
+
         try {
             if (!req.session.chatkitFilesMetadata) {
                 req.session.chatkitFilesMetadata = {};
             }
 
-            const fileConfig = getFileConfig({
+            fileConfig = getFileConfig({
                 filename: resolvedFilename,
                 content_type: resolvedContentType,
             });
