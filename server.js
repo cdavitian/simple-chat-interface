@@ -1646,30 +1646,30 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 });
             }
             
-            // Add each file as a separate content item with proper type and attachments
+            // Add each file as a separate content item with proper attachments
             for (const fileId of fileIds) {
                 if (fileId && typeof fileId === 'string' && fileId.trim()) {
                     const trimmedFileId = fileId.trim();
                     const metadata = fileMetadataMap.get(trimmedFileId);
                     
-                    // Use getFileConfig to determine category and type
+                    // Use getFileConfig to determine category
                     const fileConfig = getFileConfig(metadata || {});
                     const category = fileConfig?.category || 'default';
-                    const messageType = fileConfig?.messageType || 'input_file';
                     
                     console.log(`SDK: Processing file ${trimmedFileId}:`, {
                         category,
-                        messageType,
                         metadata
                     });
                     
-                    // Add to content array with correct type
+                    // All files use 'input_file' type in Agents SDK
+                    // The attachments determine how they're used (context vs code_interpreter)
                     content.push({ 
-                        type: messageType,
+                        type: 'input_file',
                         file: { id: trimmedFileId }
                     });
                     
-                    // For code_interpreter files, add attachments
+                    // For code_interpreter files (CSV, Excel, JSON), add attachments
+                    // For context files (PDF), no attachment = used for context/RAG
                     if (category === 'code_interpreter') {
                         attachments.push({
                             file_id: trimmedFileId,
