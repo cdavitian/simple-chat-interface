@@ -305,7 +305,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         method: "PUT",
         body: file,  // File object ensures Content-Length is set automatically (no chunked)
         headers: { 
-          "Content-Type": contentType || file.type || 'application/octet-stream'
+          "Content-Type": contentType || file.type || 'application/octet-stream',
+          "x-amz-server-side-encryption": "AES256"  // SSE-S3 encryption
         }
       });
 

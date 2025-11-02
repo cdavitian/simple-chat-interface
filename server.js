@@ -1008,7 +1008,8 @@ app.post('/api/uploads/presign', requireAuth, async (req, res) => {
             Bucket: bucketName,
             Key: objectKey,
             Expires: Math.max(S3_UPLOAD_URL_TTL, 60), // ensure at least 60 seconds
-            ContentType: safeContentType
+            ContentType: safeContentType,
+            ServerSideEncryption: 'AES256'  // SSE-S3 encryption
         });
 
         console.log('Generated S3 presign for ChatKit upload:', {
