@@ -625,6 +625,131 @@ app.get('/api/user', (req, res) => {
     res.status(401).json({ error: 'Authentication required' });
 });
 
+// Helper function to create/retrieve vector store via HTTP API (fallback when SDK doesn't support it)
+async function createVectorStoreViaHTTP(name, apiKey) {
+    const https = require('https');
+    const { URL } = require('url');
+    
+    return new Promise((resolve, reject) => {
+        const apiUrl = new URL('https://api.openai.com/v1/vector_stores');
+        const postData = JSON.stringify({ name });
+        
+        const options = {
+            hostname: apiUrl.hostname,
+            path: apiUrl.pathname,
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData),
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        reject(new Error(`Failed to parse response: ${e.message}`));
+                    }
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+        
+        req.on('error', reject);
+        req.write(postData);
+        req.end();
+    });
+}
+
+// Helper function to retrieve vector store via HTTP API
+async function retrieveVectorStoreViaHTTP(vectorStoreId, apiKey) {
+    const https = require('https');
+    const { URL } = require('url');
+    
+    return new Promise((resolve, reject) => {
+        const apiUrl = new URL(`https://api.openai.com/v1/vector_stores/${vectorStoreId}`);
+        
+        const options = {
+            hostname: apiUrl.hostname,
+            path: apiUrl.pathname,
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        reject(new Error(`Failed to parse response: ${e.message}`));
+                    }
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+        
+        req.on('error', reject);
+        req.end();
+    });
+}
+
+// Helper function to add file to vector store via HTTP API
+async function addFileToVectorStoreViaHTTP(vectorStoreId, fileId, apiKey) {
+    const https = require('https');
+    const { URL } = require('url');
+    
+    return new Promise((resolve, reject) => {
+        const apiUrl = new URL(`https://api.openai.com/v1/vector_stores/${vectorStoreId}/files`);
+        const postData = JSON.stringify({ file_id: fileId });
+        
+        const options = {
+            hostname: apiUrl.hostname,
+            path: apiUrl.pathname,
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData),
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        reject(new Error(`Failed to parse response: ${e.message}`));
+                    }
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+        
+        req.on('error', reject);
+        req.write(postData);
+        req.end();
+    });
+}
+
 // Helper function to get or create vector store for a session
 async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
     try {
@@ -633,31 +758,22 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
             throw new Error('OpenAI client is null or undefined');
         }
 
-        // Log client structure for debugging
-        console.log('🔍 Checking OpenAI client structure:', {
-            hasClient: !!client,
-            hasBeta: !!client.beta,
-            betaKeys: client.beta ? Object.keys(client.beta) : [],
-            hasVectorStores: !!(client.beta?.vectorStores),
-            clientType: client?.constructor?.name
-        });
-
-        // Validate that the vectorStores API is available
-        if (!client.beta || !client.beta.vectorStores) {
-            const errorMsg = 'Vector stores API not available in OpenAI client. ' +
-                `Client structure: ${client ? 'exists' : 'null'}, ` +
-                `beta: ${client?.beta ? 'exists' : 'null'}, ` +
-                `vectorStores: ${client?.beta?.vectorStores ? 'exists' : 'null'}, ` +
-                `Available beta APIs: ${client?.beta ? Object.keys(client.beta).join(', ') : 'none'}`;
-            console.error('❌ Vector stores API not available:', errorMsg);
-            throw new Error(errorMsg);
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+            throw new Error('OPENAI_API_KEY not found in environment');
         }
 
         // Check if we already have a vector store for this session
         if (sessionObj?.vectorStoreId) {
             try {
-                // Verify the vector store still exists
-                const existing = await client.beta.vectorStores.retrieve(sessionObj.vectorStoreId);
+                // Try SDK method first
+                let existing;
+                if (client.beta?.vectorStores) {
+                    existing = await client.beta.vectorStores.retrieve(sessionObj.vectorStoreId);
+                } else {
+                    // Fallback to HTTP API
+                    existing = await retrieveVectorStoreViaHTTP(sessionObj.vectorStoreId, apiKey);
+                }
                 console.log('✅ Using existing vector store:', {
                     vectorStoreId: sessionObj.vectorStoreId,
                     name: existing.name,
@@ -677,9 +793,17 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
         const vectorStoreName = `session:${sessionId || `user_${userId}_${Date.now()}`}`;
         console.log('🔨 Creating new vector store:', { name: vectorStoreName });
         
-        const vectorStore = await client.beta.vectorStores.create({
-            name: vectorStoreName,
-        });
+        let vectorStore;
+        if (client.beta?.vectorStores) {
+            // Use SDK if available
+            vectorStore = await client.beta.vectorStores.create({
+                name: vectorStoreName,
+            });
+        } else {
+            // Fallback to HTTP API
+            console.log('📡 Using HTTP API fallback for vector store creation');
+            vectorStore = await createVectorStoreViaHTTP(vectorStoreName, apiKey);
+        }
 
         console.log('✅ Created new vector store successfully:', {
             vectorStoreId: vectorStore.id,
@@ -1273,9 +1397,16 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
                     file_id: uploaded.id,
                     vectorStoreId
                 });
-                const vsFile = await client.beta.vectorStores.files.create(vectorStoreId, {
-                    file_id: uploaded.id
-                });
+                let vsFile;
+                if (client.beta?.vectorStores?.files) {
+                    vsFile = await client.beta.vectorStores.files.create(vectorStoreId, {
+                        file_id: uploaded.id
+                    });
+                } else {
+                    // Fallback to HTTP API
+                    const apiKey = process.env.OPENAI_API_KEY;
+                    vsFile = await addFileToVectorStoreViaHTTP(vectorStoreId, uploaded.id, apiKey);
+                }
                 console.log('✅ Added file to vector store (ingest-s3):', {
                     file_id: uploaded.id,
                     vectorStoreId,
@@ -1427,9 +1558,16 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
         try {
             const vectorStoreId = req.session?.vectorStoreId;
             if (vectorStoreId) {
-                const vsFile = await client.beta.vectorStores.files.create(vectorStoreId, {
-                    file_id: uploadedFile.id
-                });
+                let vsFile;
+                if (client.beta?.vectorStores?.files) {
+                    vsFile = await client.beta.vectorStores.files.create(vectorStoreId, {
+                        file_id: uploadedFile.id
+                    });
+                } else {
+                    // Fallback to HTTP API
+                    const apiKey = process.env.OPENAI_API_KEY;
+                    vsFile = await addFileToVectorStoreViaHTTP(vectorStoreId, uploadedFile.id, apiKey);
+                }
                 console.log('✅ Added file to vector store:', {
                     file_id: uploadedFile.id,
                     vectorStoreId,
@@ -1546,7 +1684,14 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         const vectorStoreId = req.session?.vectorStoreId;
         if (vectorStoreId && uploadedFileIds.size > 0) {
             try {
-                const vs = await client.beta.vectorStores.retrieve(vectorStoreId);
+                let vs;
+                if (client.beta?.vectorStores) {
+                    vs = await client.beta.vectorStores.retrieve(vectorStoreId);
+                } else {
+                    // Fallback to HTTP API
+                    const apiKey = process.env.OPENAI_API_KEY;
+                    vs = await retrieveVectorStoreViaHTTP(vectorStoreId, apiKey);
+                }
                 console.log('📁 Files will be retrieved via vector store file_search:', {
                     session_id: effectiveSessionId,
                     vectorStoreId,
@@ -1835,7 +1980,15 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         const vectorStoreId = req.session?.vectorStoreId;
         if (vectorStoreId && fileIds.length > 0) {
             try {
-                const vs = await getOpenAIClient().beta.vectorStores.retrieve(vectorStoreId);
+                const client = getOpenAIClient();
+                let vs;
+                if (client?.beta?.vectorStores) {
+                    vs = await client.beta.vectorStores.retrieve(vectorStoreId);
+                } else {
+                    // Fallback to HTTP API
+                    const apiKey = process.env.OPENAI_API_KEY;
+                    vs = await retrieveVectorStoreViaHTTP(vectorStoreId, apiKey);
+                }
                 console.log('📁 SDK: Files will be retrieved via vector store file_search:', {
                     vectorStoreId,
                     uploadedFileCount: fileIds.length,
