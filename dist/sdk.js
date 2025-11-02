@@ -283,6 +283,167 @@ if (true) {
 
 /***/ }),
 
+/***/ 462:
+/***/ ((module, __webpack_exports__, __webpack_require__) => {
+
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   A: () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(601);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(314);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__);
+// Imports
+
+
+var ___CSS_LOADER_EXPORT___ = _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default()((_node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default()));
+// Module
+___CSS_LOADER_EXPORT___.push([module.id, `.menu-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10000;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    height: 72px; /* Fixed height for larger logo */
+}
+
+.menu-bar-logo {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+}
+
+.menu-bar-logo:hover {
+    opacity: 0.8;
+}
+
+.menu-bar-logo svg {
+    height: 48px;
+    width: auto;
+}
+
+.menu-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.menu-bar .user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 12px;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+}
+
+.menu-bar .user-photo {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.menu-bar .user-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: white;
+}
+
+.menu-bar .admin-btn,
+.menu-bar .logout-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.menu-bar .admin-btn:hover,
+.menu-bar .logout-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.menu-bar .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.menu-bar .status-dot {
+    width: 8px;
+    height: 8px;
+    background: #4ade80;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.menu-bar .status-text {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Add padding to body content to account for fixed menu bar */
+body.has-menu-bar {
+    padding-top: 56px;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .menu-bar {
+        padding: 10px 16px;
+    }
+    
+    .menu-bar-logo svg {
+        height: 24px;
+    }
+    
+    .menu-bar-right {
+        gap: 12px;
+    }
+    
+    .menu-bar .user-info {
+        padding: 6px 10px;
+    }
+    
+    .menu-bar .user-name {
+        font-size: 12px;
+    }
+    
+    .menu-bar .admin-btn,
+    .menu-bar .logout-btn {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+}
+
+`, ""]);
+// Exports
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
+
+
+/***/ }),
+
 /***/ 463:
 /***/ ((__unused_webpack_module, exports) => {
 
@@ -713,6 +874,7 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    margin-top: 72px; /* Account for fixed menu bar with larger logo */
 }
 
 .app-header {
@@ -1597,36 +1759,172 @@ var update = injectStylesIntoStyleTag_default()(App/* default */.A, options);
 
        /* harmony default export */ const src_App = (App/* default */.A && App/* default */.A.locals ? App/* default */.A.locals : undefined);
 
+;// ./file-type-rules.json
+const file_type_rules_namespaceObject = /*#__PURE__*/JSON.parse('{"context":{"extensions":["pdf"],"mimeTypes":["application/pdf"]},"codeInterpreter":{"extensions":["csv","tsv","xls","xlsx","xlsm","xlsb","xltx","xltm","json","ndjson"],"mimeTypes":["text/csv","application/csv","text/tab-separated-values","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel.sheet.macroenabled.12","application/vnd.ms-excel.sheet.binary.macroenabled.12","application/json","text/json","application/x-ndjson"]}}');
+;// ./src/utils/fileTypeDetector.js
+var _fileTypeRules$contex, _fileTypeRules$contex2, _fileTypeRules$codeIn, _fileTypeRules$codeIn2;
+
+var toLower = function toLower(value) {
+  return typeof value === 'string' ? value.toLowerCase() : '';
+};
+var CONTEXT_EXTENSIONS = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$contex = file_type_rules_namespaceObject.context) === null || _fileTypeRules$contex === void 0 ? void 0 : _fileTypeRules$contex.extensions) || []).map(toLower));
+var CONTEXT_MIME_TYPES = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$contex2 = file_type_rules_namespaceObject.context) === null || _fileTypeRules$contex2 === void 0 ? void 0 : _fileTypeRules$contex2.mimeTypes) || []).map(toLower));
+var CODE_INTERPRETER_EXTENSIONS = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$codeIn = file_type_rules_namespaceObject.codeInterpreter) === null || _fileTypeRules$codeIn === void 0 ? void 0 : _fileTypeRules$codeIn.extensions) || []).map(toLower));
+var CODE_INTERPRETER_MIME_TYPES = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$codeIn2 = file_type_rules_namespaceObject.codeInterpreter) === null || _fileTypeRules$codeIn2 === void 0 ? void 0 : _fileTypeRules$codeIn2.mimeTypes) || []).map(toLower));
+var deriveExtension = function deriveExtension() {
+  var filename = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+  if (typeof filename !== 'string') {
+    return '';
+  }
+  var trimmed = filename.trim();
+  if (!trimmed || !trimmed.includes('.')) {
+    return '';
+  }
+  return toLower(trimmed.split('.').pop());
+};
+var normalizeFileMetadata = function normalizeFileMetadata() {
+  var file = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  var filename = typeof file.filename === 'string' ? file.filename : typeof file.originalname === 'string' ? file.originalname : typeof file.name === 'string' ? file.name : typeof file.display_name === 'string' ? file.display_name : '';
+  var contentType = toLower(file.content_type || file.contentType || file.mimetype || file.mime || '');
+  var extension = toLower(file.extension || '');
+  if (!extension) {
+    extension = deriveExtension(filename);
+  }
+  return {
+    filename: filename,
+    contentType: contentType,
+    extension: extension
+  };
+};
+var isContextCategory = function isContextCategory() {
+  var metadata = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  var extension = metadata.extension,
+    contentType = metadata.contentType;
+  return extension && CONTEXT_EXTENSIONS.has(extension) || contentType && CONTEXT_MIME_TYPES.has(contentType);
+};
+var isCodeInterpreterCategory = function isCodeInterpreterCategory() {
+  var metadata = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  var extension = metadata.extension,
+    contentType = metadata.contentType;
+  if (extension && CODE_INTERPRETER_EXTENSIONS.has(extension)) {
+    return true;
+  }
+  if (contentType && CODE_INTERPRETER_MIME_TYPES.has(contentType)) {
+    return true;
+  }
+  return false;
+};
+var determineCategory = function determineCategory() {
+  var metadata = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  if (isContextCategory(metadata)) {
+    return 'context';
+  }
+  if (isCodeInterpreterCategory(metadata)) {
+    return 'code_interpreter';
+  }
+  return 'default';
+};
+var buildMessageContent = function buildMessageContent(fileId) {
+  var metadata = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+  var normalized = normalizeFileMetadata(metadata);
+  var category = determineCategory(normalized);
+  var displayName = normalized.filename || metadata.display_name || fileId;
+  return {
+    type: category === 'context' ? 'context_file' : 'input_file',
+    file_id: fileId,
+    display_name: displayName,
+    category: category
+  };
+};
+var FILE_TYPE_RULES = (/* unused pure expression or super */ null && (fileTypeRules));
 ;// ./src/chatkitFiles.js
-// File stager for quietly managing file_ids until they're sent with a prompt
+function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
+function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
+function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
+function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
+function _toPrimitive(t, r) { if ("object" != _typeof(t) || !t) return t; var e = t[Symbol.toPrimitive]; if (void 0 !== e) { var i = e.call(t, r || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === r ? String : Number)(t); }
+// File stager for quietly managing file metadata until they're sent with a prompt
+// Tracks content_type + filename so the server can route files correctly
+
 
 function createFileStager() {
-  var staged = new Set();
-  return {
-    add: function add(fileId) {
-      return staged.add(fileId);
-    },
-    list: function list() {
-      return Array.from(staged);
-    },
-    clear: function clear() {
-      return staged.clear();
-    },
-    toMessageContent: function toMessageContent(text) {
-      var content = [];
-      if (text) {
-        content.push({
-          type: "input_text",
-          text: text
-        });
-      }
-      Array.from(staged).forEach(function (id) {
-        content.push({
-          type: "input_file",
-          file_id: id
-        });
+  var staged = new Map(); // Map<file_id, { content_type, filename }>
+
+  var add = function add(fileId) {
+    var metadata = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+    if (!fileId) return;
+    var normalizedMetadata = {
+      content_type: metadata.content_type || metadata.contentType || '',
+      filename: metadata.filename || metadata.name || ''
+    };
+    var category = determineCategory(normalizeFileMetadata(normalizedMetadata));
+    staged.set(fileId, _objectSpread(_objectSpread({}, normalizedMetadata), {}, {
+      category: category
+    }));
+  };
+  var remove = function remove(fileId) {
+    if (!fileId) return;
+    staged["delete"](fileId);
+  };
+  var list = function list() {
+    return Array.from(staged.keys());
+  };
+  var listWithMetadata = function listWithMetadata() {
+    return Array.from(staged.entries()).map(function (_ref) {
+      var _ref2 = _slicedToArray(_ref, 2),
+        file_id = _ref2[0],
+        metadata = _ref2[1];
+      return _objectSpread({
+        file_id: file_id
+      }, metadata);
+    });
+  };
+  var clear = function clear() {
+    return staged.clear();
+  };
+  var classifyFile = function classifyFile(fileId) {
+    var metadata = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+    var messageContent = buildMessageContent(fileId, metadata);
+    return {
+      type: messageContent.type,
+      file_id: messageContent.file_id,
+      display_name: messageContent.display_name
+    };
+  };
+  var toMessageContent = function toMessageContent(text) {
+    var content = [];
+    if (text) {
+      content.push({
+        type: 'input_text',
+        text: text
       });
-      return content;
+    }
+    staged.forEach(function (metadata, fileId) {
+      var messageContent = classifyFile(fileId, metadata);
+      content.push({
+        type: messageContent.type,
+        file_id: messageContent.file_id,
+        display_name: messageContent.display_name
+      });
+    });
+    return content;
+  };
+  return {
+    add: add,
+    remove: remove,
+    list: list,
+    listWithMetadata: listWithMetadata,
+    clear: clear,
+    toMessageContent: toMessageContent,
+    getMetadata: function getMetadata(fileId) {
+      return staged.get(fileId);
     }
   };
 }
@@ -1682,21 +1980,123 @@ function _registerUploadedS3Object() {
   }));
   return _registerUploadedS3Object.apply(this, arguments);
 }
+// EXTERNAL MODULE: ./node_modules/css-loader/dist/cjs.js!./src/components/MenuBar.css
+var MenuBar = __webpack_require__(462);
+;// ./src/components/MenuBar.css
+
+      
+      
+      
+      
+      
+      
+      
+      
+      
+
+var MenuBar_options = {};
+
+MenuBar_options.styleTagTransform = (styleTagTransform_default());
+MenuBar_options.setAttributes = (setAttributesWithoutAttributes_default());
+
+      MenuBar_options.insert = insertBySelector_default().bind(null, "head");
+    
+MenuBar_options.domAPI = (styleDomAPI_default());
+MenuBar_options.insertStyleElement = (insertStyleElement_default());
+
+var MenuBar_update = injectStylesIntoStyleTag_default()(MenuBar/* default */.A, MenuBar_options);
+
+
+
+
+       /* harmony default export */ const components_MenuBar = (MenuBar/* default */.A && MenuBar/* default */.A.locals ? MenuBar/* default */.A.locals : undefined);
+
+;// ./src/components/MenuBar.js
+
+
+var MenuBar_MenuBar = function MenuBar(_ref) {
+  var user = _ref.user;
+  return /*#__PURE__*/react.createElement("div", {
+    className: "menu-bar"
+  }, /*#__PURE__*/react.createElement("a", {
+    href: "/",
+    className: "menu-bar-logo"
+  }, /*#__PURE__*/react.createElement("svg", {
+    width: "180",
+    height: "60",
+    viewBox: "0 0 120 40",
+    xmlns: "http://www.w3.org/2000/svg"
+  }, /*#__PURE__*/react.createElement("text", {
+    x: "5",
+    y: "28",
+    fontFamily: "serif",
+    fontSize: "24",
+    fontWeight: "600",
+    fill: "#0F4C5C"
+  }, "Kyo"), /*#__PURE__*/react.createElement("g", {
+    transform: "translate(50, 8)"
+  }, /*#__PURE__*/react.createElement("polygon", {
+    points: "0,12 6,0 12,12",
+    fill: "#0F4C5C",
+    opacity: "0.8"
+  }), /*#__PURE__*/react.createElement("polygon", {
+    points: "2,14 8,2 14,14",
+    fill: "#00A8E8",
+    opacity: "0.7"
+  }), /*#__PURE__*/react.createElement("polygon", {
+    points: "4,16 10,4 16,16",
+    fill: "#4ECDC4",
+    opacity: "0.6"
+  })))), /*#__PURE__*/react.createElement("div", {
+    className: "menu-bar-right"
+  }, /*#__PURE__*/react.createElement("div", {
+    className: "user-info"
+  }, /*#__PURE__*/react.createElement("img", {
+    src: (user === null || user === void 0 ? void 0 : user.picture) || (user === null || user === void 0 ? void 0 : user.avatar) || '/default-avatar.png',
+    alt: "User",
+    className: "user-photo"
+  }), /*#__PURE__*/react.createElement("span", {
+    className: "user-name"
+  }, (user === null || user === void 0 ? void 0 : user.name) || 'User'), (user === null || user === void 0 ? void 0 : user.userType) === 'Admin' && /*#__PURE__*/react.createElement("button", {
+    className: "admin-btn",
+    onClick: function onClick() {
+      return window.location.href = '/admin';
+    }
+  }, "Admin"), /*#__PURE__*/react.createElement("button", {
+    className: "logout-btn",
+    onClick: function onClick() {
+      return window.location.href = '/logout';
+    }
+  }, "Logout")), /*#__PURE__*/react.createElement("div", {
+    className: "status-indicator"
+  }, /*#__PURE__*/react.createElement("span", {
+    className: "status-dot"
+  }), /*#__PURE__*/react.createElement("span", {
+    className: "status-text"
+  }, "Online"))));
+};
+/* harmony default export */ const src_components_MenuBar = (MenuBar_MenuBar);
 ;// ./src/AppSDK.js
-function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
+var _excluded = ["file_id"],
+  _excluded2 = ["file_id"];
+function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
+function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || AppSDK_unsupportedIterableToArray(r) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
-function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return AppSDK_arrayLikeToArray(r); }
 function AppSDK_regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return AppSDK_regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i["return"]) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (AppSDK_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, AppSDK_regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, AppSDK_regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), AppSDK_regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", AppSDK_regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), AppSDK_regeneratorDefine2(u), AppSDK_regeneratorDefine2(u, o, "Generator"), AppSDK_regeneratorDefine2(u, n, function () { return this; }), AppSDK_regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (AppSDK_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
 function AppSDK_regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } AppSDK_regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { AppSDK_regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, AppSDK_regeneratorDefine2(e, r, n, t); }
-function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
-function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
-function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
-function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
-function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function AppSDK_slicedToArray(r, e) { return AppSDK_arrayWithHoles(r) || AppSDK_iterableToArrayLimit(r, e) || AppSDK_unsupportedIterableToArray(r, e) || AppSDK_nonIterableRest(); }
+function AppSDK_nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function AppSDK_unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return AppSDK_arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? AppSDK_arrayLikeToArray(r, a) : void 0; } }
+function AppSDK_arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+function AppSDK_iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function AppSDK_arrayWithHoles(r) { if (Array.isArray(r)) return r; }
 function AppSDK_asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function AppSDK_asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { AppSDK_asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { AppSDK_asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
+
+
 
 
 
@@ -1709,7 +2109,7 @@ function onCustomToolS3UploadSuccess(_x) {
 }
 function _onCustomToolS3UploadSuccess() {
   _onCustomToolS3UploadSuccess = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee5(_ref) {
-    var key, filename, bucket, _yield$registerUpload, file_id;
+    var key, filename, bucket, _yield$registerUpload, file_id, content_type;
     return AppSDK_regenerator().w(function (_context5) {
       while (1) switch (_context5.n) {
         case 0:
@@ -1723,7 +2123,11 @@ function _onCustomToolS3UploadSuccess() {
         case 1:
           _yield$registerUpload = _context5.v;
           file_id = _yield$registerUpload.file_id;
-          fileStager.add(file_id);
+          content_type = _yield$registerUpload.content_type;
+          fileStager.add(file_id, {
+            content_type: content_type,
+            filename: filename
+          });
           return _context5.a(2, file_id);
       }
     }, _callee5);
@@ -1735,15 +2139,15 @@ function getStagedFileIds() {
 }
 function AppSDK_App() {
   var _useState = (0,react.useState)(true),
-    _useState2 = _slicedToArray(_useState, 2),
+    _useState2 = AppSDK_slicedToArray(_useState, 2),
     loading = _useState2[0],
     setLoading = _useState2[1];
   var _useState3 = (0,react.useState)(null),
-    _useState4 = _slicedToArray(_useState3, 2),
+    _useState4 = AppSDK_slicedToArray(_useState3, 2),
     user = _useState4[0],
     setUser = _useState4[1];
   var _useState5 = (0,react.useState)(null),
-    _useState6 = _slicedToArray(_useState5, 2),
+    _useState6 = AppSDK_slicedToArray(_useState5, 2),
     error = _useState6[0],
     setError = _useState6[1];
   (0,react.useEffect)(function () {
@@ -1821,70 +2225,44 @@ function AppSDK_App() {
   }
   return /*#__PURE__*/react.createElement("div", {
     className: "app-container"
-  }, /*#__PURE__*/react.createElement("div", {
-    className: "app-header"
-  }, /*#__PURE__*/react.createElement("h1", null, "MCP SDK Assistant"), /*#__PURE__*/react.createElement("div", {
-    className: "header-right"
-  }, /*#__PURE__*/react.createElement("div", {
-    className: "user-info"
-  }, /*#__PURE__*/react.createElement("img", {
-    src: (user === null || user === void 0 ? void 0 : user.picture) || (user === null || user === void 0 ? void 0 : user.avatar) || '/default-avatar.png',
-    alt: "User avatar",
-    className: "user-photo"
-  }), /*#__PURE__*/react.createElement("span", {
-    className: "user-name"
-  }, (user === null || user === void 0 ? void 0 : user.name) || 'User'), (user === null || user === void 0 ? void 0 : user.userType) === 'Admin' && /*#__PURE__*/react.createElement("button", {
-    className: "admin-btn",
-    onClick: function onClick() {
-      return window.location.href = '/admin';
-    }
-  }, "Admin"), /*#__PURE__*/react.createElement("button", {
-    className: "logout-btn",
-    onClick: function onClick() {
-      return window.location.href = '/logout';
-    }
-  }, "Logout")), /*#__PURE__*/react.createElement("div", {
-    className: "status-indicator"
-  }, /*#__PURE__*/react.createElement("span", {
-    className: "status-dot"
-  }), /*#__PURE__*/react.createElement("span", {
-    className: "status-text"
-  }, "Online")))), /*#__PURE__*/react.createElement(ChatInterface, {
+  }, /*#__PURE__*/react.createElement(src_components_MenuBar, {
+    user: user
+  }), /*#__PURE__*/react.createElement(ChatInterface, {
     user: user
   }));
 }
 function ChatInterface(_ref3) {
   var user = _ref3.user;
   var _useState7 = (0,react.useState)([]),
-    _useState8 = _slicedToArray(_useState7, 2),
+    _useState8 = AppSDK_slicedToArray(_useState7, 2),
     messages = _useState8[0],
     setMessages = _useState8[1];
   var _useState9 = (0,react.useState)(''),
-    _useState0 = _slicedToArray(_useState9, 2),
+    _useState0 = AppSDK_slicedToArray(_useState9, 2),
     inputValue = _useState0[0],
     setInputValue = _useState0[1];
   var _useState1 = (0,react.useState)(false),
-    _useState10 = _slicedToArray(_useState1, 2),
+    _useState10 = AppSDK_slicedToArray(_useState1, 2),
     isSending = _useState10[0],
     setIsSending = _useState10[1];
   var _useState11 = (0,react.useState)(null),
-    _useState12 = _slicedToArray(_useState11, 2),
+    _useState12 = AppSDK_slicedToArray(_useState11, 2),
     sendError = _useState12[0],
     setSendError = _useState12[1];
   var _useState13 = (0,react.useState)(''),
-    _useState14 = _slicedToArray(_useState13, 2),
+    _useState14 = AppSDK_slicedToArray(_useState13, 2),
     uploadStatus = _useState14[0],
     setUploadStatus = _useState14[1];
   var _useState15 = (0,react.useState)(''),
-    _useState16 = _slicedToArray(_useState15, 2),
+    _useState16 = AppSDK_slicedToArray(_useState15, 2),
     uploadingFileName = _useState16[0],
     setUploadingFileName = _useState16[1];
   var _useState17 = (0,react.useState)([]),
-    _useState18 = _slicedToArray(_useState17, 2),
+    _useState18 = AppSDK_slicedToArray(_useState17, 2),
     stagedFiles = _useState18[0],
     setStagedFiles = _useState18[1];
   var _useState19 = (0,react.useState)(true),
-    _useState20 = _slicedToArray(_useState19, 2),
+    _useState20 = AppSDK_slicedToArray(_useState19, 2),
     initializing = _useState20[0],
     setInitializing = _useState20[1];
   var messagesEndRef = (0,react.useRef)(null);
@@ -1954,7 +2332,7 @@ function ChatInterface(_ref3) {
   }, [messages, isSending, scrollToBottom]);
   var handleFileUpload = (0,react.useCallback)(/*#__PURE__*/function () {
     var _ref5 = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee3(file) {
-      var presignResp, errorText, _yield$presignResp$js, uploadUrl, objectKey, uploadResp, fileId, _t3;
+      var presignResp, errorText, _yield$presignResp$js, uploadUrl, objectKey, contentType, uploadResp, fileId, _t3;
       return AppSDK_regenerator().w(function (_context3) {
         while (1) switch (_context3.p = _context3.n) {
           case 0:
@@ -2005,13 +2383,19 @@ function ChatInterface(_ref3) {
             _yield$presignResp$js = _context3.v;
             uploadUrl = _yield$presignResp$js.uploadUrl;
             objectKey = _yield$presignResp$js.objectKey;
+            contentType = _yield$presignResp$js.contentType;
             setUploadStatus('Uploading to S3…');
+
+            // Use the exact Content-Type from presign response to match what S3 expects
+            // Content-Length is automatically set by browser when using File object (no chunked encoding)
             _context3.n = 7;
             return fetch(uploadUrl, {
               method: 'PUT',
               body: file,
+              // File object ensures Content-Length is set automatically (no chunked)
               headers: {
-                'Content-Type': file.type || 'application/octet-stream'
+                'Content-Type': contentType || file.type || 'application/octet-stream',
+                'x-amz-server-side-encryption': 'AES256' // SSE-S3 encryption
               }
             });
           case 7:
@@ -2033,7 +2417,8 @@ function ChatInterface(_ref3) {
             setStagedFiles(function (prev) {
               return [].concat(_toConsumableArray(prev), [{
                 file_id: fileId,
-                name: file.name
+                name: file.name,
+                content_type: contentType || file.type || 'application/octet-stream'
               }]);
             });
             setUploadStatus("\u2713 ".concat(file.name, " ready for the next message"));
@@ -2071,12 +2456,14 @@ function ChatInterface(_ref3) {
     }
   }, [handleFileUpload]);
   var removeStagedFile = (0,react.useCallback)(function (fileId) {
-    var remainingIds = fileStager.list().filter(function (id) {
-      return id !== fileId;
+    var remainingFiles = fileStager.listWithMetadata().filter(function (file) {
+      return file.file_id !== fileId;
     });
     fileStager.clear();
-    remainingIds.forEach(function (id) {
-      return fileStager.add(id);
+    remainingFiles.forEach(function (_ref6) {
+      var file_id = _ref6.file_id,
+        metadata = _objectWithoutProperties(_ref6, _excluded);
+      return fileStager.add(file_id, metadata);
     });
     setStagedFiles(function (prev) {
       return prev.filter(function (file) {
@@ -2110,10 +2497,14 @@ function ChatInterface(_ref3) {
               text: text
             });
           }
-          fileIds.forEach(function (fid) {
+          fileStager.listWithMetadata().forEach(function (_ref8) {
+            var file_id = _ref8.file_id,
+              metadata = _objectWithoutProperties(_ref8, _excluded2);
+            var messageContent = buildMessageContent(file_id, metadata);
             content.push({
-              type: 'input_file',
-              file_id: fid
+              type: messageContent.type,
+              file_id: messageContent.file_id,
+              display_name: messageContent.display_name
             });
           });
           optimisticId = "local-".concat(Date.now());
@@ -2139,7 +2530,8 @@ function ChatInterface(_ref3) {
             credentials: 'include',
             body: JSON.stringify({
               text: text,
-              staged_file_ids: fileIds
+              staged_file_ids: fileIds,
+              staged_files: fileStager.listWithMetadata()
             })
           });
         case 4:
@@ -2252,9 +2644,9 @@ function ChatInterface(_ref3) {
     onChange: onFileSelect
   }));
 }
-function MessageList(_ref7) {
-  var messages = _ref7.messages,
-    currentUser = _ref7.currentUser;
+function MessageList(_ref9) {
+  var messages = _ref9.messages,
+    currentUser = _ref9.currentUser;
   if (!messages.length) {
     return /*#__PURE__*/react.createElement("div", {
       className: "empty-state"
@@ -2269,8 +2661,8 @@ function MessageList(_ref7) {
     });
   }));
 }
-function MessageBubble(_ref8) {
-  var message = _ref8.message;
+function MessageBubble(_ref0) {
+  var message = _ref0.message;
   var roleClass = getRoleClass(message.role);
   var timestamp = message.createdAt ? formatTimestamp(message.createdAt) : null;
   return /*#__PURE__*/react.createElement("li", {
@@ -2295,8 +2687,8 @@ function MessageBubble(_ref8) {
     }
   })));
 }
-function MessageContent(_ref9) {
-  var item = _ref9.item;
+function MessageContent(_ref1) {
+  var item = _ref1.item;
   if (!item) {
     return null;
   }
@@ -2327,9 +2719,9 @@ function MessageContent(_ref9) {
       }, JSON.stringify(item, null, 2));
   }
 }
-function StagedFileList(_ref0) {
-  var files = _ref0.files,
-    onRemove = _ref0.onRemove;
+function StagedFileList(_ref10) {
+  var files = _ref10.files,
+    onRemove = _ref10.onRemove;
   if (!files.length) {
     return null;
   }
@@ -2347,11 +2739,11 @@ function StagedFileList(_ref0) {
     }, "Remove"));
   }));
 }
-function Banner(_ref1) {
-  var _ref1$type = _ref1.type,
-    type = _ref1$type === void 0 ? 'info' : _ref1$type,
-    message = _ref1.message,
-    onDismiss = _ref1.onDismiss;
+function Banner(_ref11) {
+  var _ref11$type = _ref11.type,
+    type = _ref11$type === void 0 ? 'info' : _ref11$type,
+    message = _ref11.message,
+    onDismiss = _ref11.onDismiss;
   if (!message) {
     return null;
   }

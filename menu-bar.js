@@ -7,7 +7,7 @@ window.createMenuBar = function(user) {
   menuBar.className = 'menu-bar';
   menuBar.innerHTML = `
     <a href="/" class="menu-bar-logo">
-      <svg width="120" height="40" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
+      <svg width="180" height="60" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
         <!-- Kyo text -->
         <text x="5" y="28" fontFamily="serif" fontSize="24" fontWeight="600" fill="#0F4C5C">
           Kyo
@@ -45,13 +45,13 @@ window.createMenuBar = function(user) {
   if (document.body) {
     document.body.insertBefore(menuBar, document.body.firstChild);
     // Add padding to body to account for fixed menu bar
-    document.body.style.paddingTop = '56px';
+    document.body.style.paddingTop = '72px';
   } else {
     // If body doesn't exist yet, wait for DOMContentLoaded
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function() {
         document.body.insertBefore(menuBar, document.body.firstChild);
-        document.body.style.paddingTop = '56px';
+        document.body.style.paddingTop = '72px';
       });
     }
   }

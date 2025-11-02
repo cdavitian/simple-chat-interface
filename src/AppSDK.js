@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 import { createFileStager } from './chatkitFiles';
+import { buildMessageContent } from './utils/fileTypeDetector';
 import { registerUploadedS3Object } from './api';
 import MenuBar from './components/MenuBar';
 
@@ -245,17 +246,13 @@ function ChatInterface({ user }) {
     if (text) {
       content.push({ type: 'input_text', text });
     }
-    fileStager.listWithMetadata().forEach(({ file_id, content_type: cType, filename }) => {
-      const normalizedType = (cType || '').toLowerCase();
-      const extension = filename?.includes('.') ? filename.split('.').pop().toLowerCase() : '';
-      const isPdf = normalizedType === 'application/pdf' || extension === 'pdf';
-      const displayName = filename || file_id;
-
-      if (isPdf) {
-        content.push({ type: 'context_file', file_id: file_id, display_name: displayName });
-      } else {
-        content.push({ type: 'input_file', file_id: file_id, display_name: displayName });
-      }
+    fileStager.listWithMetadata().forEach(({ file_id, ...metadata }) => {
+      const messageContent = buildMessageContent(file_id, metadata);
+      content.push({
+        type: messageContent.type,
+        file_id: messageContent.file_id,
+        display_name: messageContent.display_name,
+      });
     });
 
     const optimisticId = `local-${Date.now()}`;

@@ -5,7 +5,7 @@ const MenuBar = ({ user }) => {
   return (
     <div className="menu-bar">
       <a href="/" className="menu-bar-logo">
-        <svg width="120" height="40" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
+        <svg width="180" height="60" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
           {/* Kyo text */}
           <text x="5" y="28" fontFamily="serif" fontSize="24" fontWeight="600" fill="#0F4C5C">
             Kyo

@@ -5,6 +5,7 @@ const cors = require('cors');
 const AWS = require('aws-sdk');
 const OpenAI = require('openai');
 const { runAgentConversation } = require('./sdk-agent');
+const { getFileConfig, prepareMessageParts } = require('./services/fileHandler.service');
 const crypto = require('crypto');
 const LoggingConfig = require('./logging-config');
 require('dotenv').config();
@@ -1109,9 +1110,16 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
             if (!req.session.chatkitFilesMetadata) {
                 req.session.chatkitFilesMetadata = {};
             }
+
+            const fileConfig = getFileConfig({
+                filename: resolvedFilename,
+                content_type: resolvedContentType,
+            });
+
             req.session.chatkitFilesMetadata[uploaded.id] = {
                 content_type: resolvedContentType,
-                filename: resolvedFilename
+                filename: resolvedFilename,
+                category: fileConfig?.category || null,
             };
         } catch (metadataError) {
             console.warn('Unable to persist chatkit file metadata in session:', metadataError?.message);
@@ -1271,27 +1279,49 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         
         // Build content array from client-staged files + any legacy session files
         const content = [];
+        const attachmentMap = new Map();
         if (text) {
             content.push({ type: 'input_text', text: text });
         }
 
-        // Function to route files by content type: PDF → context_file, others → input_file
         const addFileToContent = (fileId, metadata = {}) => {
-            const contentType = (metadata.content_type || metadata.contentType || '').toLowerCase();
-            const filename = metadata.filename || metadata.name || metadata.display_name || '';
-            const extension = filename.includes('.') ? filename.split('.').pop().toLowerCase() : '';
-            const isPdf = contentType === 'application/pdf' || extension === 'pdf';
-            const displayName = filename || fileId;
-
-            if (isPdf) {
-                // PDFs go into context (stuffing)
-                content.push({ type: 'context_file', file_id: fileId, display_name: displayName });
-                return 'context_file';
+            const routing = prepareMessageParts(fileId, metadata);
+            if (routing?.messageContent) {
+                content.push(routing.messageContent);
             }
 
-            // CSV/XLS/XLSX and other files go as regular attachments (Code Interpreter)
-            content.push({ type: 'input_file', file_id: fileId, display_name: displayName });
-            return 'input_file';
+            if (Array.isArray(routing?.attachments)) {
+                routing.attachments.forEach((attachment) => {
+                    if (!attachment || !attachment.file_id) {
+                        return;
+                    }
+
+                    const existing = attachmentMap.get(attachment.file_id);
+                    if (!existing) {
+                        attachmentMap.set(attachment.file_id, attachment);
+                        return;
+                    }
+
+                    const existingTools = Array.isArray(existing.tools) ? existing.tools : [];
+                    const nextTools = Array.isArray(attachment.tools) ? attachment.tools : [];
+                    const mergedTools = [...existingTools];
+
+                    nextTools.forEach((tool) => {
+                        if (!tool) return;
+                        if (!mergedTools.some((existingTool) => existingTool?.type === tool.type)) {
+                            mergedTools.push(tool);
+                        }
+                    });
+
+                    attachmentMap.set(attachment.file_id, {
+                        ...existing,
+                        ...attachment,
+                        tools: mergedTools,
+                    });
+                });
+            }
+
+            return routing;
         };
 
         const injectedFileIds = new Set();
@@ -1347,15 +1377,23 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         const fileRoutingLog = [];
         for (const fid of injectedFileIds) {
             const metadata = fileMetadataMap.get(fid) || {};
-            const classification = addFileToContent(fid, metadata);
+            const routing = addFileToContent(fid, metadata);
             fileRoutingLog.push({
                 file_id: fid,
-                classification,
+                classification: routing?.messageContent?.type || null,
+                category: routing?.category || null,
                 content_type: metadata.content_type || null,
-                filename: metadata.filename || null
+                filename: metadata.filename || null,
+                tools: Array.isArray(routing?.attachments)
+                    ? routing.attachments.flatMap((attachment) =>
+                        Array.isArray(attachment?.tools) ? attachment.tools.map((tool) => tool?.type) : []
+                      )
+                    : []
             });
         }
         
+        const attachments = Array.from(attachmentMap.values());
+
         console.log('Sending message to ChatKit session:', {
             session_id: effectiveSessionId,
             contentTypes: content.map(c => c.type),
@@ -1363,15 +1401,23 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             hasText: !!text,
             stagedFileCount: staged_file_ids?.length || 0,
             stagedFilesWithMetadata: req.body.staged_files?.length || 0,
-            fileRouting: fileRoutingLog
+            fileRouting: fileRoutingLog,
+            attachmentsCount: attachments.length,
+            codeInterpreterFiles: fileRoutingLog.filter(entry => entry?.category === 'code_interpreter').length
         });
         
         // Send message using ChatKit API
-        const message = await client.beta.chatkit.messages.create({
+        const messagePayload = {
             session_id: effectiveSessionId,
             role: 'user',
             content: content
-        });
+        };
+
+        if (attachments.length > 0) {
+            messagePayload.attachments = attachments;
+        }
+
+        const message = await client.beta.chatkit.messages.create(messagePayload);
         
         console.log('Message sent successfully:', {
             message_id: message.id,

@@ -1,0 +1,33 @@
+{
+  "context": {
+    "extensions": ["pdf"],
+    "mimeTypes": ["application/pdf"]
+  },
+  "codeInterpreter": {
+    "extensions": [
+      "csv",
+      "tsv",
+      "xls",
+      "xlsx",
+      "xlsm",
+      "xlsb",
+      "xltx",
+      "xltm",
+      "json",
+      "ndjson"
+    ],
+    "mimeTypes": [
+      "text/csv",
+      "application/csv",
+      "text/tab-separated-values",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel.sheet.macroenabled.12",
+      "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+      "application/json",
+      "text/json",
+      "application/x-ndjson"
+    ]
+  }
+}
+
