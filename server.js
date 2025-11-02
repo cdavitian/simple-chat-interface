@@ -777,17 +777,25 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         // Create or get vector store for this session
         let vectorStoreId = null;
         try {
+            console.log('🔍 ChatKit (GET): Attempting to get or create vector store...', {
+                sessionId,
+                userId,
+                hasExistingVectorStore: !!req.session?.vectorStoreId
+            });
             vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
-            console.log('✅ Vector store ready for ChatKit session:', {
+            console.log('✅ Vector store ready for ChatKit session (GET):', {
                 sessionId,
                 vectorStoreId,
-                storedInSession: !!req.session.vectorStoreId
+                storedInSession: !!req.session.vectorStoreId,
+                sessionVectorStoreId: req.session.vectorStoreId
             });
         } catch (vectorStoreError) {
-            console.error('❌ Failed to create vector store:', {
+            console.error('❌ Failed to create vector store (GET):', {
                 error: vectorStoreError?.message,
                 stack: vectorStoreError?.stack,
-                sessionId
+                name: vectorStoreError?.name,
+                sessionId,
+                userId
             });
             // Continue even if vector store creation fails, but log it prominently
         }
@@ -957,17 +965,25 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         // Create or get vector store for this session
         let vectorStoreId = null;
         try {
+            console.log('🔍 ChatKit (POST): Attempting to get or create vector store...', {
+                sessionId,
+                userId,
+                hasExistingVectorStore: !!req.session?.vectorStoreId
+            });
             vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
             console.log('✅ Vector store ready for ChatKit session (POST):', {
                 sessionId,
                 vectorStoreId,
-                storedInSession: !!req.session.vectorStoreId
+                storedInSession: !!req.session.vectorStoreId,
+                sessionVectorStoreId: req.session.vectorStoreId
             });
         } catch (vectorStoreError) {
-            console.error('❌ Failed to create vector store:', {
+            console.error('❌ Failed to create vector store (POST):', {
                 error: vectorStoreError?.message,
                 stack: vectorStoreError?.stack,
-                sessionId
+                name: vectorStoreError?.name,
+                sessionId,
+                userId
             });
             // Continue even if vector store creation fails, but log it prominently
         }
@@ -1198,7 +1214,17 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
         // Add file to session's vector store for persistent file awareness
         try {
             const vectorStoreId = req.session?.vectorStoreId;
+            console.log('🔍 ingest-s3: Checking for vector store:', {
+                hasVectorStoreId: !!vectorStoreId,
+                vectorStoreId: vectorStoreId || 'NONE',
+                file_id: uploaded.id
+            });
+            
             if (vectorStoreId) {
+                console.log('📤 ingest-s3: Adding file to vector store...', {
+                    file_id: uploaded.id,
+                    vectorStoreId
+                });
                 const vsFile = await client.beta.vectorStores.files.create(vectorStoreId, {
                     file_id: uploaded.id
                 });
@@ -1209,14 +1235,17 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
                 });
             } else {
                 console.warn('⚠️ No vector store found in session, file not added to vector store. File will only be available for immediate use.', {
-                    file_id: uploaded.id
+                    file_id: uploaded.id,
+                    sessionKeys: Object.keys(req.session || {})
                 });
             }
         } catch (vectorStoreError) {
             console.error('❌ Failed to add file to vector store:', {
                 error: vectorStoreError?.message,
+                stack: vectorStoreError?.stack,
                 file_id: uploaded.id,
-                vectorStoreId: req.session?.vectorStoreId
+                vectorStoreId: req.session?.vectorStoreId,
+                errorType: vectorStoreError?.constructor?.name
             });
             // Continue even if vector store addition fails
         }
@@ -1615,12 +1644,27 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         const client = getOpenAIClient();
         if (client) {
             try {
+                console.log('🔍 SDK: Attempting to get or create vector store...');
                 const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                 const sdkSessionId = `sdk_${userId}_${req.sessionID}`;
-                await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
+                console.log('🔍 SDK: Vector store params:', {
+                    userId,
+                    sdkSessionId,
+                    sessionID: req.sessionID,
+                    hasExistingVectorStore: !!req.session.vectorStoreId
+                });
+                const vectorStoreId = await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
+                console.log('✅ SDK: Vector store ready:', { vectorStoreId });
             } catch (vectorStoreError) {
-                console.warn('Failed to ensure vector store for SDK (non-fatal):', vectorStoreError?.message);
+                console.error('❌ SDK: Failed to ensure vector store:', {
+                    error: vectorStoreError?.message,
+                    stack: vectorStoreError?.stack,
+                    name: vectorStoreError?.name
+                });
+                // Continue anyway - files may still work without vector store
             }
+        } else {
+            console.error('❌ SDK: OpenAI client not available for vector store creation');
         }
         
         // Build file metadata map from staged_files and session
