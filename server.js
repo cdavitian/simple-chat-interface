@@ -2015,6 +2015,18 @@ app.get('/constants.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'constants.js'));
 });
 
+// Serve menu-bar.js file
+app.get('/menu-bar.js', (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.sendFile(path.join(__dirname, 'menu-bar.js'));
+});
+
+// Serve menu-bar.css file
+app.get('/menu-bar.css', (req, res) => {
+    res.setHeader('Content-Type', 'text/css');
+    res.sendFile(path.join(__dirname, 'menu-bar.css'));
+});
+
 // Serve robots.txt file
 app.get('/robots.txt', (req, res) => {
     res.setHeader('Content-Type', 'text/plain');
