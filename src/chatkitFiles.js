@@ -1,35 +1,67 @@
-// File stager for quietly managing file_ids until they're sent with a prompt
-// Now tracks content_type to route files correctly (PDF → context_file, CSV/XLS → input_file)
+// File stager for quietly managing file metadata until they're sent with a prompt
+// Tracks content_type + filename so the server can route files correctly
 
 export function createFileStager() {
-  const staged = new Map(); // Map<file_id, { content_type, filename? }>
+  const staged = new Map(); // Map<file_id, { content_type, filename }>
+
+  const add = (fileId, metadata = {}) => {
+    if (!fileId) return;
+    const normalized = {
+      content_type: metadata.content_type || metadata.contentType || '',
+      filename: metadata.filename || metadata.name || ''
+    };
+    staged.set(fileId, normalized);
+  };
+
+  const remove = (fileId) => {
+    if (!fileId) return;
+    staged.delete(fileId);
+  };
+
+  const list = () => Array.from(staged.keys());
+
+  const listWithMetadata = () => Array.from(staged.entries()).map(([file_id, metadata]) => ({
+    file_id,
+    ...metadata
+  }));
+
+  const clear = () => staged.clear();
+
+  const classifyFile = (fileId, metadata = {}) => {
+    const contentType = (metadata.content_type || '').toLowerCase();
+    const filename = metadata.filename || '';
+    const extension = filename.includes('.') ? filename.split('.').pop().toLowerCase() : '';
+    const isPdf = contentType === 'application/pdf' || extension === 'pdf';
+    const displayName = filename || fileId;
+
+    if (isPdf) {
+      return { type: 'context_file', file_id: fileId, display_name: displayName };
+    }
+
+    return { type: 'input_file', file_id: fileId, display_name: displayName };
+  };
+
+  const toMessageContent = (text) => {
+    const content = [];
+    if (text) {
+      content.push({ type: 'input_text', text });
+    }
+
+    staged.forEach((metadata, fileId) => {
+      content.push(classifyFile(fileId, metadata));
+    });
+
+    return content;
+  };
 
   return {
-    add: (fileId, metadata = {}) => {
-      staged.set(fileId, metadata);
-    },
-    list: () => Array.from(staged.keys()),
-    listWithMetadata: () => Array.from(staged.entries()).map(([file_id, metadata]) => ({
-      file_id,
-      ...metadata
-    })),
-    clear: () => staged.clear(),
-    toMessageContent: (text) => {
-      const content = [];
-      if (text) {
-        content.push({ type: "input_text", text });
-      }
-      Array.from(staged.entries()).forEach(([file_id, metadata]) => {
-        const contentType = metadata?.content_type || '';
-        // Route by content type: PDF → context_file, others → input_file
-        if (contentType === 'application/pdf') {
-          content.push({ type: "context_file", file_id });
-        } else {
-          content.push({ type: "input_file", file_id });
-        }
-      });
-      return content;
-    },
+    add,
+    remove,
+    list,
+    listWithMetadata,
+    clear,
+    toMessageContent,
+    getMetadata: (fileId) => staged.get(fileId)
   };
 }
 

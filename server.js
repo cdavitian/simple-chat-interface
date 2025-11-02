@@ -1105,6 +1105,18 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
             content_type: resolvedContentType
         });
 
+        try {
+            if (!req.session.chatkitFilesMetadata) {
+                req.session.chatkitFilesMetadata = {};
+            }
+            req.session.chatkitFilesMetadata[uploaded.id] = {
+                content_type: resolvedContentType,
+                filename: resolvedFilename
+            };
+        } catch (metadataError) {
+            console.warn('Unable to persist chatkit file metadata in session:', metadataError?.message);
+        }
+
         return res.json({ 
             file_id: uploaded.id, 
             filename: resolvedFilename,
@@ -1264,18 +1276,27 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         }
 
         // Function to route files by content type: PDF → context_file, others → input_file
-        const addFileToContent = (fileId, contentType = '') => {
-            if (contentType === 'application/pdf') {
+        const addFileToContent = (fileId, metadata = {}) => {
+            const contentType = (metadata.content_type || metadata.contentType || '').toLowerCase();
+            const filename = metadata.filename || metadata.name || metadata.display_name || '';
+            const extension = filename.includes('.') ? filename.split('.').pop().toLowerCase() : '';
+            const isPdf = contentType === 'application/pdf' || extension === 'pdf';
+            const displayName = filename || fileId;
+
+            if (isPdf) {
                 // PDFs go into context (stuffing)
-                content.push({ type: 'context_file', file_id: fileId });
-            } else {
-                // CSV/XLS/XLSX and other files go as regular attachments (Code Interpreter)
-                content.push({ type: 'input_file', file_id: fileId });
+                content.push({ type: 'context_file', file_id: fileId, display_name: displayName });
+                return 'context_file';
             }
+
+            // CSV/XLS/XLSX and other files go as regular attachments (Code Interpreter)
+            content.push({ type: 'input_file', file_id: fileId, display_name: displayName });
+            return 'input_file';
         };
 
         const injectedFileIds = new Set();
-        const fileMetadataMap = new Map(); // Map<file_id, { content_type }>
+        const fileMetadataMap = new Map(); // Map<file_id, metadata>
+        const sessionFileMetadata = req.session?.chatkitFilesMetadata || {};
         
         // Add client-staged files with metadata (new approach)
         if (Array.isArray(req.body.staged_files)) {
@@ -1283,9 +1304,11 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
                 if (fileInfo && typeof fileInfo.file_id === 'string' && fileInfo.file_id.trim()) {
                     const fid = fileInfo.file_id.trim();
                     injectedFileIds.add(fid);
-                    if (fileInfo.content_type) {
-                        fileMetadataMap.set(fid, { content_type: fileInfo.content_type });
-                    }
+                    const metadata = {
+                        content_type: fileInfo.content_type || fileInfo.contentType || null,
+                        filename: fileInfo.filename || fileInfo.name || null
+                    };
+                    fileMetadataMap.set(fid, metadata);
                 }
             }
         }
@@ -1293,7 +1316,8 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         if (Array.isArray(staged_file_ids)) {
             for (const fid of staged_file_ids) {
                 if (typeof fid === 'string' && fid.trim()) {
-                    injectedFileIds.add(fid.trim());
+                    const trimmed = fid.trim();
+                    injectedFileIds.add(trimmed);
                 }
             }
         }
@@ -1301,19 +1325,35 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         if (Array.isArray(req.session?.chatkitFileIds)) {
             for (const fid of req.session.chatkitFileIds) {
                 if (typeof fid === 'string' && fid.trim()) {
-                    injectedFileIds.add(fid.trim());
+                    const trimmed = fid.trim();
+                    injectedFileIds.add(trimmed);
                 }
             }
         }
         // Legacy: single file_id parameter
         if (file_id && typeof file_id === 'string') {
-            injectedFileIds.add(file_id.trim());
+            const trimmed = file_id.trim();
+            injectedFileIds.add(trimmed);
+        }
+
+        // Merge in metadata from session where missing
+        for (const fid of injectedFileIds) {
+            if (!fileMetadataMap.has(fid) && sessionFileMetadata[fid]) {
+                fileMetadataMap.set(fid, sessionFileMetadata[fid]);
+            }
         }
         
         // Route files by content type
+        const fileRoutingLog = [];
         for (const fid of injectedFileIds) {
-            const metadata = fileMetadataMap.get(fid);
-            addFileToContent(fid, metadata?.content_type);
+            const metadata = fileMetadataMap.get(fid) || {};
+            const classification = addFileToContent(fid, metadata);
+            fileRoutingLog.push({
+                file_id: fid,
+                classification,
+                content_type: metadata.content_type || null,
+                filename: metadata.filename || null
+            });
         }
         
         console.log('Sending message to ChatKit session:', {
@@ -1321,7 +1361,9 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             contentTypes: content.map(c => c.type),
             injectedFiles: Array.from(injectedFileIds),
             hasText: !!text,
-            stagedFileCount: staged_file_ids?.length || 0
+            stagedFileCount: staged_file_ids?.length || 0,
+            stagedFilesWithMetadata: req.body.staged_files?.length || 0,
+            fileRouting: fileRoutingLog
         });
         
         // Send message using ChatKit API
@@ -1343,6 +1385,16 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             }
         } catch (e) {
             console.warn('Unable to clear session file_ids:', e?.message);
+        }
+
+        try {
+            if (req.session.chatkitFilesMetadata && injectedFileIds.size > 0) {
+                for (const fid of injectedFileIds) {
+                    delete req.session.chatkitFilesMetadata[fid];
+                }
+            }
+        } catch (e) {
+            console.warn('Unable to clear session file metadata:', e?.message);
         }
 
         // Generate the assistant's reply (visible to the user)

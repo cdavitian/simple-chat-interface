@@ -1,0 +1,138 @@
+.menu-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.menu-bar-logo {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+}
+
+.menu-bar-logo:hover {
+    opacity: 0.8;
+}
+
+.menu-bar-logo svg {
+    height: 32px;
+    width: auto;
+}
+
+.menu-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.menu-bar .user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 12px;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+}
+
+.menu-bar .user-photo {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.menu-bar .user-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: white;
+}
+
+.menu-bar .admin-btn,
+.menu-bar .logout-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.menu-bar .admin-btn:hover,
+.menu-bar .logout-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.menu-bar .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.menu-bar .status-dot {
+    width: 8px;
+    height: 8px;
+    background: #4ade80;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.menu-bar .status-text {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Add padding to body content to account for fixed menu bar */
+body.has-menu-bar {
+    padding-top: 56px;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .menu-bar {
+        padding: 10px 16px;
+    }
+    
+    .menu-bar-logo svg {
+        height: 24px;
+    }
+    
+    .menu-bar-right {
+        gap: 12px;
+    }
+    
+    .menu-bar .user-info {
+        padding: 6px 10px;
+    }
+    
+    .menu-bar .user-name {
+        font-size: 12px;
+    }
+    
+    .menu-bar .admin-btn,
+    .menu-bar .logout-btn {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+}
+

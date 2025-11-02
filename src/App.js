@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ChatKit, useChatKit } from '@openai/chatkit-react';
 import { createFileStager } from './chatkitFiles';
 import { registerUploadedS3Object } from './api';
+import MenuBar from './components/MenuBar';
 import './App.css';
 
 // Create file stager instance (shared across component re-renders)
@@ -198,37 +199,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <div className="app-header">
-        <h1>ChatKit AI Assistant</h1>
-        <div className="header-right">
-          <div className="user-info">
-            <img 
-              src={user?.picture || user?.avatar || '/default-avatar.png'} 
-              alt="User" 
-              className="user-photo"
-            />
-            <span className="user-name">{user?.name || 'User'}</span>
-            {user?.userType === 'Admin' && (
-              <button 
-                className="admin-btn"
-                onClick={() => window.location.href = '/admin'}
-              >
-                Admin
-              </button>
-            )}
-            <button 
-              className="logout-btn"
-              onClick={() => window.location.href = '/logout'}
-            >
-              Logout
-            </button>
-          </div>
-          <div className="status-indicator">
-            <span className="status-dot"></span>
-            <span className="status-text">Online</span>
-          </div>
-        </div>
-      </div>
+      <MenuBar user={user} />
       
       <div className="chatkit-container" style={{ 
         width: '100%', 

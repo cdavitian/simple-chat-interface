@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 import { createFileStager } from './chatkitFiles';
 import { registerUploadedS3Object } from './api';
+import MenuBar from './components/MenuBar';
 
 const fileStager = createFileStager();
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
 export async function onCustomToolS3UploadSuccess({ key, filename, bucket }) {
-  const { file_id } = await registerUploadedS3Object({ key, filename, bucket });
-  fileStager.add(file_id);
+  const { file_id, content_type } = await registerUploadedS3Object({ key, filename, bucket });
+  fileStager.add(file_id, { content_type, filename });
   return file_id;
 }
 
@@ -73,31 +74,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <div className="app-header">
-        <h1>MCP SDK Assistant</h1>
-        <div className="header-right">
-          <div className="user-info">
-            <img
-              src={user?.picture || user?.avatar || '/default-avatar.png'}
-              alt="User avatar"
-              className="user-photo"
-            />
-            <span className="user-name">{user?.name || 'User'}</span>
-            {user?.userType === 'Admin' && (
-              <button className="admin-btn" onClick={() => (window.location.href = '/admin')}>
-                Admin
-              </button>
-            )}
-            <button className="logout-btn" onClick={() => (window.location.href = '/logout')}>
-              Logout
-            </button>
-          </div>
-          <div className="status-indicator">
-            <span className="status-dot" />
-            <span className="status-text">Online</span>
-          </div>
-        </div>
-      </div>
+      <MenuBar user={user} />
 
       <ChatInterface user={user} />
     </div>
@@ -212,7 +189,10 @@ function ChatInterface({ user }) {
         setUploadStatus('Registering file with OpenAI…');
 
         const fileId = await onCustomToolS3UploadSuccess({ key: objectKey, filename: file.name });
-        setStagedFiles((prev) => [...prev, { file_id: fileId, name: file.name }]);
+        setStagedFiles((prev) => [
+          ...prev,
+          { file_id: fileId, name: file.name, content_type: contentType || file.type || 'application/octet-stream' }
+        ]);
         setUploadStatus(`✓ ${file.name} ready for the next message`);
       } catch (err) {
         console.error('Upload error:', err);
@@ -239,9 +219,13 @@ function ChatInterface({ user }) {
   );
 
   const removeStagedFile = useCallback((fileId) => {
-    const remainingIds = fileStager.list().filter((id) => id !== fileId);
+    const remainingFiles = fileStager
+      .listWithMetadata()
+      .filter((file) => file.file_id !== fileId);
+
     fileStager.clear();
-    remainingIds.forEach((id) => fileStager.add(id));
+    remainingFiles.forEach(({ file_id, ...metadata }) => fileStager.add(file_id, metadata));
+
     setStagedFiles((prev) => prev.filter((file) => file.file_id !== fileId));
   }, []);
 
@@ -261,8 +245,17 @@ function ChatInterface({ user }) {
     if (text) {
       content.push({ type: 'input_text', text });
     }
-    fileIds.forEach((fid) => {
-      content.push({ type: 'input_file', file_id: fid });
+    fileStager.listWithMetadata().forEach(({ file_id, content_type: cType, filename }) => {
+      const normalizedType = (cType || '').toLowerCase();
+      const extension = filename?.includes('.') ? filename.split('.').pop().toLowerCase() : '';
+      const isPdf = normalizedType === 'application/pdf' || extension === 'pdf';
+      const displayName = filename || file_id;
+
+      if (isPdf) {
+        content.push({ type: 'context_file', file_id: file_id, display_name: displayName });
+      } else {
+        content.push({ type: 'input_file', file_id: file_id, display_name: displayName });
+      }
     });
 
     const optimisticId = `local-${Date.now()}`;
@@ -283,7 +276,11 @@ function ChatInterface({ user }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ text, staged_file_ids: fileIds }),
+        body: JSON.stringify({
+          text,
+          staged_file_ids: fileIds,
+          staged_files: fileStager.listWithMetadata()
+        }),
       });
 
       if (!response.ok) {
