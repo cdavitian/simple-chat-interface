@@ -41,10 +41,20 @@ window.createMenuBar = function(user) {
   `;
 
   // Insert menu bar at the beginning of body
-  document.body.insertBefore(menuBar, document.body.firstChild);
-  
-  // Add padding to body to account for fixed menu bar
-  document.body.style.paddingTop = '56px';
+  // Wait for body to exist if needed
+  if (document.body) {
+    document.body.insertBefore(menuBar, document.body.firstChild);
+    // Add padding to body to account for fixed menu bar
+    document.body.style.paddingTop = '56px';
+  } else {
+    // If body doesn't exist yet, wait for DOMContentLoaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() {
+        document.body.insertBefore(menuBar, document.body.firstChild);
+        document.body.style.paddingTop = '56px';
+      });
+    }
+  }
 
   // Update user info when user data is available
   if (user && window.updateMenuBarUserInfo) {
