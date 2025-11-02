@@ -632,36 +632,53 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
         if (sessionObj?.vectorStoreId) {
             try {
                 // Verify the vector store still exists
-                await client.beta.vectorStores.retrieve(sessionObj.vectorStoreId);
-                console.log('Using existing vector store:', sessionObj.vectorStoreId);
+                const existing = await client.beta.vectorStores.retrieve(sessionObj.vectorStoreId);
+                console.log('✅ Using existing vector store:', {
+                    vectorStoreId: sessionObj.vectorStoreId,
+                    name: existing.name,
+                    fileCount: existing.file_counts?.total || 0
+                });
                 return sessionObj.vectorStoreId;
             } catch (e) {
-                console.warn('Existing vector store not found, creating new one:', e?.message);
+                console.warn('⚠️ Existing vector store not found, creating new one:', {
+                    vectorStoreId: sessionObj.vectorStoreId,
+                    error: e?.message
+                });
                 // If it doesn't exist, create a new one
             }
         }
 
         // Create a new vector store for this session
         const vectorStoreName = `session:${sessionId || `user_${userId}_${Date.now()}`}`;
+        console.log('🔨 Creating new vector store:', { name: vectorStoreName });
+        
         const vectorStore = await client.beta.vectorStores.create({
             name: vectorStoreName,
         });
 
-        console.log('Created new vector store:', {
+        console.log('✅ Created new vector store successfully:', {
             vectorStoreId: vectorStore.id,
-            name: vectorStoreName
+            name: vectorStore.name,
+            createdAt: vectorStore.created_at
         });
 
         // Store vector store ID in session
         try {
             sessionObj.vectorStoreId = vectorStore.id;
+            console.log('💾 Persisted vectorStoreId in session:', vectorStore.id);
         } catch (e) {
-            console.warn('Unable to persist vectorStoreId in session:', e?.message);
+            console.error('❌ Unable to persist vectorStoreId in session:', e?.message);
+            // Still return the ID even if we can't persist it
         }
 
         return vectorStore.id;
     } catch (error) {
-        console.error('Failed to get or create vector store:', error);
+        console.error('❌ Failed to get or create vector store:', {
+            error: error?.message,
+            stack: error?.stack,
+            sessionId,
+            userId
+        });
         throw error;
     }
 }
@@ -758,15 +775,21 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         const sessionId = session.id;
         
         // Create or get vector store for this session
+        let vectorStoreId = null;
         try {
-            const vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
-            console.log('Vector store ready for session:', {
+            vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
+            console.log('✅ Vector store ready for ChatKit session:', {
                 sessionId,
-                vectorStoreId
+                vectorStoreId,
+                storedInSession: !!req.session.vectorStoreId
             });
         } catch (vectorStoreError) {
-            console.warn('Failed to create vector store (non-fatal):', vectorStoreError?.message);
-            // Continue even if vector store creation fails
+            console.error('❌ Failed to create vector store:', {
+                error: vectorStoreError?.message,
+                stack: vectorStoreError?.stack,
+                sessionId
+            });
+            // Continue even if vector store creation fails, but log it prominently
         }
         
         // Persist the latest ChatKit session id in the user's server session for reuse/fallbacks
@@ -932,15 +955,21 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         const sessionId = session.id;
         
         // Create or get vector store for this session
+        let vectorStoreId = null;
         try {
-            const vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
-            console.log('Vector store ready for session (POST):', {
+            vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
+            console.log('✅ Vector store ready for ChatKit session (POST):', {
                 sessionId,
-                vectorStoreId
+                vectorStoreId,
+                storedInSession: !!req.session.vectorStoreId
             });
         } catch (vectorStoreError) {
-            console.warn('Failed to create vector store (non-fatal):', vectorStoreError?.message);
-            // Continue even if vector store creation fails
+            console.error('❌ Failed to create vector store:', {
+                error: vectorStoreError?.message,
+                stack: vectorStoreError?.stack,
+                sessionId
+            });
+            // Continue even if vector store creation fails, but log it prominently
         }
         
         if (!clientToken) {
@@ -1170,18 +1199,25 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
         try {
             const vectorStoreId = req.session?.vectorStoreId;
             if (vectorStoreId) {
-                await client.beta.vectorStores.files.create(vectorStoreId, {
+                const vsFile = await client.beta.vectorStores.files.create(vectorStoreId, {
                     file_id: uploaded.id
                 });
-                console.log('Added file to vector store (ingest-s3):', {
+                console.log('✅ Added file to vector store (ingest-s3):', {
                     file_id: uploaded.id,
-                    vectorStoreId
+                    vectorStoreId,
+                    status: vsFile.status
                 });
             } else {
-                console.warn('No vector store found in session, file not added to vector store');
+                console.warn('⚠️ No vector store found in session, file not added to vector store. File will only be available for immediate use.', {
+                    file_id: uploaded.id
+                });
             }
         } catch (vectorStoreError) {
-            console.warn('Failed to add file to vector store (non-fatal):', vectorStoreError?.message);
+            console.error('❌ Failed to add file to vector store:', {
+                error: vectorStoreError?.message,
+                file_id: uploaded.id,
+                vectorStoreId: req.session?.vectorStoreId
+            });
             // Continue even if vector store addition fails
         }
 
@@ -1314,18 +1350,25 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
         try {
             const vectorStoreId = req.session?.vectorStoreId;
             if (vectorStoreId) {
-                await client.beta.vectorStores.files.create(vectorStoreId, {
+                const vsFile = await client.beta.vectorStores.files.create(vectorStoreId, {
                     file_id: uploadedFile.id
                 });
-                console.log('Added file to vector store:', {
+                console.log('✅ Added file to vector store:', {
                     file_id: uploadedFile.id,
-                    vectorStoreId
+                    vectorStoreId,
+                    status: vsFile.status
                 });
             } else {
-                console.warn('No vector store found in session, file not added to vector store');
+                console.warn('⚠️ No vector store found in session, file not added to vector store. File will only be available for immediate use.', {
+                    file_id: uploadedFile.id
+                });
             }
         } catch (vectorStoreError) {
-            console.warn('Failed to add file to vector store (non-fatal):', vectorStoreError?.message);
+            console.error('❌ Failed to add file to vector store:', {
+                error: vectorStoreError?.message,
+                file_id: uploadedFile.id,
+                vectorStoreId: req.session?.vectorStoreId
+            });
             // Continue even if vector store addition fails
         }
 
@@ -1386,163 +1429,77 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             return res.status(500).json({ error: 'OpenAI client unavailable' });
         }
         
-        // Build content array from client-staged files + any legacy session files
+        // Build content array - only text, NO message-level file attachments
+        // Files are accessed via vector store file_search, not message-level attachments
         const content = [];
-        const attachmentMap = new Map();
         if (text) {
             content.push({ type: 'input_text', text: text });
         }
 
-        const addFileToContent = (fileId, metadata = {}) => {
-            const routing = prepareMessageParts(fileId, metadata);
-            if (routing?.messageContent) {
-                content.push(routing.messageContent);
-            }
-
-            if (Array.isArray(routing?.attachments)) {
-                routing.attachments.forEach((attachment) => {
-                    if (!attachment || !attachment.file_id) {
-                        return;
-                    }
-
-                    const existing = attachmentMap.get(attachment.file_id);
-                    if (!existing) {
-                        attachmentMap.set(attachment.file_id, attachment);
-                        return;
-                    }
-
-                    const existingTools = Array.isArray(existing.tools) ? existing.tools : [];
-                    const nextTools = Array.isArray(attachment.tools) ? attachment.tools : [];
-                    const mergedTools = [...existingTools];
-
-                    nextTools.forEach((tool) => {
-                        if (!tool) return;
-                        if (!mergedTools.some((existingTool) => existingTool?.type === tool.type)) {
-                            mergedTools.push(tool);
-                        }
-                    });
-
-                    attachmentMap.set(attachment.file_id, {
-                        ...existing,
-                        ...attachment,
-                        tools: mergedTools,
-                    });
-                });
-            }
-
-            return routing;
-        };
-
-        const injectedFileIds = new Set();
-        const fileMetadataMap = new Map(); // Map<file_id, metadata>
-        const sessionFileMetadata = req.session?.chatkitFilesMetadata || {};
+        // Collect file IDs that were uploaded (for logging only)
+        // These files should already be in the vector store
+        const uploadedFileIds = new Set();
         
-        // Add client-staged files with metadata (new approach)
         if (Array.isArray(req.body.staged_files)) {
             for (const fileInfo of req.body.staged_files) {
                 if (fileInfo && typeof fileInfo.file_id === 'string' && fileInfo.file_id.trim()) {
-                    const fid = fileInfo.file_id.trim();
-                    injectedFileIds.add(fid);
-                    const metadata = {
-                        content_type: fileInfo.content_type || fileInfo.contentType || null,
-                        filename: fileInfo.filename || fileInfo.name || null,
-                        category:
-                            typeof fileInfo.category === 'string'
-                                ? fileInfo.category
-                                : typeof fileInfo.file_category === 'string'
-                                ? fileInfo.file_category
-                                : null,
-                    };
-                    fileMetadataMap.set(fid, metadata);
+                    uploadedFileIds.add(fileInfo.file_id.trim());
                 }
             }
         }
-        // Fallback: also handle staged_file_ids array (backward compatibility)
         if (Array.isArray(staged_file_ids)) {
             for (const fid of staged_file_ids) {
                 if (typeof fid === 'string' && fid.trim()) {
-                    const trimmed = fid.trim();
-                    injectedFileIds.add(trimmed);
+                    uploadedFileIds.add(fid.trim());
                 }
             }
         }
-        // Legacy: also check session-stashed files (backward compatibility)
         if (Array.isArray(req.session?.chatkitFileIds)) {
             for (const fid of req.session.chatkitFileIds) {
                 if (typeof fid === 'string' && fid.trim()) {
-                    const trimmed = fid.trim();
-                    injectedFileIds.add(trimmed);
+                    uploadedFileIds.add(fid.trim());
                 }
             }
         }
-        // Legacy: single file_id parameter
         if (file_id && typeof file_id === 'string') {
-            const trimmed = file_id.trim();
-            injectedFileIds.add(trimmed);
+            uploadedFileIds.add(file_id.trim());
         }
-
-        // Merge in metadata from session where missing
-        for (const fid of injectedFileIds) {
-            const sessionMetadata = sessionFileMetadata[fid];
-            if (!sessionMetadata) {
-                continue;
+        
+        // Verify vector store exists and log file availability
+        const vectorStoreId = req.session?.vectorStoreId;
+        if (vectorStoreId && uploadedFileIds.size > 0) {
+            try {
+                const vs = await client.beta.vectorStores.retrieve(vectorStoreId);
+                console.log('📁 Files will be retrieved via vector store file_search:', {
+                    session_id: effectiveSessionId,
+                    vectorStoreId,
+                    uploadedFileCount: uploadedFileIds.size,
+                    vectorStoreFileCount: vs.file_counts?.total || 0,
+                    uploadedFileIds: Array.from(uploadedFileIds)
+                });
+            } catch (e) {
+                console.warn('⚠️ Could not verify vector store, but continuing:', e?.message);
             }
-
-            const existingMetadata = fileMetadataMap.get(fid) || {};
-            const mergedCategory = typeof existingMetadata.category === 'string' && existingMetadata.category
-                ? existingMetadata.category
-                : sessionMetadata.category || null;
-
-            fileMetadataMap.set(fid, {
-                ...sessionMetadata,
-                ...existingMetadata,
-                category: mergedCategory,
+        } else if (uploadedFileIds.size > 0) {
+            console.warn('⚠️ Files uploaded but no vector store available. Files may not be accessible:', {
+                uploadedFileIds: Array.from(uploadedFileIds)
             });
         }
         
-        // Route files by content type
-        const fileRoutingLog = [];
-        for (const fid of injectedFileIds) {
-            const metadata = fileMetadataMap.get(fid) || {};
-            const routing = addFileToContent(fid, metadata);
-            fileRoutingLog.push({
-                file_id: fid,
-                classification: routing?.messageContent?.type || null,
-                category: routing?.category || null,
-                content_type: metadata.content_type || null,
-                filename: metadata.filename || null,
-                tools: Array.isArray(routing?.attachments)
-                    ? routing.attachments.flatMap((attachment) =>
-                        Array.isArray(attachment?.tools) ? attachment.tools.map((tool) => tool?.type) : []
-                      )
-                    : []
-            });
-        }
-        
-        const attachments = Array.from(attachmentMap.values());
-        
-        console.log('Sending message to ChatKit session:', {
+        console.log('📤 Sending message to ChatKit session (vector store only, no message-level files):', {
             session_id: effectiveSessionId,
-            contentTypes: content.map(c => c.type),
-            injectedFiles: Array.from(injectedFileIds),
             hasText: !!text,
-            stagedFileCount: staged_file_ids?.length || 0,
-            stagedFilesWithMetadata: req.body.staged_files?.length || 0,
-            fileRouting: fileRoutingLog,
-            attachmentsCount: attachments.length,
-            codeInterpreterFiles: fileRoutingLog.filter(entry => entry?.category === 'code_interpreter').length
+            vectorStoreId: vectorStoreId || 'NONE',
+            uploadedFileCount: uploadedFileIds.size
         });
         
-        // Send message using ChatKit API
+        // Send message using ChatKit API - NO file attachments, files are in vector store
         const messagePayload = {
             session_id: effectiveSessionId,
             role: 'user',
             content: content
         };
-
-        if (attachments.length > 0) {
-            messagePayload.attachments = attachments;
-        }
+        // NOTE: We intentionally do NOT add attachments here - files are retrieved via vector store
 
         const message = await client.beta.chatkit.messages.create(messagePayload);
         
@@ -1579,16 +1536,20 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         };
 
         // Add file_search tool with vector store if available
-        const vectorStoreId = req.session?.vectorStoreId;
-        if (vectorStoreId) {
+        const vectorStoreIdForResponse = req.session?.vectorStoreId;
+        if (vectorStoreIdForResponse) {
             responseConfig.tool_resources = {
                 file_search: {
-                    vector_store_ids: [vectorStoreId]
+                    vector_store_ids: [vectorStoreIdForResponse]
                 }
             };
-            console.log('ChatKit response will use vector store for file_search:', {
+            console.log('✅ ChatKit response configured to use vector store for file_search:', {
                 session_id: effectiveSessionId,
-                vectorStoreId
+                vectorStoreId: vectorStoreIdForResponse
+            });
+        } else {
+            console.warn('⚠️ No vector store available for ChatKit response. File search will not work.', {
+                session_id: effectiveSessionId
             });
         }
 
@@ -1774,115 +1735,58 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 .filter(Boolean)
             : [];
 
-        // For the OpenAI Agents SDK, content can be a string OR an array
-        // Try using just a string for text, and add file_ids as a separate property
+        // For the OpenAI Agents SDK, use vector store file_search for files
+        // NO message-level file attachments - files are accessed via vector store
         let userItem;
         
-        if (fileIds.length > 0) {
-            // When files are present, use array format with input_text and input_file/context_file
-            const content = [];
-            const attachments = [];
-            
-            if (trimmedText) {
-                content.push({ 
-                    type: 'input_text', 
-                    text: trimmedText 
+        // Verify vector store exists and log file availability
+        const vectorStoreId = req.session?.vectorStoreId;
+        if (vectorStoreId && fileIds.length > 0) {
+            try {
+                const vs = await getOpenAIClient().beta.vectorStores.retrieve(vectorStoreId);
+                console.log('📁 SDK: Files will be retrieved via vector store file_search:', {
+                    vectorStoreId,
+                    uploadedFileCount: fileIds.length,
+                    vectorStoreFileCount: vs.file_counts?.total || 0,
+                    uploadedFileIds: fileIds
                 });
+            } catch (e) {
+                console.warn('⚠️ SDK: Could not verify vector store, but continuing:', e?.message);
             }
-            
-            // Add files based on their category
-            for (const fileId of fileIds) {
-                if (fileId && typeof fileId === 'string' && fileId.trim()) {
-                    const trimmedFileId = fileId.trim();
-                    const metadata = fileMetadataMap.get(trimmedFileId);
-                    
-                    // Use getFileConfig to determine category
-                    const fileConfig = getFileConfig(metadata || {});
-                    const category = fileConfig?.category || 'default';
-                    
-                    console.log(`SDK: Processing file ${trimmedFileId}:`, {
-                        category,
-                        metadata
-                    });
-                    
-                    if (category === 'code_interpreter') {
-                        // Code interpreter files: add to attachments for tool access
-                        // Note: These files should NOT be in content to avoid context stuffing errors
-                        attachments.push({
-                            file_id: trimmedFileId,
-                            tools: [{ type: 'code_interpreter' }]
-                        });
-                    } else {
-                        // Context files (PDFs): in content for RAG/context stuffing
-                        content.push({ 
-                            type: 'input_file',
-                            file: { id: trimmedFileId }
-                        });
-                    }
-                }
-            }
-            
-            console.log('SDK: Built content array (with files):', JSON.stringify(content, null, 2));
-            if (attachments.length > 0) {
-                console.log('SDK: Built attachments array:', JSON.stringify(attachments, null, 2));
-            }
-            
-            // If content is empty but we have attachments, add a minimal text entry
-            // This ensures the agent knows there's something to process
-            if (content.length === 0 && attachments.length > 0) {
-                console.log('SDK: Content empty but attachments present, adding placeholder text');
-                content.push({
-                    type: 'input_text',
-                    text: trimmedText || '[File attached]'
-                });
-            }
-            
-            userItem = {
-                role: 'user',
-                content: content,
-                createdAt: new Date().toISOString(),
-                id: generateMessageId()
-            };
-            
-            // Add attachments if present
-            if (attachments.length > 0) {
-                userItem.attachments = attachments;
-            }
-            
-            console.log('SDK: Final userItem:', JSON.stringify(userItem, null, 2));
-        } else {
-            // When no files, use simple string content
-            console.log('SDK: Using string content (no files):', trimmedText);
-            
-            userItem = {
-                role: 'user',
-                content: trimmedText, // Simple string for text-only messages
-                createdAt: new Date().toISOString(),
-                id: generateMessageId()
-            };
+        } else if (fileIds.length > 0) {
+            console.warn('⚠️ SDK: Files uploaded but no vector store available. Files may not be accessible:', {
+                uploadedFileIds: fileIds
+            });
         }
+        
+        // Use simple string content - files are accessed via vector store, not message attachments
+        userItem = {
+            role: 'user',
+            content: trimmedText || '', // Simple string - files accessed via vector store
+            createdAt: new Date().toISOString(),
+            id: generateMessageId()
+        };
+        
+        console.log('📤 SDK: Sending message (vector store only, no message-level files):', {
+            hasText: !!trimmedText,
+            vectorStoreId: vectorStoreId || 'NONE',
+            uploadedFileCount: fileIds.length
+        });
 
         conversation.push(userItem);
 
         console.log('SDK conversation payload', JSON.stringify(conversation, null, 2));
 
         // Clean conversation for OpenAI Agents SDK - send ONLY the current user message
-        // Strictly pick allowed fields and coerce content shape
+        // NO file attachments - files are accessed via vector store file_search tool
         const cleanedMessage = { role: 'user' };
         
-        // Ensure content is always an array
-        if (Array.isArray(userItem.content)) {
-            cleanedMessage.content = userItem.content;
-        } else if (typeof userItem.content === 'string') {
-            cleanedMessage.content = [{ type: 'input_text', text: userItem.content }];
-        } else {
-            cleanedMessage.content = [{ type: 'input_text', text: '' }];
-        }
+        // Content is always a simple string - files accessed via vector store
+        cleanedMessage.content = typeof userItem.content === 'string' 
+            ? userItem.content 
+            : '';
         
-        // Add attachments if present
-        if (Array.isArray(userItem.attachments) && userItem.attachments.length > 0) {
-            cleanedMessage.attachments = userItem.attachments;
-        }
+        // NOTE: We intentionally do NOT add attachments - files are retrieved via vector store
         
         const cleanedConversation = [cleanedMessage];
 
@@ -1890,8 +1794,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         console.log('Cleaned conversation length:', cleanedConversation.length);
         console.log('Cleaned conversation has attachments:', cleanedConversation[0]?.attachments?.length > 0);
 
-        // Get vector store ID from session for persistent file awareness
-        const vectorStoreId = req.session?.vectorStoreId;
+        // Vector store ID already retrieved above - use it for agent
         if (vectorStoreId) {
             console.log('SDK: Using vector store for file awareness:', vectorStoreId);
         } else {
