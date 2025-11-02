@@ -1740,18 +1740,22 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
 
         console.log('SDK conversation payload', JSON.stringify(conversation, null, 2));
 
-        // Clean conversation for OpenAI Agents SDK - remove extra fields
-        const cleanedConversation = conversation.map(item => {
-            const cleaned = {
-                role: item.role,
-                content: item.content
-            };
-            // Only add attachments if they exist
-            if (item.attachments && item.attachments.length > 0) {
-                cleaned.attachments = item.attachments;
+        // Clean conversation for OpenAI Agents SDK - send ONLY the current user message
+        // Strictly pick allowed fields and coerce content shape
+        const cleanedConversation = [(() => {
+            const cleaned = { role: 'user' };
+            if (Array.isArray(userItem.content)) {
+                cleaned.content = userItem.content;
+            } else if (typeof userItem.content === 'string') {
+                cleaned.content = [{ type: 'input_text', text: userItem.content }];
+            } else {
+                cleaned.content = [{ type: 'input_text', text: '' }];
+            }
+            if (Array.isArray(userItem.attachments) && userItem.attachments.length > 0) {
+                cleaned.attachments = userItem.attachments;
             }
             return cleaned;
-        });
+        })()];
 
         console.log('Cleaned conversation for agent:', JSON.stringify(cleanedConversation, null, 2));
 
