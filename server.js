@@ -1118,6 +1118,14 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
                 content_type: resolvedContentType,
             });
 
+            console.log('File category detection for ingest-s3:', {
+                file_id: uploaded.id,
+                filename: resolvedFilename,
+                content_type: resolvedContentType,
+                detected_category: fileConfig?.category,
+                fileConfig: fileConfig
+            });
+
             req.session.chatkitFilesMetadata[uploaded.id] = {
                 content_type: resolvedContentType,
                 filename: resolvedFilename,
@@ -1531,10 +1539,17 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         // Build file metadata map from staged_files and session
         const fileMetadataMap = new Map();
         
+        console.log('SDK message - Building file metadata map:', {
+            fileIds,
+            staged_files_count: Array.isArray(staged_files) ? staged_files.length : 0,
+            session_metadata_keys: req.session.chatkitFilesMetadata ? Object.keys(req.session.chatkitFilesMetadata) : []
+        });
+        
         // First, load from staged_files if provided by client
         if (Array.isArray(staged_files)) {
             staged_files.forEach(fileData => {
                 if (fileData && fileData.file_id) {
+                    console.log('SDK message - Adding from staged_files:', fileData);
                     fileMetadataMap.set(fileData.file_id, fileData);
                 }
             });
@@ -1544,6 +1559,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         if (req.session.chatkitFilesMetadata) {
             Object.entries(req.session.chatkitFilesMetadata).forEach(([fileId, metadata]) => {
                 if (fileIds.includes(fileId)) {
+                    console.log('SDK message - Adding from session:', { fileId, metadata });
                     fileMetadataMap.set(fileId, {
                         file_id: fileId,
                         ...metadata
@@ -1551,6 +1567,8 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 }
             });
         }
+        
+        console.log('SDK message - Final file metadata map:', Array.from(fileMetadataMap.entries()));
 
         const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const generateToolCallId = () => `mcpl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1646,7 +1664,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 });
             }
             
-            // Add each file as a separate content item with proper attachments
+            // Add files based on their category
             for (const fileId of fileIds) {
                 if (fileId && typeof fileId === 'string' && fileId.trim()) {
                     const trimmedFileId = fileId.trim();
@@ -1661,19 +1679,17 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                         metadata
                     });
                     
-                    // All files use 'input_file' type in Agents SDK
-                    // The attachments determine how they're used (context vs code_interpreter)
-                    content.push({ 
-                        type: 'input_file',
-                        file: { id: trimmedFileId }
-                    });
-                    
-                    // For code_interpreter files (CSV, Excel, JSON), add attachments
-                    // For context files (PDF), no attachment = used for context/RAG
                     if (category === 'code_interpreter') {
+                        // Code interpreter files: only in attachments, NOT in content
                         attachments.push({
                             file_id: trimmedFileId,
                             tools: [{ type: 'code_interpreter' }]
+                        });
+                    } else {
+                        // Context files (PDFs): in content for RAG/context stuffing
+                        content.push({ 
+                            type: 'input_file',
+                            file: { id: trimmedFileId }
                         });
                     }
                 }
