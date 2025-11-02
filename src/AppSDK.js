@@ -190,14 +190,18 @@ function ChatInterface({ user }) {
           throw new Error(errorText || 'Failed to create upload URL');
         }
 
-        const { uploadUrl, objectKey } = await presignResp.json();
+        const { uploadUrl, objectKey, contentType } = await presignResp.json();
 
         setUploadStatus('Uploading to S3…');
 
+        // Use the exact Content-Type from presign response to match what S3 expects
+        // Content-Length is automatically set by browser when using File object (no chunked encoding)
         const uploadResp = await fetch(uploadUrl, {
           method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: file,  // File object ensures Content-Length is set automatically (no chunked)
+          headers: { 
+            'Content-Type': contentType || file.type || 'application/octet-stream'
+          },
         });
 
         if (!uploadResp.ok) {

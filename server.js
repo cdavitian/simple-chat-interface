@@ -969,9 +969,26 @@ app.post('/api/uploads/presign', requireAuth, async (req, res) => {
             return res.status(400).json({ error: 'filename is required' });
         }
 
-        const safeContentType = (mime && typeof mime === 'string' && mime.trim() !== '')
-            ? mime
-            : 'application/octet-stream';
+        // Function to get correct MIME type from filename extension
+        // Browsers often send incorrect or missing MIME types for CSV/XLS files
+        const getContentTypeFromFilename = (filename, fallbackMime) => {
+            const ext = filename.toLowerCase().split('.').pop();
+            const mimeMap = {
+                'csv': 'text/csv',
+                'xls': 'application/vnd.ms-excel',
+                'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'pdf': 'application/pdf',
+                'png': 'image/png',
+                'jpg': 'image/jpeg',
+                'jpeg': 'image/jpeg',
+                'gif': 'image/gif',
+                'webp': 'image/webp'
+            };
+            return mimeMap[ext] || (fallbackMime && typeof fallbackMime === 'string' && fallbackMime.trim() !== '' ? fallbackMime : 'application/octet-stream');
+        };
+
+        // Use filename extension to determine correct MIME type, fallback to provided mime if not found
+        const safeContentType = getContentTypeFromFilename(filename, mime);
 
         if (Number.isFinite(S3_MAX_FILE_BYTES) && S3_MAX_FILE_BYTES > 0 && Number(size) > S3_MAX_FILE_BYTES) {
             const maxMb = Math.round((S3_MAX_FILE_BYTES / (1024 * 1024)) * 10) / 10;
@@ -1005,7 +1022,8 @@ app.post('/api/uploads/presign', requireAuth, async (req, res) => {
 
         res.json({
             uploadUrl,
-            objectKey
+            objectKey,
+            contentType: safeContentType  // Return so frontend uses exact same Content-Type in PUT
         });
     } catch (error) {
         console.error('Failed to presign S3 upload:', error);
