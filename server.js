@@ -1393,7 +1393,7 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         }
         
         const attachments = Array.from(attachmentMap.values());
-
+        
         console.log('Sending message to ChatKit session:', {
             session_id: effectiveSessionId,
             contentTypes: content.map(c => c.type),
