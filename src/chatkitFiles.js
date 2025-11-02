@@ -58,6 +58,13 @@ export function createFileStager() {
     }
 
     staged.forEach((metadata, fileId) => {
+      // For code_interpreter files (e.g., CSV), don't place them in content.
+      // They'll be sent via staged_file_ids/metadata and attached server-side.
+      const category = metadata?.category;
+      if (category === 'code_interpreter') {
+        return; // skip adding to content to avoid confusing UI/context stuffing
+      }
+
       const messageContent = classifyFile(fileId, metadata);
       content.push({
         type: messageContent.type,
