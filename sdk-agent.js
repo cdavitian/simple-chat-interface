@@ -169,7 +169,19 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
         hasRunnerState: !!runner?.state,
         runnerStateType: runner?.state ? typeof runner.state : 'none',
         resultType: result ? typeof result : 'none',
-        resultIsObject: result ? typeof result === 'object' : false
+        resultIsObject: result ? typeof result === 'object' : false,
+        runnerKeys: runner ? Object.keys(runner) : [],
+        resultKeys: result ? Object.keys(result) : []
+      });
+      
+      // Try to find conversation_id in various places
+      console.log('🔎 Searching for conversation_id:', {
+        resultConversationId: result?.conversation_id,
+        resultConversationIdCamel: result?.conversationId,
+        runnerConversationId: runner?.conversation_id,
+        runnerConversationIdCamel: runner?.conversationId,
+        runnerState: runner?.state ? JSON.stringify(runner.state).substring(0, 200) : 'none',
+        resultStringified: result ? JSON.stringify(result).substring(0, 500) : 'none'
       });
     }
 
@@ -205,29 +217,41 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     // The conversation_id can be in several places depending on SDK version
     let returnedConversationId = null;
     
-    // Check various possible locations for conversation_id
-    if (result?.conversation_id) {
-      returnedConversationId = result.conversation_id;
-    } else if (result?.conversationId) {
-      returnedConversationId = result.conversationId;
-    } else if (runner?.state?.conversation_id) {
-      returnedConversationId = runner.state.conversation_id;
-    } else if (runner?.state?.conversationId) {
-      returnedConversationId = runner.state.conversationId;
-    } else if (result?.thread_id) {
-      // Fallback to thread_id if conversation_id not found (some SDK versions)
-      returnedConversationId = result.thread_id;
+    // First, if we passed a conversation_id, try to preserve it (it should persist)
+    if (conversationId) {
+      returnedConversationId = conversationId;
+    }
+    
+    // Check various possible locations for conversation_id in result
+    // Note: The OpenAI Agents SDK may not expose conversation_id directly
+    // It might be managed internally with store: true
+    if (!returnedConversationId) {
+      if (result?.conversation_id) {
+        returnedConversationId = result.conversation_id;
+      } else if (result?.conversationId) {
+        returnedConversationId = result.conversationId;
+      } else if (runner?.conversation_id) {
+        returnedConversationId = runner.conversation_id;
+      } else if (runner?.conversationId) {
+        returnedConversationId = runner.conversationId;
+      } else if (runner?.state?.conversation_id) {
+        returnedConversationId = runner.state.conversation_id;
+      } else if (runner?.state?.conversationId) {
+        returnedConversationId = runner.state.conversationId;
+      } else if (result?.thread_id) {
+        // Fallback to thread_id if conversation_id not found (some SDK versions)
+        returnedConversationId = result.thread_id;
+      }
     }
 
     // Log for debugging
-    if (conversationId || returnedConversationId) {
-      console.log('💬 Conversation ID:', {
-        input: conversationId || 'none',
-        output: returnedConversationId || 'none',
-        resultKeys: result ? Object.keys(result) : [],
-        runnerStateKeys: runner?.state ? Object.keys(runner.state) : []
-      });
-    }
+    console.log('💬 Conversation ID extraction:', {
+      input: conversationId || 'none',
+      extracted: returnedConversationId || 'none',
+      usingInput: !!conversationId && returnedConversationId === conversationId,
+      resultHasConversationId: !!(result?.conversation_id || result?.conversationId),
+      runnerHasConversationId: !!(runner?.conversation_id || runner?.conversationId || runner?.state?.conversation_id || runner?.state?.conversationId)
+    });
 
     return {
       finalOutput,
