@@ -141,9 +141,13 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     const agent = createAgent(vectorStoreId);
     
     // Build Runner options - include conversation_id if provided
-    // Support both spellings as SDK may accept either depending on version
+    // Pass both spellings (SDK versions differ)
     const runnerOptions = {
       store: true, // Ensure stateful storage is enabled
+      // Pass both spellings (SDK versions differ)
+      ...(conversationId
+        ? { conversationId: conversationId, conversation_id: conversationId }
+        : {}),
       traceMetadata: {
         __trace_source__: 'agent-builder',
         workflow_id:
@@ -152,18 +156,8 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       },
     };
     
-    // Add conversation_id/conversationId if provided (for continuing existing conversation)
-    // Support both spellings for SDK compatibility
-    if (conversationId) {
-      runnerOptions.conversationId = conversationId;
-      runnerOptions.conversation_id = conversationId;
-    }
-    
     // Log what we're passing to Runner
-    console.info('🏃 Runner init:', { 
-      conversationId: conversationId ?? 'none',
-      hasStore: runnerOptions.store === true
-    });
+    console.info('Runner init conversationId:', conversationId ?? 'none');
     
     const runner = new Runner(runnerOptions);
 
@@ -227,45 +221,35 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     }
 
     // Extract conversation_id from result for persistence
-    // Use robust extraction that checks all possible locations
-    function extractConversationId(result, runner) {
-      return (
-        // Top-level (most common) - check both spellings
-        result?.conversationId ??
-        result?.conversation_id ??
-        
-        // Sometimes attached to runner state (depending on SDK version)
-        runner?.state?.conversationId ??
-        runner?.state?.conversation_id ??
-        
-        // Runner instance itself
-        runner?.conversationId ??
-        runner?.conversation_id ??
-        
-        // Very defensive: scan result state and finalOutput
-        result?.finalOutput?.conversationId ??
-        result?.state?.conversationId ??
-        result?.state?.conversation_id ??
-        
-        // Fallback to thread_id if conversation_id not found (some SDK versions)
-        result?.thread_id ??
-        
-        null
-      );
+    // Robust extraction that checks all possible locations
+    function pickConversationId(result, runner) {
+      // top-level first (most common)
+      if (result?.conversationId) return result.conversationId;
+      if (result?.conversation_id) return result.conversation_id;
+
+      // some builds tuck it under state/finalOutput
+      if (result?.state?.conversationId) return result.state.conversationId;
+      if (result?.state?.conversation_id) return result.state.conversation_id;
+      if (result?.finalOutput?.conversationId) return result.finalOutput.conversationId;
+      if (result?.finalOutput?.conversation_id) return result.finalOutput.conversation_id;
+
+      // runner may hold it
+      if (runner?.state?.conversationId) return runner.state.conversationId;
+      if (runner?.state?.conversation_id) return runner.state.conversation_id;
+
+      return null;
     }
     
     // Extract the conversation ID
-    let returnedConversationId = extractConversationId(result, runner);
+    let returnedConversationId = pickConversationId(result, runner);
     
     // If we had an input conversationId and didn't extract one, use the input (it should persist)
     if (!returnedConversationId && conversationId) {
       returnedConversationId = conversationId;
     }
     
-    // Log result keys and extracted value BEFORE any other transforms
-    console.info('🔍 Result keys:', result ? Object.keys(result) : []);
-    console.info('🔍 Top-level conversationId:', result?.conversationId);
-    console.info('🔍 Runner.state:', runner?.state);
+    // Log what we got back
+    console.info('Returned conversationId:', returnedConversationId ?? 'none');
 
     // Log for debugging
     console.log('💬 Conversation ID extraction:', {

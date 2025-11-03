@@ -2221,17 +2221,23 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         }
 
         // Retrieve existing conversation_id from session for continuing conversation
-        const existingConversationId = req.session.sdkConversationId || null;
+        const priorConversationId = req.session.sdkConversationId || null;
         
-        if (existingConversationId) {
-            console.log('📋 SDK: Continuing existing conversation:', {
-                conversationId: existingConversationId.substring(0, 20) + '...'
-            });
+        // When we have a priorConversationId, only send the latest message (store:true handles context)
+        // When starting new conversation, send the full cleanedConversation (though it's just one message anyway)
+        const messagesToSend = priorConversationId 
+            ? [cleanedMessage]  // Only the new user message when continuing
+            : cleanedConversation;  // Full array for first message (though it's just one message)
+        
+        console.info('Runner init conversationId:', priorConversationId ?? 'none');
+        
+        if (priorConversationId) {
+            console.log('📋 SDK: Continuing existing conversation');
         } else {
             console.log('🆕 SDK: Starting new conversation');
         }
 
-        const agentResult = await runAgentConversation(cleanedConversation, 'SDK Conversation', vectorStoreId, existingConversationId);
+        const agentResult = await runAgentConversation(messagesToSend, 'SDK Conversation', vectorStoreId, priorConversationId);
 
         if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
             const normalizedAgentItems = agentResult.newItems
@@ -2242,25 +2248,27 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             }
         }
 
-        // Store conversation_id in session for next request (if returned from SDK)
-        const priorConversationId = req.session.sdkConversationId ?? null;
+        // Extract and persist conversation_id from result
         const newConversationId = agentResult?.conversationId;
         
-        // Only update if we got a new conversationId and it's different
-        if (newConversationId && newConversationId !== priorConversationId) {
+        // Persist conversationId if we got one and it's different (or didn't have one before)
+        if (newConversationId) {
             req.session.sdkConversationId = newConversationId;
-            // Save session explicitly to ensure persistence
+            // Ensure it's persisted before you respond
             await new Promise((resolve, reject) => {
                 req.session.save((err) => {
                     if (err) reject(err);
                     else resolve();
                 });
             });
-            console.log('💾 SDK: Stored conversation_id in session:', {
-                conversationId: newConversationId.substring(0, 20) + '...',
-                prior: priorConversationId ? priorConversationId.substring(0, 20) + '...' : 'none'
-            });
-        } else if (!newConversationId) {
+            console.info('Returned conversationId:', newConversationId ?? 'none');
+            if (newConversationId !== priorConversationId) {
+                console.log('💾 SDK: Stored conversation_id in session:', {
+                    conversationId: newConversationId.substring(0, 20) + '...',
+                    prior: priorConversationId ? priorConversationId.substring(0, 20) + '...' : 'none'
+                });
+            }
+        } else {
             console.warn('⚠️ SDK: No conversation_id returned from agent result:', {
                 hasResult: !!agentResult,
                 resultKeys: agentResult ? Object.keys(agentResult) : [],
