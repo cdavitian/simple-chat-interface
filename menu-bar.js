@@ -6,7 +6,7 @@ window.createMenuBar = function(user) {
   const menuBar = document.createElement('div');
   menuBar.className = 'menu-bar';
   menuBar.innerHTML = `
-    <a href="/" class="menu-bar-logo">
+    <a href="https://simple-chat-interface-staging.up.railway.app/homepage" class="menu-bar-logo">
       <svg width="180" height="60" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
         <!-- Kyo text -->
         <text x="5" y="28" fontFamily="serif" fontSize="24" fontWeight="600" fill="#0F4C5C">

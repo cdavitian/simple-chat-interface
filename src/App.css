@@ -34,7 +34,7 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    margin-top: 72px; /* Account for fixed menu bar with larger logo */
+    padding-top: 72px; /* Ensure content starts below fixed menu bar */
 }
 
 .app-header {
