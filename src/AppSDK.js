@@ -308,8 +308,38 @@ function ChatInterface({ user }) {
     [handleSend],
   );
 
+  const handleNewChat = useCallback(async () => {
+    if (isSending) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/sdk/conversation/reset', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reset conversation');
+      }
+
+      // Clear local state
+      setMessages([]);
+      setInputValue('');
+      resetUploads();
+      setSendError(null);
+      setInitializing(false);
+    } catch (err) {
+      console.error('Failed to reset conversation:', err);
+      setSendError('Failed to start new chat. Please try again.');
+    }
+  }, [isSending, resetUploads]);
+
   return (
     <div className="chat-sdk-container">
+      <div className="chat-title">
+        <h2>MCP Test - SDK</h2>
+      </div>
       <div className="message-pane">
         {initializing ? (
           <div className="loading">
@@ -353,6 +383,18 @@ function ChatInterface({ user }) {
           />
           <button className="send-button" type="button" onClick={handleSend} disabled={isSending}>
             {isSending ? 'Sending…' : 'Send'}
+          </button>
+          <button
+            className="new-chat-button"
+            type="button"
+            onClick={handleNewChat}
+            disabled={isSending}
+            title="Start a new chat"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
+              <line x1="20" y1="4" x2="4" y2="20"/>
+            </svg>
           </button>
         </div>
       </div>
