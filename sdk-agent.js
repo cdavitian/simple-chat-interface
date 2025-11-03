@@ -121,7 +121,7 @@ function createAgent(vectorStoreId = null) {
   });
 }
 
-async function runAgentConversation(conversationHistory, traceName = 'MCP Prod Test', vectorStoreId = null) {
+async function runAgentConversation(conversationHistory, traceName = 'MCP Prod Test', vectorStoreId = null, conversationId = null) {
   if (!Array.isArray(conversationHistory)) {
     throw new Error('conversationHistory must be an array of AgentInputItem objects');
   }
@@ -131,7 +131,8 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     console.log('📥 Agent conversation:', {
       messages: conversationHistory.length,
       vectorStoreId,
-      hasContent: !!conversationHistory[0]?.content
+      hasContent: !!conversationHistory[0]?.content,
+      hasConversationId: !!conversationId
     });
   }
 
@@ -140,6 +141,7 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     const agent = createAgent(vectorStoreId);
     
     const runner = new Runner({
+      conversation_id: conversationId || undefined,
       traceMetadata: {
         __trace_source__: 'agent-builder',
         workflow_id:
@@ -148,7 +150,11 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       },
     });
 
-    const result = await runner.run(agent, [...conversationHistory]);
+    // If we have a conversation_id, only send the latest message (SDK will pull prior context)
+    // Otherwise, send full history for the first message
+    const messagesToSend = conversationId ? conversationHistory : [...conversationHistory];
+    
+    const result = await runner.run(agent, messagesToSend);
 
     const newItems = (result?.newItems || []).map((item) => {
       const rawItem = item?.rawItem || item;
@@ -178,11 +184,16 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       }
     }
 
+    // Extract conversation_id from result for persistence
+    // Check both result.conversation_id and runner.state.conversation_id
+    const returnedConversationId = result?.conversation_id || runner?.state?.conversation_id || null;
+
     return {
       finalOutput,
       newItems,
       guardrailResults,
       usage: result?.usage || null,
+      conversationId: returnedConversationId,
     };
   });
 }

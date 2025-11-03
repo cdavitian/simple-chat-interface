@@ -1969,6 +1969,7 @@ app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, (req, res) =
 app.post('/api/sdk/conversation/reset', requireAuth, checkUserPermissions, (req, res) => {
     try {
         req.session.sdkConversation = [];
+        req.session.sdkConversationId = null;
         res.json({ success: true });
     } catch (error) {
         console.error('Failed to reset SDK conversation:', error);
@@ -2213,7 +2214,10 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             console.warn('⚠️ SDK: Files uploaded but no vector store available');
         }
 
-        const agentResult = await runAgentConversation(cleanedConversation, 'SDK Conversation', vectorStoreId);
+        // Retrieve existing conversation_id from session for continuing conversation
+        const existingConversationId = req.session.sdkConversationId || null;
+
+        const agentResult = await runAgentConversation(cleanedConversation, 'SDK Conversation', vectorStoreId, existingConversationId);
 
         if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
             const normalizedAgentItems = agentResult.newItems
@@ -2222,6 +2226,11 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             if (normalizedAgentItems.length > 0) {
                 conversation.push(...normalizedAgentItems);
             }
+        }
+
+        // Store conversation_id in session for next request (if returned from SDK)
+        if (agentResult?.conversationId) {
+            req.session.sdkConversationId = agentResult.conversationId;
         }
 
         req.session.sdkConversation = conversation;
