@@ -85,11 +85,7 @@ function createAgent(vectorStoreId = null) {
     try {
       const fileSearch = fileSearchTool(vectorStoreId);
       tools.push(fileSearch);
-      console.log('✅ SDK Agent: Added fileSearchTool with vector store:', {
-        vectorStoreId,
-        toolCount: tools.length,
-        hasFileSearch: true
-      });
+      // Silent on success - only log errors
     } catch (e) {
       console.error('❌ SDK Agent: Failed to create fileSearchTool:', {
         error: e?.message,
@@ -98,11 +94,14 @@ function createAgent(vectorStoreId = null) {
       });
     }
   } else {
-    if (!vectorStoreId) {
+    // Only warn if vector store is missing when it should be available
+    if (!vectorStoreId && process.env.OPENAI_API_KEY) {
       console.warn('⚠️ SDK Agent: No vectorStoreId provided, fileSearchTool will not be available');
     }
-    if (!fileSearchTool) {
+    // Only warn once if fileSearchTool module is missing
+    if (!fileSearchTool && !global._fileSearchToolWarningLogged) {
       console.warn('⚠️ SDK Agent: fileSearchTool not available from @openai/agents-openai');
+      global._fileSearchToolWarningLogged = true;
     }
   }
 
@@ -123,24 +122,18 @@ function createAgent(vectorStoreId = null) {
 }
 
 async function runAgentConversation(conversationHistory, traceName = 'MCP Prod Test', vectorStoreId = null) {
-  console.log('runAgentConversation called with:', {
-    isArray: Array.isArray(conversationHistory),
-    length: conversationHistory?.length,
-    type: typeof conversationHistory
-  });
-  
   if (!Array.isArray(conversationHistory)) {
     throw new Error('conversationHistory must be an array of AgentInputItem objects');
   }
 
-  // Log the conversation history to debug file attachments
-  console.log('📥 Agent receiving conversation:', {
-    messageCount: conversationHistory.length,
-    vectorStoreId: vectorStoreId || 'NONE',
-    firstMessageContent: conversationHistory[0]?.content?.substring(0, 100) || 'EMPTY',
-    firstMessageRole: conversationHistory[0]?.role || 'UNKNOWN',
-    fullConversation: JSON.stringify(conversationHistory, null, 2)
-  });
+  // Only log minimal info for debugging - reduce verbosity
+  if (conversationHistory.length > 0 && vectorStoreId) {
+    console.log('📥 Agent conversation:', {
+      messages: conversationHistory.length,
+      vectorStoreId,
+      hasContent: !!conversationHistory[0]?.content
+    });
+  }
 
   return withTrace(traceName, async () => {
     // Create agent with vector store if provided

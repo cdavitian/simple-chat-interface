@@ -654,11 +654,7 @@ async function createVectorStoreViaHTTP(name, apiKey) {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     try {
                         const parsed = JSON.parse(data);
-                        console.log('✅ HTTP API vector store operation successful:', {
-                            statusCode: res.statusCode,
-                            operation: 'create',
-                            vectorStoreId: parsed.id
-                        });
+                        // Only log on errors or first creation - reduce verbosity
                         resolve(parsed);
                     } catch (e) {
                         console.error('❌ Failed to parse HTTP response:', {
@@ -714,11 +710,7 @@ async function retrieveVectorStoreViaHTTP(vectorStoreId, apiKey) {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     try {
                         const parsed = JSON.parse(data);
-                        console.log('✅ HTTP API vector store operation successful:', {
-                            statusCode: res.statusCode,
-                            operation: 'retrieve',
-                            vectorStoreId: parsed.id
-                        });
+                        // Silent on success - only log errors
                         resolve(parsed);
                     } catch (e) {
                         console.error('❌ Failed to parse HTTP response:', {
@@ -777,12 +769,7 @@ async function addFileToVectorStoreViaHTTP(vectorStoreId, fileId, apiKey) {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     try {
                         const parsed = JSON.parse(data);
-                        console.log('✅ HTTP API vector store operation successful:', {
-                            statusCode: res.statusCode,
-                            operation: 'addFile',
-                            vectorStoreId: vectorStoreId,
-                            fileId: fileId
-                        });
+                        // Silent on success - only log errors
                         resolve(parsed);
                     } catch (e) {
                         console.error('❌ Failed to parse HTTP response:', {
@@ -841,14 +828,15 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
                     existing = await client.beta.vectorStores.retrieve(sessionObj.vectorStoreId);
                 } else {
                     // Fallback to HTTP API when SDK doesn't expose beta.vectorStores
-                    console.log('📡 Using HTTP API to retrieve vector store (SDK fallback)');
                     existing = await retrieveVectorStoreViaHTTP(sessionObj.vectorStoreId, apiKey);
                 }
-                console.log('✅ Using existing vector store:', {
-                    vectorStoreId: sessionObj.vectorStoreId,
-                    name: existing.name,
-                    fileCount: existing.file_counts?.total || 0
-                });
+                // Log only if there are files or if this is a new session
+                if (existing.file_counts?.total > 0) {
+                    console.log('✅ Using existing vector store:', {
+                        vectorStoreId: sessionObj.vectorStoreId,
+                        fileCount: existing.file_counts?.total
+                    });
+                }
                 return sessionObj.vectorStoreId;
             } catch (e) {
                 console.warn('⚠️ Existing vector store not found, creating new one:', {
@@ -867,7 +855,6 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
         let vectorStore;
         if (client.beta?.vectorStores?.create) {
             // Use SDK if available (core OpenAI client should have this)
-            console.log('📦 Using SDK beta.vectorStores API');
             vectorStore = await client.beta.vectorStores.create({
                 name: vectorStoreName,
             });
@@ -877,16 +864,14 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
             vectorStore = await createVectorStoreViaHTTP(vectorStoreName, apiKey);
         }
 
-        console.log('✅ Created new vector store successfully:', {
+        console.log('✅ Created new vector store:', {
             vectorStoreId: vectorStore.id,
-            name: vectorStore.name,
-            createdAt: vectorStore.created_at
+            name: vectorStore.name
         });
 
         // Store vector store ID in session
         try {
             sessionObj.vectorStoreId = vectorStore.id;
-            console.log('💾 Persisted vectorStoreId in session:', vectorStore.id);
         } catch (e) {
             console.error('❌ Unable to persist vectorStoreId in session:', e?.message);
             // Still return the ID even if we can't persist it
@@ -1765,13 +1750,14 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
                     const apiKey = process.env.OPENAI_API_KEY;
                     vs = await retrieveVectorStoreViaHTTP(vectorStoreId, apiKey);
                 }
-                console.log('📁 Files will be retrieved via vector store file_search:', {
-                    session_id: effectiveSessionId,
-                    vectorStoreId,
-                    uploadedFileCount: uploadedFileIds.size,
-                    vectorStoreFileCount: vs.file_counts?.total || 0,
-                    uploadedFileIds: Array.from(uploadedFileIds)
-                });
+                // Only log if there's a mismatch or if files are being uploaded
+                if (uploadedFileIds.size > 0 || vs.file_counts?.total > 0) {
+                    console.log('📁 Vector store file access:', {
+                        vectorStoreId,
+                        uploadedFiles: uploadedFileIds.size,
+                        totalFiles: vs.file_counts?.total || 0
+                    });
+                }
             } catch (e) {
                 console.warn('⚠️ Could not verify vector store, but continuing:', e?.message);
             }
@@ -1781,12 +1767,13 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             });
         }
         
-        console.log('📤 Sending message to ChatKit session (vector store only, no message-level files):', {
-            session_id: effectiveSessionId,
-            hasText: !!text,
-            vectorStoreId: vectorStoreId || 'NONE',
-            uploadedFileCount: uploadedFileIds.size
-        });
+        // Only log if there are files being uploaded
+        if (uploadedFileIds.size > 0) {
+            console.log('📤 ChatKit message with files:', {
+                vectorStoreId: vectorStoreId || 'NONE',
+                uploadedFiles: uploadedFileIds.size
+            });
+        }
         
         // Send message using ChatKit API - NO file attachments, files are in vector store
         const messagePayload = {
@@ -1798,10 +1785,7 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
 
         const message = await client.beta.chatkit.messages.create(messagePayload);
         
-        console.log('Message sent successfully:', {
-            message_id: message.id,
-            session_id: effectiveSessionId
-        });
+        // Silent on success - only log errors
 
         // Clear session-stashed files after sending (legacy cleanup)
         try {
@@ -1838,22 +1822,14 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
                     vector_store_ids: [vectorStoreIdForResponse]
                 }
             };
-            console.log('✅ ChatKit response configured to use vector store for file_search:', {
-                session_id: effectiveSessionId,
-                vectorStoreId: vectorStoreIdForResponse
-            });
-        } else {
-            console.warn('⚠️ No vector store available for ChatKit response. File search will not work.', {
-                session_id: effectiveSessionId
-            });
+            // Only log if files are present or if there's an issue
+        } else if (uploadedFileIds.size > 0) {
+            console.warn('⚠️ ChatKit: Files uploaded but no vector store available for file_search');
         }
 
         const response = await client.beta.chatkit.responses.create(responseConfig);
 
-        console.log('Response created successfully:', {
-            response_id: response.id,
-            session_id: effectiveSessionId
-        });
+        // Silent on success - only log errors
         
         res.json({
             success: true,
@@ -1911,21 +1887,12 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         const client = getOpenAIClient();
         if (client) {
             try {
-                console.log('🔍 SDK: Attempting to get or create vector store...');
                 const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                 const sdkSessionId = `sdk_${userId}_${req.sessionID}`;
-                console.log('🔍 SDK: Vector store params:', {
-                    userId,
-                    sdkSessionId,
-                    sessionID: req.sessionID,
-                    hasExistingVectorStore: !!req.session.vectorStoreId
-                });
                 vectorStoreId = await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
-                console.log('✅ SDK: Vector store ready:', { vectorStoreId });
                 // Ensure session has the vector store ID
                 if (vectorStoreId && !req.session.vectorStoreId) {
                     req.session.vectorStoreId = vectorStoreId;
-                    console.log('💾 SDK: Synced vectorStoreId to session:', vectorStoreId);
                 }
             } catch (vectorStoreError) {
                 console.error('❌ SDK: Failed to ensure vector store:', {
@@ -2019,8 +1986,8 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 // Filter out any undefined/null entries and validate structure
                 const validContent = normalized.content
                     .filter((entry) => {
+                        // Silently filter invalid entries (historical data cleanup)
                         if (!entry || typeof entry !== 'object') {
-                            console.warn('SDK: Filtering out invalid content entry:', entry);
                             return false;
                         }
                         return true;
@@ -2038,14 +2005,13 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 
                 // If content array becomes empty after filtering, convert to empty string
                 if (validContent.length === 0) {
-                    console.warn('SDK: Content array empty after filtering, converting to empty string');
+                    // Silent normalization of historical data
                     normalized.content = '';
                 } else {
                     normalized.content = validContent;
                 }
             } else if (typeof normalized.content !== 'string') {
-                // Content must be either string or array
-                console.warn('SDK: Invalid content type, converting to string:', typeof normalized.content);
+                // Content must be either string or array - silently normalize historical data
                 normalized.content = String(normalized.content || '');
             }
 
@@ -2089,9 +2055,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                 console.warn('⚠️ SDK: Could not verify vector store, but continuing:', e?.message);
             }
         } else if (fileIds.length > 0) {
-            console.warn('⚠️ SDK: Files uploaded but no vector store available. Files may not be accessible:', {
-                uploadedFileIds: fileIds
-            });
+            console.warn('⚠️ SDK: Files uploaded but no vector store available');
         }
         
         // Use simple string content - files are accessed via vector store, not message attachments
@@ -2102,15 +2066,15 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             id: generateMessageId()
         };
         
-        console.log('📤 SDK: Sending message (vector store only, no message-level files):', {
-            hasText: !!trimmedText,
-            vectorStoreId: vectorStoreId || 'NONE',
-            uploadedFileCount: fileIds.length
-        });
+        // Only log if there are files
+        if (fileIds.length > 0) {
+            console.log('📤 SDK message with files:', {
+                vectorStoreId: vectorStoreId || 'NONE',
+                uploadedFiles: fileIds.length
+            });
+        }
 
         conversation.push(userItem);
-
-        console.log('SDK conversation payload', JSON.stringify(conversation, null, 2));
 
         // Clean conversation for OpenAI Agents SDK - send ONLY the current user message
         // NO file attachments - files are accessed via vector store file_search tool
@@ -2124,31 +2088,23 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         // Ensure we have non-empty content - if empty and files exist, add a hint
         if (!cleanedMessage.content && fileIds.length > 0) {
             cleanedMessage.content = 'Please analyze the uploaded files.';
-            console.log('📝 SDK: Added default content prompt for file analysis');
         }
         
         // NOTE: We intentionally do NOT add attachments - files are retrieved via vector store
         
         const cleanedConversation = [cleanedMessage];
 
-        console.log('Cleaned conversation for agent:', JSON.stringify(cleanedConversation, null, 2));
-        console.log('Cleaned conversation length:', cleanedConversation.length);
-        console.log('Cleaned conversation content:', cleanedConversation[0]?.content);
-        console.log('Cleaned conversation has attachments:', cleanedConversation[0]?.attachments?.length > 0);
-
         // Vector store ID already retrieved above - use it for agent
         if (vectorStoreId) {
-            console.log('✅ SDK: Using vector store for file awareness:', {
-                vectorStoreId,
-                contentLength: cleanedMessage.content?.length || 0,
-                hasContent: !!cleanedMessage.content,
-                fileCount: fileIds.length
-            });
-        } else {
-            console.warn('⚠️ SDK: No vector store found in session:', {
-                sessionVectorStoreId: req.session?.vectorStoreId || 'NONE',
-                fileCount: fileIds.length
-            });
+            // Only log if there are files
+            if (fileIds.length > 0) {
+                console.log('✅ SDK: Using vector store for file awareness:', {
+                    vectorStoreId,
+                    fileCount: fileIds.length
+                });
+            }
+        } else if (fileIds.length > 0) {
+            console.warn('⚠️ SDK: Files uploaded but no vector store available');
         }
 
         const agentResult = await runAgentConversation(cleanedConversation, 'SDK Conversation', vectorStoreId);
