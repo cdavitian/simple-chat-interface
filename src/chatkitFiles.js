@@ -1,22 +1,89 @@
-// File stager for quietly managing file_ids until they're sent with a prompt
+// File stager for quietly managing file metadata until they're sent with a prompt
+// Tracks content_type + filename so the server can route files correctly
+
+import {
+  buildMessageContent,
+  determineCategory,
+  normalizeFileMetadata,
+} from './utils/fileTypeDetector';
 
 export function createFileStager() {
-  const staged = new Set();
+  const staged = new Map(); // Map<file_id, { content_type, filename }>
+
+  const add = (fileId, metadata = {}) => {
+    if (!fileId) return;
+    const normalizedMetadata = {
+      content_type: metadata.content_type || metadata.contentType || '',
+      filename: metadata.filename || metadata.name || '',
+      category: metadata.category || metadata.file_category || '',
+    };
+
+    const category = determineCategory(
+      normalizeFileMetadata(normalizedMetadata),
+    );
+
+    staged.set(fileId, {
+      ...normalizedMetadata,
+      category,
+    });
+  };
+
+  const remove = (fileId) => {
+    if (!fileId) return;
+    staged.delete(fileId);
+  };
+
+  const list = () => Array.from(staged.keys());
+
+  const listWithMetadata = () => Array.from(staged.entries()).map(([file_id, metadata]) => ({
+    file_id,
+    ...metadata
+  }));
+
+  const clear = () => staged.clear();
+
+  const classifyFile = (fileId, metadata = {}) => {
+    const messageContent = buildMessageContent(fileId, metadata);
+    return {
+      type: messageContent.type,
+      file_id: messageContent.file_id,
+      display_name: messageContent.display_name,
+    };
+  };
+
+  const toMessageContent = (text) => {
+    const content = [];
+    if (text) {
+      content.push({ type: 'input_text', text });
+    }
+
+    staged.forEach((metadata, fileId) => {
+      // For code_interpreter files (e.g., CSV), don't place them in content.
+      // They'll be sent via staged_file_ids/metadata and attached server-side.
+      const category = metadata?.category;
+      if (category === 'code_interpreter') {
+        return; // skip adding to content to avoid confusing UI/context stuffing
+      }
+
+      const messageContent = classifyFile(fileId, metadata);
+      content.push({
+        type: messageContent.type,
+        file_id: messageContent.file_id,
+        display_name: messageContent.display_name,
+      });
+    });
+
+    return content;
+  };
 
   return {
-    add: (fileId) => staged.add(fileId),
-    list: () => Array.from(staged),
-    clear: () => staged.clear(),
-    toMessageContent: (text) => {
-      const content = [];
-      if (text) {
-        content.push({ type: "input_text", text });
-      }
-      Array.from(staged).forEach((id) => {
-        content.push({ type: "input_file", file_id: id });
-      });
-      return content;
-    },
+    add,
+    remove,
+    list,
+    listWithMetadata,
+    clear,
+    toMessageContent,
+    getMetadata: (fileId) => staged.get(fileId)
   };
 }
 

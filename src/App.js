@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ChatKit, useChatKit } from '@openai/chatkit-react';
 import { createFileStager } from './chatkitFiles';
 import { registerUploadedS3Object } from './api';
+import MenuBar from './components/MenuBar';
 import './App.css';
 
 // Create file stager instance (shared across component re-renders)
@@ -11,8 +12,8 @@ const fileStager = createFileStager();
  * Call this from your custom tool AFTER its presigned PUT to S3 succeeds.
  */
 export async function onCustomToolS3UploadSuccess({ key, filename, bucket }) {
-  const { file_id } = await registerUploadedS3Object({ key, filename, bucket });
-  fileStager.add(file_id); // quietly stage it
+  const { file_id, content_type, category } = await registerUploadedS3Object({ key, filename, bucket });
+  fileStager.add(file_id, { content_type, filename, category }); // quietly stage it with metadata
   return file_id;
 }
 
@@ -198,37 +199,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <div className="app-header">
-        <h1>ChatKit AI Assistant</h1>
-        <div className="header-right">
-          <div className="user-info">
-            <img 
-              src={user?.picture || user?.avatar || '/default-avatar.png'} 
-              alt="User" 
-              className="user-photo"
-            />
-            <span className="user-name">{user?.name || 'User'}</span>
-            {user?.userType === 'Admin' && (
-              <button 
-                className="admin-btn"
-                onClick={() => window.location.href = '/admin'}
-              >
-                Admin
-              </button>
-            )}
-            <button 
-              className="logout-btn"
-              onClick={() => window.location.href = '/logout'}
-            >
-              Logout
-            </button>
-          </div>
-          <div className="status-indicator">
-            <span className="status-dot"></span>
-            <span className="status-text">Online</span>
-          </div>
-        </div>
-      </div>
+      <MenuBar user={user} />
       
       <div className="chatkit-container" style={{ 
         width: '100%', 
@@ -294,15 +265,20 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         throw new Error(`Failed to presign upload: ${presignResp.status} ${errorText}`);
       }
 
-      const { uploadUrl, objectKey } = await presignResp.json();
+      const { uploadUrl, objectKey, contentType } = await presignResp.json();
       
       setUploadStatus('Uploading to S3...');
 
       // 2) Upload file directly to S3
+      // Use the exact Content-Type from presign response to match what S3 expects
+      // Content-Length is automatically set by browser when using File object (no chunked encoding)
       const uploadResp = await fetch(uploadUrl, {
         method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type }
+        body: file,  // File object ensures Content-Length is set automatically (no chunked)
+        headers: { 
+          "Content-Type": contentType || file.type || 'application/octet-stream',
+          "x-amz-server-side-encryption": "AES256"  // SSE-S3 encryption
+        }
       });
 
       if (!uploadResp.ok) {
@@ -624,7 +600,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         body: JSON.stringify({
           session_id: sessionData.sessionId,
           text: userPrompt || undefined,
-          staged_file_ids: fileStager.list()
+          staged_file_ids: fileStager.list(),
+          staged_files: fileStager.listWithMetadata()  // Send metadata for content type routing
         })
       });
 

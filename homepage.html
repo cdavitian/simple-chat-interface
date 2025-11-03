@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Kyo Chat Tools - Homepage</title>
+    <link rel="stylesheet" href="/menu-bar.css">
     <style>
         * {
             margin: 0;
@@ -20,6 +21,7 @@
             justify-content: center;
             align-items: center;
             padding: 20px;
+            padding-top: 76px; /* Account for menu bar */
         }
 
         .homepage-container {
@@ -274,26 +276,6 @@
 </head>
 <body>
     <div class="homepage-container">
-        <div class="homepage-header">
-            <h1>Kyo Chat Tools</h1>
-            <div class="header-right">
-                <div class="user-info" id="userInfo" style="display: none;">
-                    <img 
-                        id="userPhoto"
-                        src="/public/default-avatar.png" 
-                        alt="User" 
-                        class="user-photo"
-                    />
-                    <span class="user-name" id="userName">User</span>
-                    <a href="/admin" class="admin-btn">Admin</a>
-                    <a href="/logout" class="logout-btn">Logout</a>
-                </div>
-                <div class="status-indicator">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Online</span>
-                </div>
-            </div>
-        </div>
         
         <div class="homepage-content">
             <h2 class="homepage-title">Kyo Chat Tools</h2>
@@ -323,32 +305,23 @@
                 if (response.ok) {
                     const userData = await response.json();
                     displayUserInfo(userData);
+                    return userData;
                 } else {
                     // Redirect to login if not authenticated
                     window.location.href = '/login';
-                    return;
+                    return null;
                 }
             } catch (err) {
                 console.error('Auth check failed:', err);
                 showError('Authentication failed');
+                return null;
             }
         }
 
         function displayUserInfo(user) {
-            const userInfo = document.getElementById('userInfo');
-            const userPhoto = document.getElementById('userPhoto');
-            const userName = document.getElementById('userName');
-            const adminBtn = document.querySelector('.admin-btn');
-            
-            if (user) {
-                userPhoto.src = user.picture || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=667eea&color=fff&size=32`;
-                userName.textContent = user.name || 'User';
-                userInfo.style.display = 'flex';
-                
-                // Hide admin button for Standard users
-                if (user.userType === 'Standard' && adminBtn) {
-                    adminBtn.style.display = 'none';
-                }
+            // Update menu bar with user info
+            if (window.updateMenuBarUserInfo) {
+                updateMenuBarUserInfo(user);
             }
         }
 
@@ -379,9 +352,39 @@
         }
 
         // Initialize the page
-        document.addEventListener('DOMContentLoaded', function() {
-            checkAuth();
-        });
+        function initPage() {
+            // Create menu bar
+            if (window.createMenuBar) {
+                createMenuBar(null);
+            }
+            
+            // Check auth and update menu bar
+            checkAuth().then(user => {
+                if (user && window.updateMenuBarUserInfo) {
+                    updateMenuBarUserInfo(user);
+                }
+            });
+        }
+
+        // Load menu-bar.js and then initialize
+        if (document.readyState === 'loading') {
+            const script = document.createElement('script');
+            script.src = '/menu-bar.js';
+            script.onload = function() {
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initPage);
+                } else {
+                    initPage();
+                }
+            };
+            document.head.appendChild(script);
+        } else {
+            // DOM already loaded, load script synchronously
+            const script = document.createElement('script');
+            script.src = '/menu-bar.js';
+            script.onload = initPage;
+            document.head.appendChild(script);
+        }
     </script>
 </body>
 </html>

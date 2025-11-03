@@ -5,11 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Admin Menu</title>
+    <link rel="stylesheet" href="/menu-bar.css">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             padding: 20px;
+            padding-top: 76px; /* Account for menu bar */
             background-color: #f5f5f5;
         }
         .container {
@@ -171,6 +173,7 @@
         </div>
     </div>
 
+    <script src="/menu-bar.js"></script>
     <script>
         // Check authentication and load user info
         async function checkAuth() {
@@ -179,28 +182,23 @@
                 if (response.ok) {
                     const userData = await response.json();
                     displayUserInfo(userData);
+                    return userData;
                 } else {
                     // Redirect to login if not authenticated
                     window.location.href = '/login';
-                    return;
+                    return null;
                 }
             } catch (err) {
                 console.error('Auth check failed:', err);
                 window.location.href = '/login';
+                return null;
             }
         }
 
         function displayUserInfo(user) {
-            const userInfo = document.getElementById('userInfo');
-            const userPhoto = document.getElementById('userPhoto');
-            const userName = document.getElementById('userName');
-            const userEmail = document.getElementById('userEmail');
-            
-            if (user) {
-                userPhoto.src = user.picture || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=007bff&color=fff&size=40`;
-                userName.textContent = user.name || 'User';
-                userEmail.textContent = user.email || 'user@example.com';
-                userInfo.style.display = 'flex';
+            // Update menu bar with user info
+            if (window.updateMenuBarUserInfo) {
+                updateMenuBarUserInfo(user);
             }
         }
 
@@ -218,7 +216,17 @@
 
         // Initialize the page
         document.addEventListener('DOMContentLoaded', function() {
-            checkAuth();
+            // Create menu bar
+            if (window.createMenuBar) {
+                createMenuBar(null);
+            }
+            
+            // Check auth and update menu bar
+            checkAuth().then(user => {
+                if (user && window.updateMenuBarUserInfo) {
+                    updateMenuBarUserInfo(user);
+                }
+            });
         });
     </script>
 </body>
