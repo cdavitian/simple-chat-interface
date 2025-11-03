@@ -179,11 +179,13 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     // Create agent with vector store if provided
     const agent = createAgent(vectorStoreId);
     
-    // Build Runner options - include conversation_id if provided
+    // Build Runner options - only include conversation_id if it was previously returned from SDK
+    // NOTE: Do NOT pass locally-generated conversationIds - they don't exist on OpenAI's servers
     // NOTE: store: true is in Agent.modelSettings (not Runner constructor)
-    // The Runner only needs conversationId to access the stored state
-    // Pass both spellings (SDK versions differ)
+    // On first message: Let SDK create conversationId
+    // On subsequent messages: Pass SDK-returned conversationId to continue conversation
     const runnerOptions = {
+      // Only pass conversationId if it exists (was returned from previous SDK call)
       ...(conversationId
         ? { conversationId: conversationId, conversation_id: conversationId }
         : {}),
@@ -225,8 +227,10 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       ? [conversationHistory[conversationHistory.length - 1]] // Only the latest message
       : [...conversationHistory]; // Full history for first message (or empty if no history)
     
-    // CRITICAL: Pass conversationId to runner.run() for continuing conversations
-    // This ensures the SDK links the new messages to the existing conversation
+    // CRITICAL: Only pass conversationId to runner.run() if it was previously returned from SDK
+    // Do NOT pass locally-generated IDs - they don't exist on OpenAI's servers yet
+    // On first message, let SDK create the conversationId
+    // On subsequent messages, pass the SDK-returned conversationId to continue the conversation
     const runOptions = conversationId 
       ? { conversationId: conversationId }
       : {};
