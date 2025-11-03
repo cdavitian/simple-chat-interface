@@ -291,7 +291,12 @@ const requireAuth = (req, res, next) => {
     if (req.session.user) {
         return next();
     }
-    res.status(401).json({ error: 'Authentication required' });
+    // If it's an API route, return JSON error
+    if (req.path.startsWith('/api/')) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    // For HTML routes, redirect to login
+    res.redirect('/login');
 };
 
 // Helper function to get user type from database
@@ -2814,26 +2819,9 @@ app.get('/simple', (req, res) => {
 });
 
 // ============ Root Route (Must be LAST) ============
-// Redirect to appropriate page based on authentication and user type
-app.get('/', async (req, res) => {
-    if (req.session.user) {
-        try {
-            const userType = await getUserType(req.session.user.email);
-            req.session.user.userType = userType;
-            req.session.userType = userType;
-            
-            if (userType === 'New') {
-                res.redirect('/new-user-home');
-            } else {
-                res.redirect('/homepage');
-            }
-        } catch (error) {
-            console.error('Error checking user type in root route:', error);
-            res.redirect('/homepage');
-        }
-    } else {
-        res.redirect('/login');
-    }
+// Redirect to homepage
+app.get('/', (req, res) => {
+    res.redirect('/homepage');
 });
 
 // Chat interface route - serve React app (restricted to Admin and Standard users)
