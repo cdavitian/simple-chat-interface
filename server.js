@@ -1963,8 +1963,26 @@ app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, (req, res) =
             req.session.sdkConversation = [];
         }
 
+        // Generate new conversationID if one doesn't exist (new session)
+        if (!req.session.sdkConversationId) {
+            // Generate a unique conversation ID using timestamp + random string
+            const randomStr = Math.random().toString(36).substring(2, 10);
+            const newConversationId = `conv_${Date.now()}_${randomStr}`;
+            req.session.sdkConversationId = newConversationId;
+            
+            // Log the new conversation ID to deployment logs
+            console.log('🆕 SDK: New conversation session initiated', {
+                conversationId: newConversationId,
+                userId: req.session.user?.id || 'unknown',
+                userEmail: req.session.user?.email || 'unknown',
+                sessionId: req.sessionID,
+                timestamp: new Date().toISOString()
+            });
+        }
+
         res.json({
             conversation: req.session.sdkConversation,
+            conversationId: req.session.sdkConversationId, // Return it to frontend for reference
         });
     } catch (error) {
         console.error('Failed to load SDK conversation:', error);
@@ -1974,9 +1992,31 @@ app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, (req, res) =
 
 app.post('/api/sdk/conversation/reset', requireAuth, checkUserPermissions, (req, res) => {
     try {
+        // Store old conversation ID for logging
+        const oldConversationId = req.session.sdkConversationId;
+        
+        // Clear conversation history
         req.session.sdkConversation = [];
-        req.session.sdkConversationId = null;
-        res.json({ success: true });
+        
+        // Generate new conversation ID using timestamp + random string
+        const randomStr = Math.random().toString(36).substring(2, 10);
+        const newConversationId = `conv_${Date.now()}_${randomStr}`;
+        req.session.sdkConversationId = newConversationId;
+        
+        // Log the new conversation session to deployment logs
+        console.log('🔄 SDK: Conversation reset - new session initiated', {
+            oldConversationId: oldConversationId || 'none',
+            newConversationId: newConversationId,
+            userId: req.session.user?.id || 'unknown',
+            userEmail: req.session.user?.email || 'unknown',
+            sessionId: req.sessionID,
+            timestamp: new Date().toISOString()
+        });
+        
+        res.json({ 
+            success: true,
+            conversationId: newConversationId // Return new ID to frontend
+        });
     } catch (error) {
         console.error('Failed to reset SDK conversation:', error);
         res.status(500).json({ error: 'Failed to reset conversation history' });

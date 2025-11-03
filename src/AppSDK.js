@@ -123,7 +123,15 @@ function ChatInterface({ user }) {
       }
 
       const data = await response.json();
-      setMessages(Array.isArray(data.conversation) ? data.conversation : []);
+      // Clear messages if conversation is empty (new session)
+      // This ensures the message window is cleared when starting fresh
+      const conversation = Array.isArray(data.conversation) ? data.conversation : [];
+      setMessages(conversation);
+      
+      // Log conversation ID if present (for new sessions)
+      if (data.conversationId) {
+        console.log('SDK conversation session:', data.conversationId);
+      }
     } catch (err) {
       console.error('Failed to load SDK conversation:', err);
       setSendError('Unable to load previous conversation. You can still start a new one.');
@@ -323,12 +331,19 @@ function ChatInterface({ user }) {
         throw new Error('Failed to reset conversation');
       }
 
-      // Clear local state
+      const data = await response.json();
+      
+      // Clear local state (message window should be empty)
       setMessages([]);
       setInputValue('');
       resetUploads();
       setSendError(null);
       setInitializing(false);
+      
+      // Log new session if conversationId is returned
+      if (data.conversationId) {
+        console.log('New SDK conversation session after reset:', data.conversationId);
+      }
     } catch (err) {
       console.error('Failed to reset conversation:', err);
       setSendError('Failed to start new chat. Please try again.');
