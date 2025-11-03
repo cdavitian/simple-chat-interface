@@ -141,7 +141,9 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     const agent = createAgent(vectorStoreId);
     
     // Build Runner options - include conversation_id if provided
+    // Support both spellings as SDK may accept either depending on version
     const runnerOptions = {
+      store: true, // Ensure stateful storage is enabled
       traceMetadata: {
         __trace_source__: 'agent-builder',
         workflow_id:
@@ -150,16 +152,27 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       },
     };
     
-    // Add conversation_id if provided (for continuing existing conversation)
+    // Add conversation_id/conversationId if provided (for continuing existing conversation)
+    // Support both spellings for SDK compatibility
     if (conversationId) {
+      runnerOptions.conversationId = conversationId;
       runnerOptions.conversation_id = conversationId;
     }
     
+    // Log what we're passing to Runner
+    console.info('🏃 Runner init:', { 
+      conversationId: conversationId ?? 'none',
+      hasStore: runnerOptions.store === true
+    });
+    
     const runner = new Runner(runnerOptions);
 
-    // If we have a conversation_id, only send the latest message (SDK will pull prior context)
+    // If we have a conversation_id, only send the latest message (SDK will pull prior context via store:true)
     // Otherwise, send full history for the first message
-    const messagesToSend = conversationId ? conversationHistory : [...conversationHistory];
+    // When using store:true with conversationId, SDK maintains context internally
+    const messagesToSend = conversationId && conversationHistory.length > 0
+      ? [conversationHistory[conversationHistory.length - 1]] // Only the latest message
+      : [...conversationHistory]; // Full history for first message (or empty if no history)
     
     const result = await runner.run(agent, messagesToSend);
     
@@ -214,35 +227,45 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     }
 
     // Extract conversation_id from result for persistence
-    // The conversation_id can be in several places depending on SDK version
-    let returnedConversationId = null;
+    // Use robust extraction that checks all possible locations
+    function extractConversationId(result, runner) {
+      return (
+        // Top-level (most common) - check both spellings
+        result?.conversationId ??
+        result?.conversation_id ??
+        
+        // Sometimes attached to runner state (depending on SDK version)
+        runner?.state?.conversationId ??
+        runner?.state?.conversation_id ??
+        
+        // Runner instance itself
+        runner?.conversationId ??
+        runner?.conversation_id ??
+        
+        // Very defensive: scan result state and finalOutput
+        result?.finalOutput?.conversationId ??
+        result?.state?.conversationId ??
+        result?.state?.conversation_id ??
+        
+        // Fallback to thread_id if conversation_id not found (some SDK versions)
+        result?.thread_id ??
+        
+        null
+      );
+    }
     
-    // First, if we passed a conversation_id, try to preserve it (it should persist)
-    if (conversationId) {
+    // Extract the conversation ID
+    let returnedConversationId = extractConversationId(result, runner);
+    
+    // If we had an input conversationId and didn't extract one, use the input (it should persist)
+    if (!returnedConversationId && conversationId) {
       returnedConversationId = conversationId;
     }
     
-    // Check various possible locations for conversation_id in result
-    // Note: The OpenAI Agents SDK may not expose conversation_id directly
-    // It might be managed internally with store: true
-    if (!returnedConversationId) {
-      if (result?.conversation_id) {
-        returnedConversationId = result.conversation_id;
-      } else if (result?.conversationId) {
-        returnedConversationId = result.conversationId;
-      } else if (runner?.conversation_id) {
-        returnedConversationId = runner.conversation_id;
-      } else if (runner?.conversationId) {
-        returnedConversationId = runner.conversationId;
-      } else if (runner?.state?.conversation_id) {
-        returnedConversationId = runner.state.conversation_id;
-      } else if (runner?.state?.conversationId) {
-        returnedConversationId = runner.state.conversationId;
-      } else if (result?.thread_id) {
-        // Fallback to thread_id if conversation_id not found (some SDK versions)
-        returnedConversationId = result.thread_id;
-      }
-    }
+    // Log result keys and extracted value BEFORE any other transforms
+    console.info('🔍 Result keys:', result ? Object.keys(result) : []);
+    console.info('🔍 Top-level conversationId:', result?.conversationId);
+    console.info('🔍 Runner.state:', runner?.state);
 
     // Log for debugging
     console.log('💬 Conversation ID extraction:', {

@@ -2243,15 +2243,28 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         }
 
         // Store conversation_id in session for next request (if returned from SDK)
-        if (agentResult?.conversationId) {
-            req.session.sdkConversationId = agentResult.conversationId;
-            console.log('💾 SDK: Stored conversation_id in session:', {
-                conversationId: agentResult.conversationId.substring(0, 20) + '...'
+        const priorConversationId = req.session.sdkConversationId ?? null;
+        const newConversationId = agentResult?.conversationId;
+        
+        // Only update if we got a new conversationId and it's different
+        if (newConversationId && newConversationId !== priorConversationId) {
+            req.session.sdkConversationId = newConversationId;
+            // Save session explicitly to ensure persistence
+            await new Promise((resolve, reject) => {
+                req.session.save((err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
             });
-        } else {
+            console.log('💾 SDK: Stored conversation_id in session:', {
+                conversationId: newConversationId.substring(0, 20) + '...',
+                prior: priorConversationId ? priorConversationId.substring(0, 20) + '...' : 'none'
+            });
+        } else if (!newConversationId) {
             console.warn('⚠️ SDK: No conversation_id returned from agent result:', {
                 hasResult: !!agentResult,
-                resultKeys: agentResult ? Object.keys(agentResult) : []
+                resultKeys: agentResult ? Object.keys(agentResult) : [],
+                priorConversationId: priorConversationId ? priorConversationId.substring(0, 20) + '...' : 'none'
             });
         }
 
@@ -2262,6 +2275,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             final_output: agentResult?.finalOutput ?? null,
             guardrail_results: agentResult?.guardrailResults ?? null,
             usage: agentResult?.usage ?? null,
+            conversationId: agentResult?.conversationId ?? null, // Include in response for debugging
         });
     } catch (error) {
         console.error('Failed to process SDK message:', error);
