@@ -973,6 +973,154 @@ async function addFileToVectorStoreViaHTTP(vectorStoreId, fileId, apiKey) {
     });
 }
 
+// Helper function to list files in a vector store (with HTTP fallback)
+async function listVectorStoreFilesViaHTTP(vectorStoreId, apiKey, limit = 100, order = 'asc', after = null) {
+    const https = require('https');
+    
+    return new Promise((resolve, reject) => {
+        let path = `/v1/vector_stores/${vectorStoreId}/files?limit=${limit}&order=${order}`;
+        if (after) {
+            path += `&after=${after}`;
+        }
+        
+        const options = {
+            hostname: 'api.openai.com',
+            path: path,
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        resolve(parsed);
+                    } catch (e) {
+                        console.error('❌ Failed to parse HTTP response:', {
+                            error: e.message,
+                            body: data,
+                            statusCode: res.statusCode
+                        });
+                        reject(new Error(`Failed to parse response: ${e.message}`));
+                    }
+                } else {
+                    console.error('❌ HTTP API error response:', {
+                        statusCode: res.statusCode,
+                        body: data,
+                        operation: 'list vector store files'
+                    });
+                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+        
+        req.on('error', (error) => {
+            console.error('❌ HTTP request error:', {
+                error: error.message,
+                operation: 'list vector store files'
+            });
+            reject(error);
+        });
+        req.end();
+    });
+}
+
+// Wait for vector store files to complete ingestion
+// Polls until all files in the vector store have status === 'completed'
+async function waitUntilVectorStoreFilesCompleted(client, vectorStoreId, fileIds = [], maxWaitTime = 60000, pollInterval = 2000) {
+    if (!vectorStoreId || fileIds.length === 0) {
+        return; // Nothing to wait for
+    }
+    
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+        console.warn('⚠️ Cannot wait for vector store files: OPENAI_API_KEY not found');
+        return;
+    }
+    
+    const startTime = Date.now();
+    const targetFileIds = new Set(fileIds);
+    
+    console.log('⏳ Waiting for vector store files to complete ingestion:', {
+        vectorStoreId,
+        fileCount: fileIds.length,
+        fileIds: fileIds.slice(0, 5).map(id => id.substring(0, 10) + '...') // Log first 5
+    });
+    
+    while (Date.now() - startTime < maxWaitTime) {
+        try {
+            // List all files in the vector store
+            let filesList;
+            if (client?.beta?.vectorStores?.files?.list) {
+                filesList = await client.beta.vectorStores.files.list(vectorStoreId, { limit: 100 });
+            } else {
+                filesList = await listVectorStoreFilesViaHTTP(vectorStoreId, apiKey, 100);
+            }
+            
+            const files = filesList.data || [];
+            const completedFiles = new Set();
+            const inProgressFiles = [];
+            
+            // Check status of each target file
+            for (const file of files) {
+                if (targetFileIds.has(file.id)) {
+                    if (file.status === 'completed') {
+                        completedFiles.add(file.id);
+                    } else if (file.status === 'in_progress' || file.status === 'queued') {
+                        inProgressFiles.push({
+                            file_id: file.id.substring(0, 10) + '...',
+                            status: file.status
+                        });
+                    }
+                }
+            }
+            
+            // If all files are completed, we're done
+            if (completedFiles.size === targetFileIds.size) {
+                console.log('✅ All vector store files completed ingestion:', {
+                    vectorStoreId,
+                    completedCount: completedFiles.size
+                });
+                return;
+            }
+            
+            // Log progress
+            if (inProgressFiles.length > 0) {
+                console.log('⏳ Vector store files still ingesting:', {
+                    vectorStoreId,
+                    completed: completedFiles.size,
+                    total: targetFileIds.size,
+                    inProgress: inProgressFiles.length,
+                    inProgressFiles: inProgressFiles.slice(0, 3) // Log first 3
+                });
+            }
+            
+            // Wait before next poll
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+            
+        } catch (error) {
+            console.error('❌ Error checking vector store file status:', {
+                error: error?.message,
+                vectorStoreId
+            });
+            // Continue polling despite errors
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
+    }
+    
+    console.warn('⚠️ Timeout waiting for vector store files to complete:', {
+        vectorStoreId,
+        waited: Date.now() - startTime,
+        fileCount: targetFileIds.size
+    });
+}
+
 // Helper function to get or create vector store for a session
 // Uses core OpenAI client's beta.vectorStores API, with HTTP fallback if SDK doesn't support it
 // Following pattern: Use core OpenAI client for vector stores, Agents SDK for orchestration
@@ -2252,6 +2400,15 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             vectorStoreId = req.session?.vectorStoreId || null;
         }
         
+        // Wait for vector store files to complete ingestion before sending message
+        if (vectorStoreId && fileIds.length > 0 && client) {
+            try {
+                await waitUntilVectorStoreFilesCompleted(client, vectorStoreId, fileIds);
+            } catch (waitError) {
+                console.warn('⚠️ SDK: Error waiting for vector store files, continuing anyway:', waitError?.message);
+            }
+        }
+        
         // Verify vector store exists and log file availability
         if (vectorStoreId && fileIds.length > 0) {
             try {
@@ -2296,7 +2453,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         conversation.push(userItem);
 
         // Clean conversation for OpenAI Agents SDK - send ONLY the current user message
-        // NO file attachments - files are accessed via vector store file_search tool
+        // Files are accessed via vector store file_search AND as tool resources for raw access
         const cleanedMessage = { role: 'user' };
         
         // Content is always a simple string - files accessed via vector store
@@ -2309,9 +2466,31 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             cleanedMessage.content = 'Please analyze the uploaded files.';
         }
         
-        // NOTE: We intentionally do NOT add attachments - files are retrieved via vector store
+        // Build cleaned conversation with system message for filename mapping if files exist
+        const cleanedConversation = [];
         
-        const cleanedConversation = [cleanedMessage];
+        // Add system message with filename mappings so model knows what files are available
+        if (fileIds.length > 0 && fileMetadataMap.size > 0) {
+            const filenameList = [];
+            for (const fileId of fileIds) {
+                const metadata = fileMetadataMap.get(fileId);
+                if (metadata) {
+                    const filename = metadata.filename || metadata.name || 'unknown';
+                    const mimeType = metadata.mime || metadata.content_type || 'application/octet-stream';
+                    filenameList.push(`- ${fileId.substring(0, 10)}... => "${filename}" (${mimeType})`);
+                } else {
+                    filenameList.push(`- ${fileId.substring(0, 10)}... => (metadata not available)`);
+                }
+            }
+            
+            const systemMessage = {
+                role: 'system',
+                content: `Session files available:\n${filenameList.join('\n')}\n\nThese files are accessible via vector store retrieval (file_search) for semantic queries, and as raw files via Code Interpreter for operations like extraction, conversion, or analysis.`
+            };
+            cleanedConversation.push(systemMessage);
+        }
+        
+        cleanedConversation.push(cleanedMessage);
 
         // Vector store ID already retrieved above - use it for agent
         if (vectorStoreId) {
@@ -2337,10 +2516,11 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         }
         
         // When we have a priorConversationId, only send the latest message (store:true handles context)
-        // When starting new conversation, send the full cleanedConversation (though it's just one message anyway)
+        // When starting new conversation, send the full cleanedConversation (including system message if present)
+        // Note: System messages with filename mappings should be included on first message only
         const messagesToSend = priorConversationId 
             ? [cleanedMessage]  // Only the new user message when continuing
-            : cleanedConversation;  // Full array for first message (though it's just one message)
+            : cleanedConversation;  // Full array for first message (includes system message if files exist)
         
         console.info('Runner init conversationId:', priorConversationId ?? 'none');
         
@@ -2350,7 +2530,14 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             console.log('🆕 SDK: Starting new conversation');
         }
 
-        const agentResult = await runAgentConversation(messagesToSend, 'SDK Conversation', vectorStoreId, priorConversationId);
+        // Pass fileIds as tool resources so Code Interpreter can access raw files
+        const agentResult = await runAgentConversation(
+            messagesToSend, 
+            'SDK Conversation', 
+            vectorStoreId, 
+            priorConversationId,
+            fileIds.length > 0 ? fileIds : null  // Pass fileIds for tool resources
+        );
 
         if (Array.isArray(agentResult?.newItems) && agentResult.newItems.length > 0) {
             const normalizedAgentItems = agentResult.newItems
@@ -2974,12 +3161,6 @@ app.get('/simple', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist-simple', 'index.html'));
 });
 
-// ============ Root Route (Must be LAST) ============
-// Redirect to homepage
-app.get('/', (req, res) => {
-    res.redirect('/homepage');
-});
-
 // Chat interface route - serve React app (restricted to Admin and Standard users)
 app.get('/chat', requireAuth, checkUserPermissions, (req, res) => {
     const userType = req.session.user.userType || req.session.userType;
@@ -3008,6 +3189,12 @@ app.get('/chat-sdk', requireAuth, checkUserPermissions, (req, res) => {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.sendFile(path.join(__dirname, 'dist', 'indexSDK.html'));
+});
+
+// ============ Root Route (Must be LAST) ============
+// Redirect to homepage (homepage route will handle authentication)
+app.get('/', (req, res) => {
+    res.redirect('/homepage');
 });
 
 // Start the server

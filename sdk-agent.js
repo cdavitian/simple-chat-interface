@@ -160,7 +160,7 @@ function createAgent(vectorStoreId = null) {
   });
 }
 
-async function runAgentConversation(conversationHistory, traceName = 'MCP Prod Test', vectorStoreId = null, conversationId = null) {
+async function runAgentConversation(conversationHistory, traceName = 'MCP Prod Test', vectorStoreId = null, conversationId = null, fileIds = null) {
   if (!Array.isArray(conversationHistory)) {
     throw new Error('conversationHistory must be an array of AgentInputItem objects');
   }
@@ -171,7 +171,8 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       messages: conversationHistory.length,
       vectorStoreId,
       hasContent: !!conversationHistory[0]?.content,
-      hasConversationId: !!conversationId
+      hasConversationId: !!conversationId,
+      fileIdsCount: fileIds ? fileIds.length : 0
     });
   }
 
@@ -231,9 +232,25 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     // Do NOT pass locally-generated IDs - they don't exist on OpenAI's servers yet
     // On first message, let SDK create the conversationId
     // On subsequent messages, pass the SDK-returned conversationId to continue the conversation
-    const runOptions = conversationId 
-      ? { conversationId: conversationId }
-      : {};
+    const runOptions = {
+      ...(conversationId ? { conversationId: conversationId } : {}),
+      // Attach files as tool resources so Code Interpreter can access raw files
+      // This allows the model to open, read, and operate on the full file contents
+      ...(fileIds && fileIds.length > 0 ? {
+        toolResources: {
+          codeInterpreter: {
+            fileIds: fileIds
+          }
+        }
+      } : {})
+    };
+    
+    if (fileIds && fileIds.length > 0) {
+      console.log('📎 Attaching files as tool resources for Code Interpreter:', {
+        fileCount: fileIds.length,
+        fileIds: fileIds.slice(0, 3).map(id => id.substring(0, 10) + '...') // Log first 3
+      });
+    }
     
     const result = await runner.run(agent, messagesToSend, runOptions);
     
