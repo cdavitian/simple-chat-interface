@@ -1963,15 +1963,29 @@ app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, (req, res) =
             req.session.sdkConversation = [];
         }
 
+        // Validate conversationId - clear if it's locally-generated (doesn't exist on OpenAI servers)
+        let conversationId = req.session.sdkConversationId || null;
+        if (conversationId && typeof conversationId === 'string') {
+            const isLocallyGenerated = /^conv_\d+_[a-z0-9]+$/i.test(conversationId);
+            if (isLocallyGenerated) {
+                console.warn('⚠️ SDK: Clearing locally-generated conversationId from session:', {
+                    conversationId: conversationId.substring(0, 30) + '...',
+                    reason: 'Locally-generated IDs don\'t exist on OpenAI servers'
+                });
+                conversationId = null;
+                req.session.sdkConversationId = null;
+            }
+        }
+        
         // Don't generate conversationId locally - let the SDK create it on first message
         // We'll store it after the first SDK call returns it
-        if (!req.session.sdkConversationId) {
+        if (!conversationId) {
             console.log('🆕 SDK: New conversation session - will create conversationId on first message');
         }
 
         res.json({
             conversation: req.session.sdkConversation,
-            conversationId: req.session.sdkConversationId, // Return it to frontend for reference
+            conversationId: conversationId, // Return validated conversationId (or null if cleared)
         });
     } catch (error) {
         console.error('Failed to load SDK conversation:', error);
@@ -2246,7 +2260,23 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         }
 
         // Retrieve existing conversation_id from session for continuing conversation
-        const priorConversationId = req.session.sdkConversationId || null;
+        // CRITICAL: Validate that conversationId was created by SDK, not locally-generated
+        // Locally-generated IDs (pattern: conv_${timestamp}_${random}) don't exist on OpenAI servers
+        let priorConversationId = req.session.sdkConversationId || null;
+        
+        // Check if conversationId matches our old local generation pattern
+        // Pattern: conv_ followed by numbers, underscore, then alphanumeric
+        if (priorConversationId && typeof priorConversationId === 'string') {
+            const isLocallyGenerated = /^conv_\d+_[a-z0-9]+$/i.test(priorConversationId);
+            if (isLocallyGenerated) {
+                console.warn('⚠️ SDK: Detected locally-generated conversationId, clearing it:', {
+                    conversationId: priorConversationId.substring(0, 30) + '...',
+                    reason: 'Locally-generated IDs don\'t exist on OpenAI servers - SDK will create a new one'
+                });
+                priorConversationId = null;
+                req.session.sdkConversationId = null;
+            }
+        }
         
         // When we have a priorConversationId, only send the latest message (store:true handles context)
         // When starting new conversation, send the full cleanedConversation (though it's just one message anyway)
