@@ -2222,6 +2222,14 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
 
         // Retrieve existing conversation_id from session for continuing conversation
         const existingConversationId = req.session.sdkConversationId || null;
+        
+        if (existingConversationId) {
+            console.log('📋 SDK: Continuing existing conversation:', {
+                conversationId: existingConversationId.substring(0, 20) + '...'
+            });
+        } else {
+            console.log('🆕 SDK: Starting new conversation');
+        }
 
         const agentResult = await runAgentConversation(cleanedConversation, 'SDK Conversation', vectorStoreId, existingConversationId);
 
@@ -2237,6 +2245,14 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         // Store conversation_id in session for next request (if returned from SDK)
         if (agentResult?.conversationId) {
             req.session.sdkConversationId = agentResult.conversationId;
+            console.log('💾 SDK: Stored conversation_id in session:', {
+                conversationId: agentResult.conversationId.substring(0, 20) + '...'
+            });
+        } else {
+            console.warn('⚠️ SDK: No conversation_id returned from agent result:', {
+                hasResult: !!agentResult,
+                resultKeys: agentResult ? Object.keys(agentResult) : []
+            });
         }
 
         req.session.sdkConversation = conversation;

@@ -140,21 +140,38 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     // Create agent with vector store if provided
     const agent = createAgent(vectorStoreId);
     
-    const runner = new Runner({
-      conversation_id: conversationId || undefined,
+    // Build Runner options - include conversation_id if provided
+    const runnerOptions = {
       traceMetadata: {
         __trace_source__: 'agent-builder',
         workflow_id:
           process.env.SDK_AGENT_WORKFLOW_ID ||
           'wf_68efcaa7b9908190bfadd0ac72ef430001c44704e294f2a0',
       },
-    });
+    };
+    
+    // Add conversation_id if provided (for continuing existing conversation)
+    if (conversationId) {
+      runnerOptions.conversation_id = conversationId;
+    }
+    
+    const runner = new Runner(runnerOptions);
 
     // If we have a conversation_id, only send the latest message (SDK will pull prior context)
     // Otherwise, send full history for the first message
     const messagesToSend = conversationId ? conversationHistory : [...conversationHistory];
     
     const result = await runner.run(agent, messagesToSend);
+    
+    // Log runner state after run for debugging
+    if (conversationId || result) {
+      console.log('🔍 Runner state after run:', {
+        hasRunnerState: !!runner?.state,
+        runnerStateType: runner?.state ? typeof runner.state : 'none',
+        resultType: result ? typeof result : 'none',
+        resultIsObject: result ? typeof result === 'object' : false
+      });
+    }
 
     const newItems = (result?.newItems || []).map((item) => {
       const rawItem = item?.rawItem || item;
@@ -185,8 +202,32 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     }
 
     // Extract conversation_id from result for persistence
-    // Check both result.conversation_id and runner.state.conversation_id
-    const returnedConversationId = result?.conversation_id || runner?.state?.conversation_id || null;
+    // The conversation_id can be in several places depending on SDK version
+    let returnedConversationId = null;
+    
+    // Check various possible locations for conversation_id
+    if (result?.conversation_id) {
+      returnedConversationId = result.conversation_id;
+    } else if (result?.conversationId) {
+      returnedConversationId = result.conversationId;
+    } else if (runner?.state?.conversation_id) {
+      returnedConversationId = runner.state.conversation_id;
+    } else if (runner?.state?.conversationId) {
+      returnedConversationId = runner.state.conversationId;
+    } else if (result?.thread_id) {
+      // Fallback to thread_id if conversation_id not found (some SDK versions)
+      returnedConversationId = result.thread_id;
+    }
+
+    // Log for debugging
+    if (conversationId || returnedConversationId) {
+      console.log('💬 Conversation ID:', {
+        input: conversationId || 'none',
+        output: returnedConversationId || 'none',
+        resultKeys: result ? Object.keys(result) : [],
+        runnerStateKeys: runner?.state ? Object.keys(runner.state) : []
+      });
+    }
 
     return {
       finalOutput,
