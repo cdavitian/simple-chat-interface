@@ -8,6 +8,7 @@ const { runAgentConversation } = require('./sdk-agent');
 const { getFileConfig, prepareMessageParts } = require('./services/fileHandler.service');
 const crypto = require('crypto');
 const LoggingConfig = require('./logging-config');
+const pgSession = require('connect-pg-simple');
 require('dotenv').config();
 
 const app = express();
@@ -142,7 +143,31 @@ if (isProduction) {
     app.set('trust proxy', 1);
 }
 
+// Configure session store - use PostgreSQL if available, otherwise MemoryStore for local dev
+let sessionStore;
+const SessionStore = pgSession(session);
+
+// Check if PostgreSQL is available (same logic as LoggingConfig)
+const hasPostgreSQLVars = (
+    (process.env.PGHOST && process.env.PGDATABASE && process.env.PGUSER && process.env.PGPASSWORD) ||
+    (process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER && process.env.DB_PASSWORD)
+);
+
+if (hasPostgreSQLVars && loggingConfig.loggerType === 'postgresql' && loggingConfig.logger && loggingConfig.logger.pool) {
+    // Use PostgreSQL session store
+    sessionStore = new SessionStore({
+        pool: loggingConfig.logger.pool,
+        tableName: 'user_sessions', // Custom table name
+        createTableIfMissing: true
+    });
+    console.log('✅ Using PostgreSQL session store (production-ready)');
+} else {
+    // Fallback to MemoryStore only for local development
+    console.log('⚠️  Using MemoryStore (local development only - not suitable for production)');
+}
+
 app.use(session({
+    store: sessionStore,
     secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
     resave: false,
     saveUninitialized: false,
@@ -154,6 +179,62 @@ app.use(session({
     },
     proxy: isProduction // Trust the reverse proxy when setting secure cookies
 }));
+
+// Middleware to log session lifecycle (initiation and termination)
+app.use(async (req, res, next) => {
+    // Log session initiation when user data is set (but not yet logged)
+    if (req.session.user && !req.session._sessionLogged) {
+        await logSessionInitiation(req);
+        req.session._sessionLogged = true; // Mark as logged to prevent duplicate logging
+    }
+
+    next();
+});
+
+// Helper function to log session initiation
+async function logSessionInitiation(req) {
+    try {
+        if (loggingConfig.loggerType === 'postgresql' && loggingConfig.logger && loggingConfig.logger.logSessionInitiation) {
+            const clientInfo = getClientInfo(req);
+            const expirationTime = new Date(Date.now() + (24 * 60 * 60 * 1000)); // 24 hours from now
+            
+            await loggingConfig.logger.logSessionInitiation({
+                session_id: req.sessionID,
+                user_id: req.session.user?.id || null,
+                user_email: req.session.user?.email || null,
+                expiration_timestamp: expirationTime,
+                ip_address: clientInfo.ipAddress,
+                user_agent: clientInfo.userAgent,
+                metadata: {
+                    authMethod: req.session.user?.authMethod || 'oauth',
+                    name: req.session.user?.name || null
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error in logSessionInitiation middleware:', error);
+        // Don't break the request flow
+    }
+}
+
+// Helper function to log session termination
+async function logSessionTermination(req, reason = 'expired') {
+    try {
+        if (loggingConfig.loggerType === 'postgresql' && loggingConfig.logger && loggingConfig.logger.logSessionTermination) {
+            await loggingConfig.logger.logSessionTermination({
+                session_id: req.sessionID || req.session?.id,
+                termination_reason: reason,
+                metadata: {
+                    user_id: req.session?.user?.id || null,
+                    user_email: req.session?.user?.email || null
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error in logSessionTermination middleware:', error);
+        // Don't break the request flow
+    }
+}
 
 // Middleware
 app.use(express.json());
@@ -408,6 +489,9 @@ app.get('/auth/cognito/callback', async (req, res) => {
             username: userInfo.sub // username is mapped from sub in Cognito
         };
         
+        // Log session initiation for permanent session log
+        await logSessionInitiation(req);
+        
         // Log successful login
         const clientInfo = getClientInfo(req);
         console.log('Attempting to log access for Google OAuth login:', {
@@ -524,6 +608,9 @@ app.post('/auth/login', async (req, res) => {
                     authMethod: 'cognito_traditional'
                 };
                 
+                // Log session initiation for permanent session log
+                await logSessionInitiation(req);
+                
                 // Log successful login
                 const clientInfo = getClientInfo(req);
                 await loggingConfig.logAccess({
@@ -585,6 +672,9 @@ app.get('/logout', (req, res) => {
 });
 
 app.get('/auth/logout', async (req, res) => {
+    // Log session termination for permanent session log
+    await logSessionTermination(req, 'logout');
+    
     // Log logout event before destroying session
     if (req.session.user) {
         const clientInfo = getClientInfo(req);

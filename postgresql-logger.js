@@ -81,6 +81,7 @@ class PostgreSQLAccessLogger {
             'CREATE INDEX IF NOT EXISTS idx_access_logs_user_id ON access_logs(user_id)',
             'CREATE INDEX IF NOT EXISTS idx_access_logs_timestamp ON access_logs(timestamp)',
             'CREATE INDEX IF NOT EXISTS idx_access_logs_event_type ON access_logs(event_type)',
+            'CREATE INDEX IF NOT EXISTS idx_access_logs_session_id ON access_logs(session_id)',
             'CREATE INDEX IF NOT EXISTS idx_access_logs_user_timestamp ON access_logs(user_id, timestamp)',
             'CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs(created_at)',
             'CREATE INDEX IF NOT EXISTS idx_access_logs_email_verified ON access_logs(email_verified)',
@@ -89,6 +90,87 @@ class PostgreSQLAccessLogger {
         ];
 
         for (const sql of indexSQL) {
+            try {
+                await this.pool.query(sql);
+            } catch (error) {
+                console.warn(`Warning: Could not create index: ${sql}`, error.message);
+            }
+        }
+
+        // Create permanent session log table
+        await this.createSessionLogTable();
+        
+        // Add foreign key relationship between access_logs.session_id and sessions_log.session_id
+        await this.addSessionIdForeignKey();
+    }
+
+    async addSessionIdForeignKey() {
+        try {
+            // Check if foreign key already exists
+            const checkFkSQL = `
+                SELECT constraint_name 
+                FROM information_schema.table_constraints 
+                WHERE constraint_name = 'fk_access_logs_session_id' 
+                AND table_name = 'access_logs'
+            `;
+            const fkExists = await this.pool.query(checkFkSQL);
+            
+            if (fkExists.rows.length === 0) {
+                // Add foreign key constraint to link access_logs.session_id to sessions_log.session_id
+                // Using ON DELETE SET NULL to handle cases where session might be deleted
+                const addFkSQL = `
+                    ALTER TABLE access_logs 
+                    ADD CONSTRAINT fk_access_logs_session_id 
+                    FOREIGN KEY (session_id) 
+                    REFERENCES sessions_log(session_id) 
+                    ON DELETE SET NULL
+                `;
+                
+                await this.pool.query(addFkSQL);
+                console.log('✅ Foreign key constraint added: access_logs.session_id -> sessions_log.session_id');
+            } else {
+                console.log('✅ Foreign key constraint already exists');
+            }
+        } catch (error) {
+            // Foreign key constraint might fail if there are existing records with orphaned session_ids
+            // or if sessions_log table doesn't exist yet. This is non-critical.
+            console.warn('Warning: Could not add foreign key constraint (this is OK if tables already have data):', error.message);
+        }
+    }
+
+    async createSessionLogTable() {
+        const createSessionLogSQL = `
+            CREATE TABLE IF NOT EXISTS sessions_log (
+                id SERIAL PRIMARY KEY,
+                session_id VARCHAR(255) NOT NULL UNIQUE,
+                initiation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                user_id VARCHAR(255),
+                user_email VARCHAR(255),
+                expiration_timestamp TIMESTAMP,
+                termination_timestamp TIMESTAMP,
+                ip_address INET,
+                user_agent TEXT,
+                termination_reason VARCHAR(50), -- 'expired', 'logout', 'server_restart', etc.
+                metadata JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `;
+
+        console.log('Creating sessions_log table...');
+        await this.pool.query(createSessionLogSQL);
+        console.log('sessions_log table created successfully');
+
+        // Create indexes for sessions_log
+        const sessionIndexSQL = [
+            'CREATE INDEX IF NOT EXISTS idx_sessions_log_session_id ON sessions_log(session_id)',
+            'CREATE INDEX IF NOT EXISTS idx_sessions_log_user_id ON sessions_log(user_id)',
+            'CREATE INDEX IF NOT EXISTS idx_sessions_log_user_email ON sessions_log(user_email)',
+            'CREATE INDEX IF NOT EXISTS idx_sessions_log_initiation_timestamp ON sessions_log(initiation_timestamp)',
+            'CREATE INDEX IF NOT EXISTS idx_sessions_log_termination_timestamp ON sessions_log(termination_timestamp)',
+            'CREATE INDEX IF NOT EXISTS idx_sessions_log_user_initiation ON sessions_log(user_id, initiation_timestamp)'
+        ];
+
+        for (const sql of sessionIndexSQL) {
             try {
                 await this.pool.query(sql);
             } catch (error) {
@@ -432,6 +514,85 @@ class PostgreSQLAccessLogger {
         const sql = `DELETE FROM access_logs WHERE timestamp < NOW() - INTERVAL '${daysToKeep} days'`;
         const result = await this.pool.query(sql);
         return result.rowCount;
+    }
+
+    /**
+     * Log session initiation to permanent sessions_log table
+     * @param {Object} sessionData - Session data including session_id, user_id, user_email, expiration_timestamp, ip_address, user_agent
+     */
+    async logSessionInitiation(sessionData) {
+        try {
+            const {
+                session_id,
+                user_id,
+                user_email,
+                expiration_timestamp,
+                ip_address,
+                user_agent,
+                metadata = {}
+            } = sessionData;
+
+            // Check if session already exists to avoid duplicates
+            const checkSql = `SELECT session_id FROM sessions_log WHERE session_id = $1`;
+            const checkResult = await this.pool.query(checkSql, [session_id]);
+            
+            if (checkResult.rows.length === 0) {
+                const sql = `
+                    INSERT INTO sessions_log 
+                    (session_id, initiation_timestamp, user_id, user_email, expiration_timestamp, ip_address, user_agent, metadata)
+                    VALUES ($1, CURRENT_TIMESTAMP, $2, $3, $4, $5, $6, $7)
+                `;
+
+                await this.pool.query(sql, [
+                    session_id,
+                    user_id || null,
+                    user_email || null,
+                    expiration_timestamp || null,
+                    ip_address || null,
+                    user_agent || null,
+                    JSON.stringify(metadata)
+                ]);
+            }
+        } catch (error) {
+            console.error('Error logging session initiation:', error);
+            // Don't throw - session logging shouldn't break the app
+        }
+    }
+
+    /**
+     * Log session termination to permanent sessions_log table
+     * @param {Object} sessionData - Session data including session_id, termination_reason, metadata
+     */
+    async logSessionTermination(sessionData) {
+        try {
+            const {
+                session_id,
+                termination_reason = 'expired',
+                metadata = {}
+            } = sessionData;
+
+            const sql = `
+                UPDATE sessions_log 
+                SET termination_timestamp = CURRENT_TIMESTAMP,
+                    termination_reason = $1,
+                    metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+                WHERE session_id = $3 AND termination_timestamp IS NULL
+            `;
+
+            const result = await this.pool.query(sql, [
+                termination_reason,
+                JSON.stringify(metadata),
+                session_id
+            ]);
+
+            if (result.rowCount === 0) {
+                // Session not found in log - might be a new session or already terminated
+                console.warn(`Session ${session_id} not found in sessions_log for termination update`);
+            }
+        } catch (error) {
+            console.error('Error logging session termination:', error);
+            // Don't throw - session logging shouldn't break the app
+        }
     }
 
     async close() {
