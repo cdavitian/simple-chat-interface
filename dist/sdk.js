@@ -874,7 +874,7 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    margin-top: 72px; /* Account for fixed menu bar with larger logo */
+    padding-top: 72px; /* Ensure content starts below fixed menu bar */
 }
 
 .app-header {
@@ -1767,6 +1767,19 @@ var _fileTypeRules$contex, _fileTypeRules$contex2, _fileTypeRules$codeIn, _fileT
 var toLower = function toLower(value) {
   return typeof value === 'string' ? value.toLowerCase() : '';
 };
+var normalizeCategoryLabel = function normalizeCategoryLabel(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  var normalized = toLower(value).replace(/[^a-z0-9]+/g, '_');
+  if (normalized === 'code_interpreter' || normalized === 'codeinterpreter') {
+    return 'code_interpreter';
+  }
+  if (normalized === 'context' || normalized === 'context_file') {
+    return 'context';
+  }
+  return normalized;
+};
 var CONTEXT_EXTENSIONS = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$contex = file_type_rules_namespaceObject.context) === null || _fileTypeRules$contex === void 0 ? void 0 : _fileTypeRules$contex.extensions) || []).map(toLower));
 var CONTEXT_MIME_TYPES = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$contex2 = file_type_rules_namespaceObject.context) === null || _fileTypeRules$contex2 === void 0 ? void 0 : _fileTypeRules$contex2.mimeTypes) || []).map(toLower));
 var CODE_INTERPRETER_EXTENSIONS = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$codeIn = file_type_rules_namespaceObject.codeInterpreter) === null || _fileTypeRules$codeIn === void 0 ? void 0 : _fileTypeRules$codeIn.extensions) || []).map(toLower));
@@ -1790,10 +1803,12 @@ var normalizeFileMetadata = function normalizeFileMetadata() {
   if (!extension) {
     extension = deriveExtension(filename);
   }
+  var category = normalizeCategoryLabel(file.category || file.file_category || '');
   return {
     filename: filename,
     contentType: contentType,
-    extension: extension
+    extension: extension,
+    category: category
   };
 };
 var isContextCategory = function isContextCategory() {
@@ -1816,6 +1831,13 @@ var isCodeInterpreterCategory = function isCodeInterpreterCategory() {
 };
 var determineCategory = function determineCategory() {
   var metadata = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  var explicitCategory = normalizeCategoryLabel(metadata.category || '');
+  if (explicitCategory === 'code_interpreter') {
+    return 'code_interpreter';
+  }
+  if (explicitCategory === 'context') {
+    return 'context';
+  }
   if (isContextCategory(metadata)) {
     return 'context';
   }
@@ -1862,7 +1884,8 @@ function createFileStager() {
     if (!fileId) return;
     var normalizedMetadata = {
       content_type: metadata.content_type || metadata.contentType || '',
-      filename: metadata.filename || metadata.name || ''
+      filename: metadata.filename || metadata.name || '',
+      category: metadata.category || metadata.file_category || ''
     };
     var category = determineCategory(normalizeFileMetadata(normalizedMetadata));
     staged.set(fileId, _objectSpread(_objectSpread({}, normalizedMetadata), {}, {
@@ -1907,6 +1930,12 @@ function createFileStager() {
       });
     }
     staged.forEach(function (metadata, fileId) {
+      // For code_interpreter files (e.g., CSV), don't place them in content.
+      // They'll be sent via staged_file_ids/metadata and attached server-side.
+      var category = metadata === null || metadata === void 0 ? void 0 : metadata.category;
+      if (category === 'code_interpreter') {
+        return; // skip adding to content to avoid confusing UI/context stuffing
+      }
       var messageContent = classifyFile(fileId, metadata);
       content.push({
         type: messageContent.type,
@@ -2019,7 +2048,7 @@ var MenuBar_MenuBar = function MenuBar(_ref) {
   return /*#__PURE__*/react.createElement("div", {
     className: "menu-bar"
   }, /*#__PURE__*/react.createElement("a", {
-    href: "/",
+    href: "https://simple-chat-interface-staging.up.railway.app/homepage",
     className: "menu-bar-logo"
   }, /*#__PURE__*/react.createElement("svg", {
     width: "180",
@@ -2109,7 +2138,7 @@ function onCustomToolS3UploadSuccess(_x) {
 }
 function _onCustomToolS3UploadSuccess() {
   _onCustomToolS3UploadSuccess = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee5(_ref) {
-    var key, filename, bucket, _yield$registerUpload, file_id, content_type;
+    var key, filename, bucket, _yield$registerUpload, file_id, content_type, category;
     return AppSDK_regenerator().w(function (_context5) {
       while (1) switch (_context5.n) {
         case 0:
@@ -2124,9 +2153,11 @@ function _onCustomToolS3UploadSuccess() {
           _yield$registerUpload = _context5.v;
           file_id = _yield$registerUpload.file_id;
           content_type = _yield$registerUpload.content_type;
+          category = _yield$registerUpload.category;
           fileStager.add(file_id, {
             content_type: content_type,
-            filename: filename
+            filename: filename,
+            category: category
           });
           return _context5.a(2, file_id);
       }
