@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const mime = require('mime-types');
 const LoggingConfig = require('./logging-config');
 const pgSession = require('connect-pg-simple');
+const fs = require('fs').promises;
 require('dotenv').config();
 
 const app = express();
@@ -2507,6 +2508,75 @@ app.get('/api/admin/s3/objects', requireAuth, checkUserPermissions, requireAdmin
     } catch (error) {
         console.error('Failed to list S3 objects:', error);
         res.status(500).json({ success: false, error: 'Failed to list S3 objects' });
+    }
+});
+
+// Get current version (admin only)
+app.get('/api/admin/version', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        const versionPath = path.join(__dirname, 'version.json');
+        let versionData;
+        
+        try {
+            const fileContent = await fs.readFile(versionPath, 'utf8');
+            versionData = JSON.parse(fileContent);
+        } catch (error) {
+            // If file doesn't exist, create it with default version
+            versionData = { version: '0.01' };
+            await fs.writeFile(versionPath, JSON.stringify(versionData, null, 2));
+        }
+        
+        res.json({
+            success: true,
+            version: `v${versionData.version}`
+        });
+    } catch (error) {
+        console.error('Failed to get version:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to get version', 
+            details: error.message 
+        });
+    }
+});
+
+// Increment version (admin only)
+app.post('/api/admin/version/increment', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        const versionPath = path.join(__dirname, 'version.json');
+        let versionData;
+        
+        try {
+            const fileContent = await fs.readFile(versionPath, 'utf8');
+            versionData = JSON.parse(fileContent);
+        } catch (error) {
+            // If file doesn't exist, create it with default version
+            versionData = { version: '0.01' };
+        }
+        
+        // Parse current version number
+        const currentVersion = parseFloat(versionData.version);
+        
+        // Increment by 0.01
+        const newVersion = (currentVersion + 0.01).toFixed(2);
+        versionData.version = newVersion;
+        
+        // Write updated version to file
+        await fs.writeFile(versionPath, JSON.stringify(versionData, null, 2));
+        
+        res.json({
+            success: true,
+            previousVersion: `v${currentVersion.toFixed(2)}`,
+            newVersion: `v${newVersion}`,
+            message: `Version incremented from v${currentVersion.toFixed(2)} to v${newVersion}`
+        });
+    } catch (error) {
+        console.error('Failed to increment version:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to increment version', 
+            details: error.message 
+        });
     }
 });
 

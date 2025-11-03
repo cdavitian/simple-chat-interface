@@ -123,6 +123,20 @@
             font-size: 12px;
             font-weight: 600;
         }
+        
+        .version-footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .version-footer .version-label {
+            font-weight: 500;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -171,6 +185,10 @@
                 </div>
             </div>
         </div>
+        
+        <div class="version-footer">
+            <span class="version-label">Version:</span> <span id="versionDisplay">Loading...</span>
+        </div>
     </div>
 
     <script src="/menu-bar.js"></script>
@@ -214,6 +232,26 @@
             window.location.href = '/admin/s3';
         }
 
+        // Load and display version
+        async function loadVersion() {
+            try {
+                const response = await fetch('/api/admin/version');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        document.getElementById('versionDisplay').textContent = data.version;
+                    } else {
+                        document.getElementById('versionDisplay').textContent = 'Unknown';
+                    }
+                } else {
+                    document.getElementById('versionDisplay').textContent = 'Unknown';
+                }
+            } catch (error) {
+                console.error('Failed to load version:', error);
+                document.getElementById('versionDisplay').textContent = 'Unknown';
+            }
+        }
+
         // Initialize the page
         document.addEventListener('DOMContentLoaded', function() {
             // Create menu bar
@@ -227,6 +265,9 @@
                     updateMenuBarUserInfo(user);
                 }
             });
+            
+            // Load version
+            loadVersion();
         });
     </script>
 </body>
