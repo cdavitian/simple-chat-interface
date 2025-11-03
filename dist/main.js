@@ -1138,6 +1138,20 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     overflow: hidden;
 }
 
+.chat-title {
+    text-align: center;
+    padding: 8px 0;
+    flex-shrink: 0;
+    display: block;
+}
+
+.chat-title h2 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0;
+}
+
 .message-pane {
     /* Make this a true flex scroll area */
     flex: 1 1 0;
@@ -1292,7 +1306,8 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
 }
 
 .icon-button,
-.send-button {
+.send-button,
+.new-chat-button {
     border: none;
     border-radius: 16px;
     padding: 12px 18px;
@@ -1326,6 +1341,27 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     cursor: not-allowed;
     opacity: 0.6;
     box-shadow: none;
+}
+
+.new-chat-button {
+    background: #e2e8f0;
+    color: #0f172a;
+    padding: 12px;
+    min-width: 48px;
+}
+
+.new-chat-button:hover:not(:disabled) {
+    background: #cbd5e1;
+    transform: translateY(-1px);
+}
+
+.new-chat-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.new-chat-button svg {
+    display: block;
 }
 
 .banner {

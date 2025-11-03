@@ -1119,6 +1119,20 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     overflow: hidden;
 }
 
+.chat-title {
+    text-align: center;
+    padding: 8px 0;
+    flex-shrink: 0;
+    display: block;
+}
+
+.chat-title h2 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0;
+}
+
 .message-pane {
     /* Make this a true flex scroll area */
     flex: 1 1 0;
@@ -1273,7 +1287,8 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
 }
 
 .icon-button,
-.send-button {
+.send-button,
+.new-chat-button {
     border: none;
     border-radius: 16px;
     padding: 12px 18px;
@@ -1307,6 +1322,27 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     cursor: not-allowed;
     opacity: 0.6;
     box-shadow: none;
+}
+
+.new-chat-button {
+    background: #e2e8f0;
+    color: #0f172a;
+    padding: 12px;
+    min-width: 48px;
+}
+
+.new-chat-button:hover:not(:disabled) {
+    background: #cbd5e1;
+    transform: translateY(-1px);
+}
+
+.new-chat-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.new-chat-button svg {
+    display: block;
 }
 
 .banner {
@@ -2137,20 +2173,20 @@ function onCustomToolS3UploadSuccess(_x) {
   return _onCustomToolS3UploadSuccess.apply(this, arguments);
 }
 function _onCustomToolS3UploadSuccess() {
-  _onCustomToolS3UploadSuccess = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee5(_ref) {
+  _onCustomToolS3UploadSuccess = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee6(_ref) {
     var key, filename, bucket, _yield$registerUpload, file_id, content_type, category;
-    return AppSDK_regenerator().w(function (_context5) {
-      while (1) switch (_context5.n) {
+    return AppSDK_regenerator().w(function (_context6) {
+      while (1) switch (_context6.n) {
         case 0:
           key = _ref.key, filename = _ref.filename, bucket = _ref.bucket;
-          _context5.n = 1;
+          _context6.n = 1;
           return registerUploadedS3Object({
             key: key,
             filename: filename,
             bucket: bucket
           });
         case 1:
-          _yield$registerUpload = _context5.v;
+          _yield$registerUpload = _context6.v;
           file_id = _yield$registerUpload.file_id;
           content_type = _yield$registerUpload.content_type;
           category = _yield$registerUpload.category;
@@ -2159,9 +2195,9 @@ function _onCustomToolS3UploadSuccess() {
             filename: filename,
             category: category
           });
-          return _context5.a(2, file_id);
+          return _context6.a(2, file_id);
       }
-    }, _callee5);
+    }, _callee6);
   }));
   return _onCustomToolS3UploadSuccess.apply(this, arguments);
 }
@@ -2611,9 +2647,54 @@ function ChatInterface(_ref3) {
       handleSend();
     }
   }, [handleSend]);
+  var handleNewChat = (0,react.useCallback)(/*#__PURE__*/AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee5() {
+    var response, _t5;
+    return AppSDK_regenerator().w(function (_context5) {
+      while (1) switch (_context5.p = _context5.n) {
+        case 0:
+          if (!isSending) {
+            _context5.n = 1;
+            break;
+          }
+          return _context5.a(2);
+        case 1:
+          _context5.p = 1;
+          _context5.n = 2;
+          return fetch('/api/sdk/conversation/reset', {
+            method: 'POST',
+            credentials: 'include'
+          });
+        case 2:
+          response = _context5.v;
+          if (response.ok) {
+            _context5.n = 3;
+            break;
+          }
+          throw new Error('Failed to reset conversation');
+        case 3:
+          // Clear local state
+          setMessages([]);
+          setInputValue('');
+          resetUploads();
+          setSendError(null);
+          setInitializing(false);
+          _context5.n = 5;
+          break;
+        case 4:
+          _context5.p = 4;
+          _t5 = _context5.v;
+          console.error('Failed to reset conversation:', _t5);
+          setSendError('Failed to start new chat. Please try again.');
+        case 5:
+          return _context5.a(2);
+      }
+    }, _callee5, null, [[1, 4]]);
+  })), [isSending, resetUploads]);
   return /*#__PURE__*/react.createElement("div", {
     className: "chat-sdk-container"
   }, /*#__PURE__*/react.createElement("div", {
+    className: "chat-title"
+  }, /*#__PURE__*/react.createElement("h2", null, "MCP Test - SDK")), /*#__PURE__*/react.createElement("div", {
     className: "message-pane"
   }, initializing ? /*#__PURE__*/react.createElement("div", {
     className: "loading"
@@ -2665,7 +2746,34 @@ function ChatInterface(_ref3) {
     type: "button",
     onClick: handleSend,
     disabled: isSending
-  }, isSending ? 'Sending…' : 'Send'))), /*#__PURE__*/react.createElement("input", {
+  }, isSending ? 'Sending…' : 'Send'), /*#__PURE__*/react.createElement("button", {
+    className: "new-chat-button",
+    type: "button",
+    onClick: handleNewChat,
+    disabled: isSending,
+    title: "Start a new chat"
+  }, /*#__PURE__*/react.createElement("svg", {
+    width: "20",
+    height: "20",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2.5",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, /*#__PURE__*/react.createElement("rect", {
+    x: "4",
+    y: "4",
+    width: "16",
+    height: "16",
+    rx: "2",
+    ry: "2"
+  }), /*#__PURE__*/react.createElement("line", {
+    x1: "20",
+    y1: "4",
+    x2: "4",
+    y2: "20"
+  }))))), /*#__PURE__*/react.createElement("input", {
     ref: fileInputRef,
     type: "file",
     accept: ".pdf,.png,.jpg,.jpeg,.csv,.xls,.xlsx",
@@ -2675,9 +2783,9 @@ function ChatInterface(_ref3) {
     onChange: onFileSelect
   }));
 }
-function MessageList(_ref9) {
-  var messages = _ref9.messages,
-    currentUser = _ref9.currentUser;
+function MessageList(_ref0) {
+  var messages = _ref0.messages,
+    currentUser = _ref0.currentUser;
   if (!messages.length) {
     return /*#__PURE__*/react.createElement("div", {
       className: "empty-state"
@@ -2692,8 +2800,8 @@ function MessageList(_ref9) {
     });
   }));
 }
-function MessageBubble(_ref0) {
-  var message = _ref0.message;
+function MessageBubble(_ref1) {
+  var message = _ref1.message;
   var roleClass = getRoleClass(message.role);
   var timestamp = message.createdAt ? formatTimestamp(message.createdAt) : null;
   return /*#__PURE__*/react.createElement("li", {
@@ -2718,8 +2826,8 @@ function MessageBubble(_ref0) {
     }
   })));
 }
-function MessageContent(_ref1) {
-  var item = _ref1.item;
+function MessageContent(_ref10) {
+  var item = _ref10.item;
   if (!item) {
     return null;
   }
@@ -2750,9 +2858,9 @@ function MessageContent(_ref1) {
       }, JSON.stringify(item, null, 2));
   }
 }
-function StagedFileList(_ref10) {
-  var files = _ref10.files,
-    onRemove = _ref10.onRemove;
+function StagedFileList(_ref11) {
+  var files = _ref11.files,
+    onRemove = _ref11.onRemove;
   if (!files.length) {
     return null;
   }
@@ -2770,11 +2878,11 @@ function StagedFileList(_ref10) {
     }, "Remove"));
   }));
 }
-function Banner(_ref11) {
-  var _ref11$type = _ref11.type,
-    type = _ref11$type === void 0 ? 'info' : _ref11$type,
-    message = _ref11.message,
-    onDismiss = _ref11.onDismiss;
+function Banner(_ref12) {
+  var _ref12$type = _ref12.type,
+    type = _ref12$type === void 0 ? 'info' : _ref12$type,
+    message = _ref12.message,
+    onDismiss = _ref12.onDismiss;
   if (!message) {
     return null;
   }
