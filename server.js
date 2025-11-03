@@ -152,6 +152,63 @@ const getOpenAIClient = () => {
     return openaiClient;
 };
 
+/**
+ * Get or create a conversation ID for the session
+ * Creates a durable conversation with OpenAI once per session
+ * @param {Request} req - Express request object with session
+ * @returns {Promise<string>} - The conversation ID
+ */
+async function getOrCreateConversationId(req) {
+    // If we already have a valid conversationId in session, return it
+    if (req.session.sdkConversationId) {
+        // Validate it's not locally-generated (old pattern)
+        const conversationId = req.session.sdkConversationId;
+        const isLocallyGenerated = /^conv_\d+_[a-z0-9]+$/i.test(conversationId);
+        if (!isLocallyGenerated) {
+            return conversationId;
+        }
+        // If it's locally-generated, clear it and create a new one below
+        console.warn('⚠️ SDK: Clearing locally-generated conversationId, creating new one');
+        req.session.sdkConversationId = null;
+    }
+
+    // Create a new durable conversation with OpenAI
+    const client = getOpenAIClient();
+    if (!client) {
+        throw new Error('OpenAI client not available');
+    }
+
+    try {
+        const { id } = await client.conversations.create({});
+        req.session.sdkConversationId = id;
+        
+        // Save session to persist the conversationId
+        await new Promise((resolve, reject) => {
+            req.session.save((err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+
+        console.log('✅ SDK: Created new conversation with OpenAI:', {
+            conversationId: id,
+            userId: req.session.user?.id || 'unknown',
+            userEmail: req.session.user?.email || 'unknown',
+            sessionId: req.sessionID,
+            timestamp: new Date().toISOString()
+        });
+
+        return id;
+    } catch (error) {
+        console.error('❌ SDK: Failed to create conversation:', {
+            error: error?.message,
+            status: error?.status,
+            code: error?.code
+        });
+        throw error;
+    }
+}
+
 // Session configuration
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
 
@@ -1957,55 +2014,44 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
     }
 });
 
-app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, (req, res) => {
+app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, async (req, res) => {
     try {
         if (!Array.isArray(req.session.sdkConversation)) {
             req.session.sdkConversation = [];
         }
 
-        // Validate conversationId - clear if it's locally-generated (doesn't exist on OpenAI servers)
-        let conversationId = req.session.sdkConversationId || null;
-        if (conversationId && typeof conversationId === 'string') {
-            const isLocallyGenerated = /^conv_\d+_[a-z0-9]+$/i.test(conversationId);
-            if (isLocallyGenerated) {
-                console.warn('⚠️ SDK: Clearing locally-generated conversationId from session:', {
-                    conversationId: conversationId.substring(0, 30) + '...',
-                    reason: 'Locally-generated IDs don\'t exist on OpenAI servers'
-                });
-                conversationId = null;
-                req.session.sdkConversationId = null;
-            }
-        }
-        
-        // Don't generate conversationId locally - let the SDK create it on first message
-        // We'll store it after the first SDK call returns it
-        if (!conversationId) {
-            console.log('🆕 SDK: New conversation session - will create conversationId on first message');
-        }
+        // Get or create conversation ID - ensures we have a durable conversation once per session
+        const conversationId = await getOrCreateConversationId(req);
 
         res.json({
             conversation: req.session.sdkConversation,
-            conversationId: conversationId, // Return validated conversationId (or null if cleared)
+            conversationId: conversationId,
         });
     } catch (error) {
         console.error('Failed to load SDK conversation:', error);
-        res.status(500).json({ error: 'Failed to load conversation history' });
+        res.status(500).json({ 
+            error: 'Failed to load conversation history',
+            details: error?.message || String(error)
+        });
     }
 });
 
-app.post('/api/sdk/conversation/reset', requireAuth, checkUserPermissions, (req, res) => {
+app.post('/api/sdk/conversation/reset', requireAuth, checkUserPermissions, async (req, res) => {
     try {
         // Store old conversation ID for logging
         const oldConversationId = req.session.sdkConversationId;
         
-        // Clear conversation history and conversationId
-        // The SDK will create a new conversationId on the next message
+        // Clear conversation history
         req.session.sdkConversation = [];
+        
+        // Clear old conversationId and create a new one immediately
         req.session.sdkConversationId = null;
+        const newConversationId = await getOrCreateConversationId(req);
         
         // Log the reset to deployment logs
-        console.log('🔄 SDK: Conversation reset - new session will be created on next message', {
+        console.log('🔄 SDK: Conversation reset - new conversation created', {
             oldConversationId: oldConversationId || 'none',
+            newConversationId: newConversationId,
             userId: req.session.user?.id || 'unknown',
             userEmail: req.session.user?.email || 'unknown',
             sessionId: req.sessionID,
@@ -2014,11 +2060,14 @@ app.post('/api/sdk/conversation/reset', requireAuth, checkUserPermissions, (req,
         
         res.json({ 
             success: true,
-            conversationId: null // Will be created by SDK on first message
+            conversationId: newConversationId
         });
     } catch (error) {
         console.error('Failed to reset SDK conversation:', error);
-        res.status(500).json({ error: 'Failed to reset conversation history' });
+        res.status(500).json({ 
+            error: 'Failed to reset conversation history',
+            details: error?.message || String(error)
+        });
     }
 });
 
@@ -2259,23 +2308,14 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             console.warn('⚠️ SDK: Files uploaded but no vector store available');
         }
 
-        // Retrieve existing conversation_id from session for continuing conversation
-        // CRITICAL: Validate that conversationId was created by SDK, not locally-generated
-        // Locally-generated IDs (pattern: conv_${timestamp}_${random}) don't exist on OpenAI servers
-        let priorConversationId = req.session.sdkConversationId || null;
-        
-        // Check if conversationId matches our old local generation pattern
-        // Pattern: conv_ followed by numbers, underscore, then alphanumeric
-        if (priorConversationId && typeof priorConversationId === 'string') {
-            const isLocallyGenerated = /^conv_\d+_[a-z0-9]+$/i.test(priorConversationId);
-            if (isLocallyGenerated) {
-                console.warn('⚠️ SDK: Detected locally-generated conversationId, clearing it:', {
-                    conversationId: priorConversationId.substring(0, 30) + '...',
-                    reason: 'Locally-generated IDs don\'t exist on OpenAI servers - SDK will create a new one'
-                });
-                priorConversationId = null;
-                req.session.sdkConversationId = null;
-            }
+        // Ensure we have a conversationId - get or create if missing
+        // This should already exist from /api/sdk/conversation endpoint, but ensure it as a safety net
+        let priorConversationId;
+        try {
+            priorConversationId = await getOrCreateConversationId(req);
+        } catch (error) {
+            console.error('⚠️ SDK: Failed to get/create conversationId, proceeding without it:', error);
+            priorConversationId = null;
         }
         
         // When we have a priorConversationId, only send the latest message (store:true handles context)
@@ -2303,12 +2343,16 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             }
         }
 
-        // Extract and persist conversation_id from result
-        const newConversationId = agentResult?.conversationId;
+        // Extract conversation_id from result (if returned)
+        // Since we create the conversation upfront, the SDK should use the same ID
+        const returnedConversationId = agentResult?.conversationId;
         
-        // Persist conversationId if we got one and it's different (or didn't have one before)
-        if (newConversationId) {
-            req.session.sdkConversationId = newConversationId;
+        // Use the returned ID if available, otherwise keep the one we passed (which should be the same)
+        const finalConversationId = returnedConversationId || priorConversationId;
+        
+        // Update session if we got a different ID (shouldn't happen, but be safe)
+        if (finalConversationId && finalConversationId !== req.session.sdkConversationId) {
+            req.session.sdkConversationId = finalConversationId;
             // Ensure it's persisted before you respond
             await new Promise((resolve, reject) => {
                 req.session.save((err) => {
@@ -2316,18 +2360,19 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                     else resolve();
                 });
             });
-            console.info('Returned conversationId:', newConversationId ?? 'none');
-            if (newConversationId !== priorConversationId) {
-                console.log('💾 SDK: Stored conversation_id in session:', {
-                    conversationId: newConversationId.substring(0, 20) + '...',
-                    prior: priorConversationId ? priorConversationId.substring(0, 20) + '...' : 'none'
-                });
-            }
+            console.log('💾 SDK: Updated conversation_id in session:', {
+                newId: finalConversationId.substring(0, 20) + '...',
+                prior: priorConversationId ? priorConversationId.substring(0, 20) + '...' : 'none'
+            });
+        } else if (finalConversationId) {
+            // Same ID - confirm it's still in session
+            console.info('✅ SDK: Conversation ID confirmed:', finalConversationId.substring(0, 20) + '...');
         } else {
-            console.warn('⚠️ SDK: No conversation_id returned from agent result:', {
+            console.warn('⚠️ SDK: No conversation_id available:', {
+                returned: returnedConversationId ? returnedConversationId.substring(0, 20) + '...' : 'none',
+                prior: priorConversationId ? priorConversationId.substring(0, 20) + '...' : 'none',
                 hasResult: !!agentResult,
-                resultKeys: agentResult ? Object.keys(agentResult) : [],
-                priorConversationId: priorConversationId ? priorConversationId.substring(0, 20) + '...' : 'none'
+                resultKeys: agentResult ? Object.keys(agentResult) : []
             });
         }
 
