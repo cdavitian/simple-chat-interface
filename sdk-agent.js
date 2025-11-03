@@ -10,7 +10,12 @@ const { runGuardrails } = require('@openai/guardrails');
 
 // Log SDK version for debugging
 try {
-  const agentsPackage = require('@openai/agents/package.json');
+  // Use require.resolve to get the package path, then read package.json
+  const packagePath = require.resolve('@openai/agents');
+  const fs = require('fs');
+  const path = require('path');
+  const packageJsonPath = path.join(path.dirname(packagePath), 'package.json');
+  const agentsPackage = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   console.log('📦 @openai/agents version:', agentsPackage.version);
 } catch (e) {
   console.warn('⚠️ Could not read @openai/agents version:', e.message);
@@ -157,10 +162,10 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     const agent = createAgent(vectorStoreId);
     
     // Build Runner options - include conversation_id if provided
-    // CRITICAL: store: true MUST be in the constructor - cannot be set later
+    // NOTE: store: true is in Agent.modelSettings (not Runner constructor)
+    // The Runner only needs conversationId to access the stored state
     // Pass both spellings (SDK versions differ)
     const runnerOptions = {
-      store: true, // CRITICAL: Must be in constructor - enables stateful storage
       ...(conversationId
         ? { conversationId: conversationId, conversation_id: conversationId }
         : {}),
@@ -172,30 +177,27 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       },
     };
     
-    // Log Runner configuration BEFORE creation to verify store: true is set
+    // Log Runner configuration BEFORE creation
     console.log('🔧 Runner options BEFORE creation:', {
-      store: runnerOptions.store,
-      storeType: typeof runnerOptions.store,
       hasConversationId: !!conversationId,
       conversationId: conversationId || 'none',
       hasTraceMetadata: !!runnerOptions.traceMetadata,
       workflowId: runnerOptions.traceMetadata?.workflow_id || 'none',
-      allOptionsKeys: Object.keys(runnerOptions)
+      allOptionsKeys: Object.keys(runnerOptions),
+      note: 'store: true is in Agent.modelSettings, not Runner constructor'
     });
     
-    // Create Runner with store: true in constructor (CRITICAL)
+    // Create Runner - store: true is in Agent.modelSettings, not here
     const runner = new Runner(runnerOptions);
     
-    // Log runner properties after creation to verify store was accepted
+    // Log runner properties after creation
+    // Note: store is in Agent.modelSettings, not Runner.config
     console.log('🔧 Runner properties AFTER creation:', {
       hasConfig: typeof runner.config !== 'undefined',
-      configStore: runner.config?.store,
-      configStoreType: typeof runner.config?.store,
       configKeys: runner.config ? Object.keys(runner.config) : 'no config',
       runnerKeys: Object.keys(runner).filter(k => !k.startsWith('_')),
-      hasStore: 'store' in runner,
-      runnerStore: runner.store,
-      conversationId: runner.config?.conversationId || runner.config?.conversation_id || 'none'
+      conversationId: runner.config?.conversationId || runner.config?.conversation_id || 'none',
+      note: 'Agent.modelSettings.store enables state persistence (not Runner.config)'
     });
 
     // If we have a conversation_id, only send the latest message (SDK will pull prior context via store:true)
@@ -216,17 +218,18 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       resultType: result ? typeof result : 'none',
       resultIsObject: result ? typeof result === 'object' : false,
       resultKeys: result ? Object.keys(result) : [],
-      // Check if store is enabled
-      runnerStoreEnabled: runner?.config?.store || runner?.store || 'unknown',
       // Check conversation ID persistence
-      conversationIdPersisted: conversationId || 'none'
+      conversationIdPersisted: conversationId || 'none',
+      note: 'State persistence is controlled by Agent.modelSettings.store (already set to true)'
     });
     
     // Warn if state is missing but we expect it
+    // Note: runner.state might be empty on first run - state is stored server-side by OpenAI
+    // The conversationId is what links to the stored state, not runner.state
     if (conversationId && !runner?.state) {
       console.warn('⚠️ WARNING: Conversation ID exists but runner.state is empty!', {
         conversationId,
-        hasStore: runner?.config?.store || runner?.store,
+        note: 'This may be normal - state is stored server-side. Agent.modelSettings.store: true enables persistence.',
         runnerConfig: runner?.config ? Object.keys(runner.config) : 'no config'
       });
     }
