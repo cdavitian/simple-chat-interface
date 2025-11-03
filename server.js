@@ -1907,6 +1907,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         }
 
         // Ensure vector store exists for SDK conversations
+        let vectorStoreId = null; // Declare in outer scope so it's available throughout the function
         const client = getOpenAIClient();
         if (client) {
             try {
@@ -1919,18 +1920,30 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
                     sessionID: req.sessionID,
                     hasExistingVectorStore: !!req.session.vectorStoreId
                 });
-                const vectorStoreId = await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
+                vectorStoreId = await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
                 console.log('✅ SDK: Vector store ready:', { vectorStoreId });
+                // Ensure session has the vector store ID
+                if (vectorStoreId && !req.session.vectorStoreId) {
+                    req.session.vectorStoreId = vectorStoreId;
+                    console.log('💾 SDK: Synced vectorStoreId to session:', vectorStoreId);
+                }
             } catch (vectorStoreError) {
                 console.error('❌ SDK: Failed to ensure vector store:', {
                     error: vectorStoreError?.message,
                     stack: vectorStoreError?.stack,
                     name: vectorStoreError?.name
                 });
+                // Try to fall back to session-stored vector store ID
+                vectorStoreId = req.session?.vectorStoreId || null;
+                if (vectorStoreId) {
+                    console.log('⚠️ SDK: Falling back to session-stored vectorStoreId:', vectorStoreId);
+                }
                 // Continue anyway - files may still work without vector store
             }
         } else {
             console.error('❌ SDK: OpenAI client not available for vector store creation');
+            // Try to fall back to session-stored vector store ID
+            vectorStoreId = req.session?.vectorStoreId || null;
         }
         
         // Build file metadata map from staged_files and session
@@ -2049,8 +2062,12 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         // NO message-level file attachments - files are accessed via vector store
         let userItem;
         
+        // Use vectorStoreId from above (or fall back to session)
+        if (!vectorStoreId) {
+            vectorStoreId = req.session?.vectorStoreId || null;
+        }
+        
         // Verify vector store exists and log file availability
-        const vectorStoreId = req.session?.vectorStoreId;
         if (vectorStoreId && fileIds.length > 0) {
             try {
                 const client = getOpenAIClient();
@@ -2104,19 +2121,34 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             ? userItem.content 
             : '';
         
+        // Ensure we have non-empty content - if empty and files exist, add a hint
+        if (!cleanedMessage.content && fileIds.length > 0) {
+            cleanedMessage.content = 'Please analyze the uploaded files.';
+            console.log('📝 SDK: Added default content prompt for file analysis');
+        }
+        
         // NOTE: We intentionally do NOT add attachments - files are retrieved via vector store
         
         const cleanedConversation = [cleanedMessage];
 
         console.log('Cleaned conversation for agent:', JSON.stringify(cleanedConversation, null, 2));
         console.log('Cleaned conversation length:', cleanedConversation.length);
+        console.log('Cleaned conversation content:', cleanedConversation[0]?.content);
         console.log('Cleaned conversation has attachments:', cleanedConversation[0]?.attachments?.length > 0);
 
         // Vector store ID already retrieved above - use it for agent
         if (vectorStoreId) {
-            console.log('SDK: Using vector store for file awareness:', vectorStoreId);
+            console.log('✅ SDK: Using vector store for file awareness:', {
+                vectorStoreId,
+                contentLength: cleanedMessage.content?.length || 0,
+                hasContent: !!cleanedMessage.content,
+                fileCount: fileIds.length
+            });
         } else {
-            console.warn('SDK: No vector store found in session');
+            console.warn('⚠️ SDK: No vector store found in session:', {
+                sessionVectorStoreId: req.session?.vectorStoreId || 'NONE',
+                fileCount: fileIds.length
+            });
         }
 
         const agentResult = await runAgentConversation(cleanedConversation, 'SDK Conversation', vectorStoreId);

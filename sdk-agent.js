@@ -85,9 +85,24 @@ function createAgent(vectorStoreId = null) {
     try {
       const fileSearch = fileSearchTool(vectorStoreId);
       tools.push(fileSearch);
-      console.log('SDK Agent: Added fileSearchTool with vector store:', vectorStoreId);
+      console.log('✅ SDK Agent: Added fileSearchTool with vector store:', {
+        vectorStoreId,
+        toolCount: tools.length,
+        hasFileSearch: true
+      });
     } catch (e) {
-      console.warn('Failed to create fileSearchTool:', e?.message);
+      console.error('❌ SDK Agent: Failed to create fileSearchTool:', {
+        error: e?.message,
+        stack: e?.stack,
+        vectorStoreId
+      });
+    }
+  } else {
+    if (!vectorStoreId) {
+      console.warn('⚠️ SDK Agent: No vectorStoreId provided, fileSearchTool will not be available');
+    }
+    if (!fileSearchTool) {
+      console.warn('⚠️ SDK Agent: fileSearchTool not available from @openai/agents-openai');
     }
   }
 
@@ -119,7 +134,13 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
   }
 
   // Log the conversation history to debug file attachments
-  console.log('Agent receiving conversation:', JSON.stringify(conversationHistory, null, 2));
+  console.log('📥 Agent receiving conversation:', {
+    messageCount: conversationHistory.length,
+    vectorStoreId: vectorStoreId || 'NONE',
+    firstMessageContent: conversationHistory[0]?.content?.substring(0, 100) || 'EMPTY',
+    firstMessageRole: conversationHistory[0]?.role || 'UNKNOWN',
+    fullConversation: JSON.stringify(conversationHistory, null, 2)
+  });
 
   return withTrace(traceName, async () => {
     // Create agent with vector store if provided
