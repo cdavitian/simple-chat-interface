@@ -8,6 +8,14 @@ const {
 const { OpenAI } = require('openai');
 const { runGuardrails } = require('@openai/guardrails');
 
+// Log SDK version for debugging
+try {
+  const agentsPackage = require('@openai/agents/package.json');
+  console.log('📦 @openai/agents version:', agentsPackage.version);
+} catch (e) {
+  console.warn('⚠️ Could not read @openai/agents version:', e.message);
+}
+
 // Try to import fileSearchTool from @openai/agents-openai
 let fileSearchTool = null;
 try {
@@ -149,11 +157,10 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     const agent = createAgent(vectorStoreId);
     
     // Build Runner options - include conversation_id if provided
-    // CRITICAL: store: true MUST be present for state persistence
+    // CRITICAL: store: true MUST be in the constructor - cannot be set later
     // Pass both spellings (SDK versions differ)
     const runnerOptions = {
-      store: true, // CRITICAL: Enable stateful storage - required for memory persistence
-      // Pass both spellings (SDK versions differ)
+      store: true, // CRITICAL: Must be in constructor - enables stateful storage
       ...(conversationId
         ? { conversationId: conversationId, conversation_id: conversationId }
         : {}),
@@ -165,24 +172,31 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       },
     };
     
-    // Log Runner configuration to verify store: true is set
-    console.log('🔧 Runner configuration:', {
+    // Log Runner configuration BEFORE creation to verify store: true is set
+    console.log('🔧 Runner options BEFORE creation:', {
       store: runnerOptions.store,
+      storeType: typeof runnerOptions.store,
       hasConversationId: !!conversationId,
       conversationId: conversationId || 'none',
       hasTraceMetadata: !!runnerOptions.traceMetadata,
-      workflowId: runnerOptions.traceMetadata?.workflow_id || 'none'
+      workflowId: runnerOptions.traceMetadata?.workflow_id || 'none',
+      allOptionsKeys: Object.keys(runnerOptions)
     });
     
+    // Create Runner with store: true in constructor (CRITICAL)
     const runner = new Runner(runnerOptions);
     
-    // Log runner config after creation (if available)
-    if (runner && typeof runner.config !== 'undefined') {
-      console.log('🔧 Runner.config after creation:', {
-        store: runner.config?.store,
-        conversationId: runner.config?.conversationId || runner.config?.conversation_id || 'none'
-      });
-    }
+    // Log runner properties after creation to verify store was accepted
+    console.log('🔧 Runner properties AFTER creation:', {
+      hasConfig: typeof runner.config !== 'undefined',
+      configStore: runner.config?.store,
+      configStoreType: typeof runner.config?.store,
+      configKeys: runner.config ? Object.keys(runner.config) : 'no config',
+      runnerKeys: Object.keys(runner).filter(k => !k.startsWith('_')),
+      hasStore: 'store' in runner,
+      runnerStore: runner.store,
+      conversationId: runner.config?.conversationId || runner.config?.conversation_id || 'none'
+    });
 
     // If we have a conversation_id, only send the latest message (SDK will pull prior context via store:true)
     // Otherwise, send full history for the first message
