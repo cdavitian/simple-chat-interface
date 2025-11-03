@@ -10,13 +10,31 @@ const { runGuardrails } = require('@openai/guardrails');
 
 // Log SDK version for debugging
 try {
-  // Use require.resolve to get the package path, then read package.json
+  // Use require.resolve to get the package entry point, then traverse up to find package.json
   const packagePath = require.resolve('@openai/agents');
   const fs = require('fs');
   const path = require('path');
-  const packageJsonPath = path.join(path.dirname(packagePath), 'package.json');
-  const agentsPackage = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-  console.log('📦 @openai/agents version:', agentsPackage.version);
+  
+  // Traverse up from the entry point (e.g., dist/index.js) to find package.json
+  let currentDir = path.dirname(packagePath);
+  let packageJsonPath = null;
+  
+  // Look for package.json going up the directory tree (max 5 levels)
+  for (let i = 0; i < 5; i++) {
+    const candidate = path.join(currentDir, 'package.json');
+    if (fs.existsSync(candidate)) {
+      packageJsonPath = candidate;
+      break;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  
+  if (packageJsonPath) {
+    const agentsPackage = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    console.log('📦 @openai/agents version:', agentsPackage.version);
+  } else {
+    console.warn('⚠️ Could not find @openai/agents package.json');
+  }
 } catch (e) {
   console.warn('⚠️ Could not read @openai/agents version:', e.message);
 }
