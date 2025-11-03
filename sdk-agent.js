@@ -17,7 +17,15 @@ try {
   console.warn('@openai/agents-openai not available, file_search will not be enabled:', e?.message);
 }
 
+// CRITICAL: Create OpenAI client at module scope to ensure it's reused across requests
+// This ensures state persistence works correctly - a new client per request would break memory
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Log client creation (only once when module loads)
+if (!global._openaiClientLogged) {
+  console.log('✅ OpenAI client initialized at module scope for state persistence');
+  global._openaiClientLogged = true;
+}
 
 const guardrailsConfig = {
   guardrails: [],
@@ -141,9 +149,10 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     const agent = createAgent(vectorStoreId);
     
     // Build Runner options - include conversation_id if provided
+    // CRITICAL: store: true MUST be present for state persistence
     // Pass both spellings (SDK versions differ)
     const runnerOptions = {
-      store: true, // Ensure stateful storage is enabled
+      store: true, // CRITICAL: Enable stateful storage - required for memory persistence
       // Pass both spellings (SDK versions differ)
       ...(conversationId
         ? { conversationId: conversationId, conversation_id: conversationId }
@@ -156,10 +165,24 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       },
     };
     
-    // Log what we're passing to Runner
-    console.info('Runner init conversationId:', conversationId ?? 'none');
+    // Log Runner configuration to verify store: true is set
+    console.log('🔧 Runner configuration:', {
+      store: runnerOptions.store,
+      hasConversationId: !!conversationId,
+      conversationId: conversationId || 'none',
+      hasTraceMetadata: !!runnerOptions.traceMetadata,
+      workflowId: runnerOptions.traceMetadata?.workflow_id || 'none'
+    });
     
     const runner = new Runner(runnerOptions);
+    
+    // Log runner config after creation (if available)
+    if (runner && typeof runner.config !== 'undefined') {
+      console.log('🔧 Runner.config after creation:', {
+        store: runner.config?.store,
+        conversationId: runner.config?.conversationId || runner.config?.conversation_id || 'none'
+      });
+    }
 
     // If we have a conversation_id, only send the latest message (SDK will pull prior context via store:true)
     // Otherwise, send full history for the first message
@@ -171,24 +194,26 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
     const result = await runner.run(agent, messagesToSend);
     
     // Log runner state after run for debugging
-    if (conversationId || result) {
-      console.log('🔍 Runner state after run:', {
-        hasRunnerState: !!runner?.state,
-        runnerStateType: runner?.state ? typeof runner.state : 'none',
-        resultType: result ? typeof result : 'none',
-        resultIsObject: result ? typeof result === 'object' : false,
-        runnerKeys: runner ? Object.keys(runner) : [],
-        resultKeys: result ? Object.keys(result) : []
-      });
-      
-      // Try to find conversation_id in various places
-      console.log('🔎 Searching for conversation_id:', {
-        resultConversationId: result?.conversation_id,
-        resultConversationIdCamel: result?.conversationId,
-        runnerConversationId: runner?.conversation_id,
-        runnerConversationIdCamel: runner?.conversationId,
-        runnerState: runner?.state ? JSON.stringify(runner.state).substring(0, 200) : 'none',
-        resultStringified: result ? JSON.stringify(result).substring(0, 500) : 'none'
+    // This is critical - if hasRunnerState is false, memory isn't persisting
+    console.log('🔍 Runner state after run:', {
+      hasRunnerState: !!runner?.state,
+      runnerStateType: runner?.state ? typeof runner.state : 'none',
+      runnerStateKeys: runner?.state ? Object.keys(runner.state) : [],
+      resultType: result ? typeof result : 'none',
+      resultIsObject: result ? typeof result === 'object' : false,
+      resultKeys: result ? Object.keys(result) : [],
+      // Check if store is enabled
+      runnerStoreEnabled: runner?.config?.store || runner?.store || 'unknown',
+      // Check conversation ID persistence
+      conversationIdPersisted: conversationId || 'none'
+    });
+    
+    // Warn if state is missing but we expect it
+    if (conversationId && !runner?.state) {
+      console.warn('⚠️ WARNING: Conversation ID exists but runner.state is empty!', {
+        conversationId,
+        hasStore: runner?.config?.store || runner?.store,
+        runnerConfig: runner?.config ? Object.keys(runner.config) : 'no config'
       });
     }
 
