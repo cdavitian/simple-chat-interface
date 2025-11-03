@@ -113,7 +113,16 @@ function ChatInterface({ user }) {
 
   const loadConversation = useCallback(async () => {
     try {
-      const response = await fetch('/api/sdk/conversation', {
+      // Check if we're arriving from homepage via query parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromHomepage = urlParams.get('from') === 'homepage';
+      
+      // Build API URL with query parameter if coming from homepage
+      const apiUrl = fromHomepage 
+        ? '/api/sdk/conversation?from=homepage'
+        : '/api/sdk/conversation';
+      
+      const response = await fetch(apiUrl, {
         method: 'GET',
         credentials: 'include',
       });
@@ -131,6 +140,11 @@ function ChatInterface({ user }) {
       // Log conversation ID if present (for new sessions)
       if (data.conversationId) {
         console.log('SDK conversation session:', data.conversationId);
+      }
+      
+      // Remove query parameter from URL after processing
+      if (fromHomepage) {
+        window.history.replaceState({}, '', window.location.pathname);
       }
     } catch (err) {
       console.error('Failed to load SDK conversation:', err);

@@ -2020,6 +2020,24 @@ app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, async (req, 
             req.session.sdkConversation = [];
         }
 
+        // Check if user is arriving from homepage - if so, start a new conversation
+        const fromHomepage = req.query.from === 'homepage' || 
+                            (req.get('referer') && req.get('referer').includes('/homepage'));
+        
+        if (fromHomepage) {
+            // Clear existing conversation ID and history to force creation of new one
+            const oldConversationId = req.session.sdkConversationId;
+            req.session.sdkConversationId = null;
+            req.session.sdkConversation = []; // Clear conversation history
+            console.log('🔄 SDK: Starting new conversation from homepage', {
+                oldConversationId: oldConversationId || 'none',
+                userId: req.session.user?.id || 'unknown',
+                userEmail: req.session.user?.email || 'unknown',
+                sessionId: req.sessionID,
+                timestamp: new Date().toISOString()
+            });
+        }
+
         // Get or create conversation ID - ensures we have a durable conversation once per session
         const conversationId = await getOrCreateConversationId(req);
 

@@ -348,7 +348,8 @@
 
         function openChatSDKInterface() {
             // Navigate to the SDK chat interface in the same tab
-            window.location.href = '/chat-sdk';
+            // Add query parameter to indicate navigation from homepage
+            window.location.href = '/chat-sdk?from=homepage';
         }
 
         // Initialize the page

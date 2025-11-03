@@ -251,13 +251,14 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       note: 'State persistence is controlled by Agent.modelSettings.store (already set to true)'
     });
     
-    // Warn if state is missing but we expect it
-    // Note: runner.state might be empty on first run - state is stored server-side by OpenAI
-    // The conversationId is what links to the stored state, not runner.state
+    // Info: runner.state is often empty when using server-side persistence
+    // Note: The Agents platform persists conversation state server-side when Agent.modelSettings.store = true.
+    // The local runner.state is often empty unless you put custom runner state there.
+    // This is expected behavior - the conversationId links to the stored state on the server.
     if (conversationId && !runner?.state) {
-      console.warn('⚠️ WARNING: Conversation ID exists but runner.state is empty!', {
+      console.info('ℹ️ Conversation ID exists but runner.state is empty (expected with server-side persistence)', {
         conversationId,
-        note: 'This may be normal - state is stored server-side. Agent.modelSettings.store: true enables persistence.',
+        note: 'State is stored server-side. Agent.modelSettings.store: true enables persistence.',
         runnerConfig: runner?.config ? Object.keys(runner.config) : 'no config'
       });
     }
