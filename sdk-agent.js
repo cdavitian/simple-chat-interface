@@ -225,7 +225,13 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       ? [conversationHistory[conversationHistory.length - 1]] // Only the latest message
       : [...conversationHistory]; // Full history for first message (or empty if no history)
     
-    const result = await runner.run(agent, messagesToSend);
+    // CRITICAL: Pass conversationId to runner.run() for continuing conversations
+    // This ensures the SDK links the new messages to the existing conversation
+    const runOptions = conversationId 
+      ? { conversationId: conversationId }
+      : {};
+    
+    const result = await runner.run(agent, messagesToSend, runOptions);
     
     // Log runner state after run for debugging
     // This is critical - if hasRunnerState is false, memory isn't persisting
