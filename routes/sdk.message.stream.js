@@ -35,7 +35,11 @@ async function sdkMessageStream(req, res) {
       });
     }
 
-    const tools = [{ type: 'file_search' }];
+    const vectorStoreId = thread.vector_store_id || process.env.VECTOR_STORE_ID || null;
+    const tools = [];
+    if (vectorStoreId) {
+      tools.push({ type: 'file_search', vector_store_ids: [vectorStoreId] });
+    }
     if (stagedFileIds.length > 0) {
       tools.push({ type: 'code_interpreter' });
     }

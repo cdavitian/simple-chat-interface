@@ -58,7 +58,11 @@ async function chatkitMessage(req, res) {
       inputMessages.push({ role: 'user', content: 'Please review the uploaded files.' });
     }
 
-    const tools = [{ type: 'file_search' }];
+    const vectorStoreId = thread.vector_store_id || process.env.VECTOR_STORE_ID || null;
+    const tools = [];
+    if (vectorStoreId) {
+      tools.push({ type: 'file_search', vector_store_ids: [vectorStoreId] });
+    }
     if (fileIdList.length > 0) {
       tools.push({ type: 'code_interpreter' });
     }
