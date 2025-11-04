@@ -1121,6 +1121,106 @@ async function waitUntilVectorStoreFilesCompleted(client, vectorStoreId, fileIds
     });
 }
 
+/**
+ * Wait for a vector store file to finish indexing
+ * Polls the vector store file status until it's 'completed', 'failed', or 'cancelled'
+ * @param {OpenAI} client - OpenAI client instance
+ * @param {string} vectorStoreId - Vector store ID
+ * @param {string} fileId - File ID to check
+ * @param {Object} options - Options object
+ * @param {number} options.timeoutMs - Timeout in milliseconds (default: 60000)
+ * @param {number} options.pollIntervalMs - Poll interval in milliseconds (default: 1000)
+ * @returns {Promise<Object>} The vector store file object with status 'completed'
+ */
+async function waitForVectorIndex(client, vectorStoreId, fileId, { timeoutMs = 60000, pollIntervalMs = 1000 } = {}) {
+    const start = Date.now();
+    
+    // Helper to retrieve vector store file status
+    const retrieveStatus = async () => {
+        if (client.beta?.vectorStores?.files?.retrieve) {
+            return await client.beta.vectorStores.files.retrieve(vectorStoreId, fileId);
+        } else {
+            // Fallback to HTTP API
+            const apiKey = process.env.OPENAI_API_KEY;
+            if (!apiKey) {
+                throw new Error('OPENAI_API_KEY not found for vector store file retrieval');
+            }
+            return await retrieveVectorStoreFileViaHTTP(vectorStoreId, fileId, apiKey);
+        }
+    };
+    
+    for (;;) {
+        const file = await retrieveStatus();
+        
+        if (file.status === 'completed') {
+            console.log('✅ Vector store file indexing completed:', {
+                fileId: fileId.substring(0, 20) + '...',
+                vectorStoreId: vectorStoreId.substring(0, 20) + '...',
+                elapsed: Date.now() - start
+            });
+            return file;
+        }
+        
+        if (file.status === 'failed' || file.status === 'cancelled') {
+            throw new Error(`Vector store file indexing ${file.status}: ${fileId}`);
+        }
+        
+        if (Date.now() - start > timeoutMs) {
+            throw new Error(`Vector store file indexing timeout after ${timeoutMs}ms for file: ${fileId}`);
+        }
+        
+        // Log progress every 5 seconds
+        const elapsed = Date.now() - start;
+        if (elapsed % 5000 < pollIntervalMs) {
+            console.log('⏳ Waiting for vector store file indexing...', {
+                fileId: fileId.substring(0, 20) + '...',
+                status: file.status,
+                elapsed: `${Math.round(elapsed / 1000)}s`
+            });
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+}
+
+/**
+ * Helper function to retrieve vector store file via HTTP API (fallback)
+ */
+async function retrieveVectorStoreFileViaHTTP(vectorStoreId, fileId, apiKey) {
+    const https = require('https');
+    
+    return new Promise((resolve, reject) => {
+        const options = {
+            hostname: 'api.openai.com',
+            path: `/v1/vector_stores/${vectorStoreId}/files/${fileId}`,
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                if (res.statusCode === 200) {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        reject(new Error(`Failed to parse response: ${e.message}`));
+                    }
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+        
+        req.on('error', reject);
+        req.end();
+    });
+}
+
 // Helper function to get or create vector store for a session
 // Uses core OpenAI client's beta.vectorStores API, with HTTP fallback if SDK doesn't support it
 // Following pattern: Use core OpenAI client for vector stores, Agents SDK for orchestration
@@ -1287,28 +1387,16 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         }
         
         // STEP 2: Create session with thread linking to vector store (if available)
+        // Note: Removed chatkit_configuration.file_upload as it causes 400 errors
+        // File uploads are handled by our custom endpoints, not ChatKit's built-in upload
         const sessionConfig = {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
                 // optional: state_variables: { user_id: userId }
-            },
-            chatkit_configuration: {
-                file_upload: {
-                    enabled: false,  // your tool owns uploads
-                    accept: [
-                        "text/csv",
-                        "application/csv",
-                        "application/vnd.ms-excel",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        "application/octet-stream",  // fallback for some CSV/XLS files
-                        "application/pdf",
-                        "image/*"
-                    ],
-                    max_file_size_megabytes: 50
-                }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
+            // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
         // Link thread to vector store if we have one
@@ -1510,28 +1598,16 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         }
         
         // STEP 2: Create session with thread linking to vector store (if available)
+        // Note: Removed chatkit_configuration.file_upload as it causes 400 errors
+        // File uploads are handled by our custom endpoints, not ChatKit's built-in upload
         const sessionConfig = {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
                 // optional: state_variables: { user_id: userId }
-            },
-            chatkit_configuration: {
-                file_upload: {
-                    enabled: false,  // your tool owns uploads
-                    accept: [
-                        "text/csv",
-                        "application/csv",
-                        "application/vnd.ms-excel",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        "application/octet-stream",  // fallback for some CSV/XLS files
-                        "application/pdf",
-                        "image/*"
-                    ],
-                    max_file_size_megabytes: 50
-                }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
+            // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
         // Link thread to vector store if we have one
@@ -1845,7 +1921,7 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
             });
             
             if (vectorStoreId) {
-                console.log('📤 ingest-s3: Adding file to vector store...', {
+                console.log('📤 ingest-s3: Adding file to vector store and waiting for indexing...', {
                     file_id: uploaded.id,
                     vectorStoreId
                 });
@@ -1859,11 +1935,36 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
                     const apiKey = process.env.OPENAI_API_KEY;
                     vsFile = await addFileToVectorStoreViaHTTP(vectorStoreId, uploaded.id, apiKey);
                 }
-                console.log('✅ Added file to vector store (ingest-s3):', {
+                
+                console.log('📎 File added to vector store, waiting for indexing (ingest-s3)...', {
                     file_id: uploaded.id,
                     vectorStoreId,
-                    status: vsFile.status
+                    initialStatus: vsFile.status
                 });
+                
+                // Wait for vector store file indexing to complete
+                // This ensures the file is searchable before we return
+                try {
+                    const indexedFile = await waitForVectorIndex(client, vectorStoreId, uploaded.id, {
+                        timeoutMs: 120000, // 2 minutes timeout for large files
+                        pollIntervalMs: 2000 // Poll every 2 seconds
+                    });
+                    
+                    console.log('✅ File indexed and ready for search (ingest-s3):', {
+                        file_id: uploaded.id,
+                        vectorStoreId,
+                        status: indexedFile.status,
+                        elapsed: 'completed'
+                    });
+                } catch (indexError) {
+                    // Log error but don't fail the request - file is still uploaded
+                    console.error('⚠️ File indexing wait failed (file still uploaded, ingest-s3):', {
+                        error: indexError?.message,
+                        file_id: uploaded.id,
+                        vectorStoreId
+                    });
+                    // Continue - file is uploaded even if indexing check fails
+                }
             } else {
                 console.warn('⚠️ No vector store available after creation attempt, file not added to vector store. File will only be available for immediate use.', {
                     file_id: uploaded.id,
@@ -2007,9 +2108,15 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
         });
 
         // Add file to session's vector store for persistent file awareness
+        // Wait for indexing to complete before returning (ensures file is searchable)
         try {
             const vectorStoreId = req.session?.vectorStoreId;
             if (vectorStoreId) {
+                console.log('📤 Adding file to vector store and waiting for indexing...', {
+                    file_id: uploadedFile.id,
+                    vectorStoreId
+                });
+                
                 let vsFile;
                 if (client.beta?.vectorStores?.files) {
                     vsFile = await client.beta.vectorStores.files.create(vectorStoreId, {
@@ -2020,11 +2127,36 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
                     const apiKey = process.env.OPENAI_API_KEY;
                     vsFile = await addFileToVectorStoreViaHTTP(vectorStoreId, uploadedFile.id, apiKey);
                 }
-                console.log('✅ Added file to vector store:', {
+                
+                console.log('📎 File added to vector store, waiting for indexing...', {
                     file_id: uploadedFile.id,
                     vectorStoreId,
-                    status: vsFile.status
+                    initialStatus: vsFile.status
                 });
+                
+                // Wait for vector store file indexing to complete
+                // This ensures the file is searchable before we return
+                try {
+                    const indexedFile = await waitForVectorIndex(client, vectorStoreId, uploadedFile.id, {
+                        timeoutMs: 120000, // 2 minutes timeout for large files
+                        pollIntervalMs: 2000 // Poll every 2 seconds
+                    });
+                    
+                    console.log('✅ File indexed and ready for search:', {
+                        file_id: uploadedFile.id,
+                        vectorStoreId,
+                        status: indexedFile.status,
+                        elapsed: 'completed'
+                    });
+                } catch (indexError) {
+                    // Log error but don't fail the request - file is still uploaded
+                    console.error('⚠️ File indexing wait failed (file still uploaded):', {
+                        error: indexError?.message,
+                        file_id: uploadedFile.id,
+                        vectorStoreId
+                    });
+                    // Continue - file is uploaded even if indexing check fails
+                }
             } else {
                 console.warn('⚠️ No vector store found in session, file not added to vector store. File will only be available for immediate use.', {
                     file_id: uploadedFile.id

@@ -285,15 +285,16 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         throw new Error(`Failed to upload to S3: ${uploadResp.status}`);
       }
       
-      setUploadStatus('Importing to OpenAI...');
+      setUploadStatus('Importing and indexing file...');
 
-      // 3) Quiet ingest: register uploaded S3 object and stage file_id
+      // 3) Quiet ingest: register uploaded S3 object, add to vector store, and wait for indexing
+      // The backend now waits for vector store indexing to complete before returning
       await onCustomToolS3UploadSuccess({
         key: objectKey,
         filename: file.name
       });
       
-      setUploadStatus(`✓ ${file.name} uploaded! The file will be used on your next prompt.`);
+      setUploadStatus(`✓ ${file.name} ready! The file is indexed and searchable.`);
       console.log('[ChatKit] File uploaded successfully and staged for quiet ingest:', { 
         filename: file.name, 
         objectKey,

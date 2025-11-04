@@ -209,14 +209,15 @@ function ChatInterface({ user }) {
           throw new Error(`Upload failed (${uploadResp.status})`);
         }
 
-        setUploadStatus('Registering file with OpenAI…');
+        setUploadStatus('Registering and indexing file…');
 
+        // The backend now waits for vector store indexing to complete before returning
         const fileId = await onCustomToolS3UploadSuccess({ key: objectKey, filename: file.name });
         setStagedFiles((prev) => [
           ...prev,
           { file_id: fileId, name: file.name, content_type: contentType || file.type || 'application/octet-stream' }
         ]);
-        setUploadStatus(`✓ ${file.name} ready for the next message`);
+        setUploadStatus(`✓ ${file.name} indexed and ready!`);
       } catch (err) {
         console.error('Upload error:', err);
         setUploadStatus(`✗ ${err.message || 'Upload failed'}`);
