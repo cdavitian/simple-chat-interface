@@ -1456,6 +1456,101 @@ async function getOrCreateVectorStore(client, sessionObj, sessionId, userId) {
     }
 }
 
+/**
+ * Get or create vector store for a conversation
+ * CRITICAL: One vector store per conversationId - persist and reuse, never create new on refresh
+ */
+async function getOrCreateVectorStoreForConversation(client, conversationId, sessionObj) {
+    try {
+        if (!client) {
+            throw new Error('OpenAI client is null or undefined');
+        }
+
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+            throw new Error('OPENAI_API_KEY not found in environment');
+        }
+
+        if (!conversationId) {
+            // Fallback to session-based vector store if no conversationId
+            const userId = sessionObj?.user?.id || 'anonymous';
+            return await getOrCreateVectorStore(client, sessionObj, null, userId);
+        }
+
+        // Initialize conversation-to-vector-store mapping in session
+        if (!sessionObj.conversationVectorStores) {
+            sessionObj.conversationVectorStores = {};
+        }
+
+        // Check if we already have a vector store for this conversation
+        if (sessionObj.conversationVectorStores[conversationId]) {
+            const existingVectorStoreId = sessionObj.conversationVectorStores[conversationId];
+            try {
+                // Verify it still exists
+                let existing;
+                if (client.beta?.vectorStores?.retrieve) {
+                    existing = await client.beta.vectorStores.retrieve(existingVectorStoreId);
+                } else {
+                    existing = await retrieveVectorStoreViaHTTP(existingVectorStoreId, apiKey);
+                }
+                // Also update session.vectorStoreId for backwards compatibility
+                sessionObj.vectorStoreId = existingVectorStoreId;
+                if (existing.file_counts?.total > 0) {
+                    console.log('✅ Reusing existing vector store for conversation:', {
+                        conversationId: conversationId.substring(0, 20) + '...',
+                        vectorStoreId: existingVectorStoreId.substring(0, 20) + '...',
+                        fileCount: existing.file_counts?.total
+                    });
+                }
+                return existingVectorStoreId;
+            } catch (e) {
+                console.warn('⚠️ Existing vector store not found, creating new one:', {
+                    conversationId: conversationId.substring(0, 20) + '...',
+                    error: e?.message
+                });
+                delete sessionObj.conversationVectorStores[conversationId];
+            }
+        }
+
+        // Create a new vector store for this conversation
+        const vectorStoreName = `vs:${conversationId.substring(0, 40)}`;
+        console.log('🔨 Creating new vector store for conversation:', { 
+            name: vectorStoreName,
+            conversationId: conversationId.substring(0, 20) + '...'
+        });
+        
+        let vectorStore;
+        if (client.beta?.vectorStores?.create) {
+            vectorStore = await client.beta.vectorStores.create({
+                name: vectorStoreName,
+            });
+        } else {
+            vectorStore = await createVectorStoreViaHTTP(vectorStoreName, apiKey);
+        }
+
+        console.log('✅ Created new vector store for conversation:', {
+            vectorStoreId: vectorStore.id.substring(0, 20) + '...',
+            conversationId: conversationId.substring(0, 20) + '...'
+        });
+
+        // Store the mapping: conversationId -> vectorStoreId
+        try {
+            sessionObj.conversationVectorStores[conversationId] = vectorStore.id;
+            sessionObj.vectorStoreId = vectorStore.id; // Backwards compatibility
+        } catch (e) {
+            console.error('❌ Unable to persist vectorStoreId mapping:', e?.message);
+        }
+
+        return vectorStore.id;
+    } catch (error) {
+        console.error('❌ Failed to get or create vector store for conversation:', {
+            error: error?.message,
+            conversationId: conversationId ? conversationId.substring(0, 20) + '...' : 'none'
+        });
+        throw error;
+    }
+}
+
 // ChatKit session endpoint - generates client tokens for ChatKit
 // Supports both GET and POST for flexibility
 app.get('/api/chatkit/session', requireAuth, async (req, res) => {
@@ -2504,6 +2599,30 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
         // The thread_id links the message to the thread that holds context and vector store
         const threadId = req.body.thread_id || req.session?.chatkitThreadId;
         
+        // CRITICAL: Update thread with vector store if we have both
+        // This binds the vector store to the thread so file_search works
+        if (threadId && vectorStoreId && client) {
+            try {
+                console.log('🔗 Updating ChatKit thread with vector store:', {
+                    threadId: threadId.substring(0, 20) + '...',
+                    vectorStoreId: vectorStoreId.substring(0, 20) + '...'
+                });
+                await client.beta.threads.update(threadId, {
+                    tool_resources: {
+                        file_search: {
+                            vector_store_ids: [vectorStoreId]
+                        }
+                    }
+                });
+                console.log('✅ ChatKit thread updated with vector store');
+            } catch (threadUpdateError) {
+                console.warn('⚠️ Failed to update thread with vector store (continuing anyway):', {
+                    error: threadUpdateError?.message,
+                    threadId: threadId.substring(0, 20) + '...'
+                });
+            }
+        }
+        
         // Send message using ChatKit API - NO file attachments, files are in vector store
         const messagePayload = {
             session_id: effectiveSessionId,
@@ -2677,34 +2796,43 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             return res.status(400).json({ error: 'Either text or staged_file_ids is required' });
         }
 
-        // Ensure vector store exists for SDK conversations
-        let vectorStoreId = null; // Declare in outer scope so it's available throughout the function
+        // CRITICAL: Get or create conversation ID first, then get vector store for that conversation
+        // This ensures one vector store per conversation, persisted and reused
+        let conversationId = null;
+        try {
+            conversationId = await getOrCreateConversationId(req);
+        } catch (error) {
+            console.error('⚠️ SDK: Failed to get/create conversationId, proceeding without it:', error);
+        }
+
+        // Ensure vector store exists for this conversation
+        // CRITICAL: One vector store per conversationId - persist and reuse
+        let vectorStoreId = null;
         const client = getOpenAIClient();
         if (client) {
             try {
-                const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                const sdkSessionId = `sdk_${userId}_${req.sessionID}`;
-                vectorStoreId = await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
-                // Ensure session has the vector store ID
-                if (vectorStoreId && !req.session.vectorStoreId) {
-                    req.session.vectorStoreId = vectorStoreId;
+                if (conversationId) {
+                    // Use conversation-based vector store (one per conversation)
+                    vectorStoreId = await getOrCreateVectorStoreForConversation(client, conversationId, req.session);
+                } else {
+                    // Fallback to session-based if no conversationId
+                    const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    const sdkSessionId = `sdk_${userId}_${req.sessionID}`;
+                    vectorStoreId = await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
                 }
             } catch (vectorStoreError) {
                 console.error('❌ SDK: Failed to ensure vector store:', {
                     error: vectorStoreError?.message,
-                    stack: vectorStoreError?.stack,
-                    name: vectorStoreError?.name
+                    conversationId: conversationId ? conversationId.substring(0, 20) + '...' : 'none'
                 });
                 // Try to fall back to session-stored vector store ID
                 vectorStoreId = req.session?.vectorStoreId || null;
                 if (vectorStoreId) {
-                    console.log('⚠️ SDK: Falling back to session-stored vectorStoreId:', vectorStoreId);
+                    console.log('⚠️ SDK: Falling back to session-stored vectorStoreId:', vectorStoreId.substring(0, 20) + '...');
                 }
-                // Continue anyway - files may still work without vector store
             }
         } else {
             console.error('❌ SDK: OpenAI client not available for vector store creation');
-            // Try to fall back to session-stored vector store ID
             vectorStoreId = req.session?.vectorStoreId || null;
         }
         
@@ -2933,15 +3061,9 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             console.warn('⚠️ SDK: Files uploaded but no vector store available');
         }
 
-        // Ensure we have a conversationId - get or create if missing
-        // This should already exist from /api/sdk/conversation endpoint, but ensure it as a safety net
-        let priorConversationId;
-        try {
-            priorConversationId = await getOrCreateConversationId(req);
-        } catch (error) {
-            console.error('⚠️ SDK: Failed to get/create conversationId, proceeding without it:', error);
-            priorConversationId = null;
-        }
+        // Use the conversationId we already retrieved earlier
+        // This ensures we use the same conversationId for both vector store and agent
+        const priorConversationId = conversationId;
         
         // When we have a priorConversationId, only send the latest message (store:true handles context)
         // When starting new conversation, send the full cleanedConversation (including system message if present)
@@ -2950,7 +3072,12 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             ? [cleanedMessage]  // Only the new user message when continuing
             : cleanedConversation;  // Full array for first message (includes system message if files exist)
         
-        console.info('Runner init conversationId:', priorConversationId ?? 'none');
+        console.info('🚀 SDK: Running agent with:', {
+            conversationId: priorConversationId ? priorConversationId.substring(0, 20) + '...' : 'none',
+            vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
+            fileCount: fileIds.length,
+            messageCount: messagesToSend.length
+        });
         
         if (priorConversationId) {
             console.log('📋 SDK: Continuing existing conversation');
@@ -2958,7 +3085,8 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
             console.log('🆕 SDK: Starting new conversation');
         }
 
-        // Pass fileIds as tool resources so Code Interpreter can access raw files
+        // CRITICAL: Pass conversationId and vectorStoreId to agent
+        // The agent.start() will wire the vector store via resources.file_search.vectorStoreIds
         const agentResult = await runAgentConversation(
             messagesToSend, 
             'SDK Conversation', 

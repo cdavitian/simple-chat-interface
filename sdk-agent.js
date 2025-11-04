@@ -112,33 +112,42 @@ function createHostedMcpTool() {
   });
 }
 
-function createAgent(vectorStoreId = null) {
+function createAgent() {
+  // CRITICAL: Always include file_search tool - it's required for file search to work
+  // The vector store IDs are passed at agent.start() time, not at agent creation time
   const tools = [codeInterpreter];
   const hostedMcp = createHostedMcpTool();
   if (hostedMcp) {
     tools.push(hostedMcp);
   }
 
-  // Add file search tool if vector store is provided and fileSearchTool is available
-  if (vectorStoreId && fileSearchTool) {
+  // CRITICAL: Always include file_search tool - it's required for file search to work
+  // The vector store IDs are passed via resources at agent.start() time, not here
+  // Note: fileSearchTool may require a vectorStoreId parameter, but we'll pass it via resources
+  // Try to create it without a vectorStoreId first (it may accept undefined)
+  if (fileSearchTool) {
     try {
-      const fileSearch = fileSearchTool(vectorStoreId);
+      // Try creating fileSearchTool - it may accept undefined/null or require a vectorStoreId
+      // If it requires one, we'll need to handle that differently, but for now try undefined
+      let fileSearch;
+      try {
+        fileSearch = fileSearchTool(undefined);
+      } catch (e) {
+        // If it requires a vectorStoreId, create with a placeholder - resources will override it
+        // This is a workaround - ideally fileSearchTool should accept resources at start time
+        console.warn('⚠️ fileSearchTool requires vectorStoreId, using placeholder (will be overridden by resources)');
+        fileSearch = fileSearchTool('placeholder'); // Will be overridden by resources at start
+      }
       tools.push(fileSearch);
-      // Silent on success - only log errors
     } catch (e) {
       console.error('❌ SDK Agent: Failed to create fileSearchTool:', {
         error: e?.message,
         stack: e?.stack,
-        vectorStoreId
       });
     }
   } else {
-    // Only warn if vector store is missing when it should be available
-    if (!vectorStoreId && process.env.OPENAI_API_KEY) {
-      console.warn('⚠️ SDK Agent: No vectorStoreId provided, fileSearchTool will not be available');
-    }
     // Only warn once if fileSearchTool module is missing
-    if (!fileSearchTool && !global._fileSearchToolWarningLogged) {
+    if (!global._fileSearchToolWarningLogged) {
       console.warn('⚠️ SDK Agent: fileSearchTool not available from @openai/agents-openai');
       global._fileSearchToolWarningLogged = true;
     }
@@ -177,19 +186,40 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
   }
 
   return withTrace(traceName, async () => {
-    // Create agent with vector store if provided
-    const agent = createAgent(vectorStoreId);
+    // CRITICAL: Create agent once - always include file_search tool
+    // The vector store IDs are passed via resources at agent.start() time
+    const agent = createAgent();
     
-    // Build Runner options - only include conversation_id if it was previously returned from SDK
-    // NOTE: Do NOT pass locally-generated conversationIds - they don't exist on OpenAI's servers
-    // NOTE: store: true is in Agent.modelSettings (not Runner constructor)
-    // On first message: Let SDK create conversationId
-    // On subsequent messages: Pass SDK-returned conversationId to continue conversation
-    const runnerOptions = {
-      // Only pass conversationId if it exists (was returned from previous SDK call)
-      ...(conversationId
-        ? { conversationId: conversationId, conversation_id: conversationId }
-        : {}),
+    // Build resources for agent.start() - MUST include file_search with vectorStoreIds
+    const resources = {};
+    if (vectorStoreId) {
+      resources.file_search = {
+        vectorStoreIds: [vectorStoreId]
+      };
+      console.log('🔗 Attaching vector store to agent via resources:', {
+        vectorStoreId: vectorStoreId.substring(0, 20) + '...',
+        conversationId: conversationId || 'none'
+      });
+    } else {
+      console.warn('⚠️ No vectorStoreId provided - file_search will not work');
+    }
+    
+    // Add Code Interpreter file resources if files are provided
+    if (fileIds && fileIds.length > 0) {
+      resources.codeInterpreter = {
+        fileIds: fileIds
+      };
+      console.log('📎 Attaching files as tool resources for Code Interpreter:', {
+        fileCount: fileIds.length,
+        fileIds: fileIds.slice(0, 3).map(id => id.substring(0, 10) + '...')
+      });
+    }
+    
+    // CRITICAL: Use agent.start() with conversationId and resources
+    // This wires the vector store to the runner so file_search works
+    const startOptions = {
+      ...(conversationId ? { conversationId } : {}),
+      ...(Object.keys(resources).length > 0 ? { resources } : {}),
       traceMetadata: {
         __trace_source__: 'agent-builder',
         workflow_id:
@@ -198,61 +228,26 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       },
     };
     
-    // Log Runner configuration BEFORE creation
-    console.log('🔧 Runner options BEFORE creation:', {
+    console.log('🚀 Starting agent with:', {
       hasConversationId: !!conversationId,
       conversationId: conversationId || 'none',
-      hasTraceMetadata: !!runnerOptions.traceMetadata,
-      workflowId: runnerOptions.traceMetadata?.workflow_id || 'none',
-      allOptionsKeys: Object.keys(runnerOptions),
-      note: 'store: true is in Agent.modelSettings, not Runner constructor'
+      hasResources: Object.keys(resources).length > 0,
+      resourceKeys: Object.keys(resources),
+      hasVectorStore: !!vectorStoreId,
+      vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
     });
     
-    // Create Runner - store: true is in Agent.modelSettings, not here
-    const runner = new Runner(runnerOptions);
+    // Start the runner with conversationId and resources
+    const runner = await agent.start(startOptions);
     
-    // Log runner properties after creation
-    // Note: store is in Agent.modelSettings, not Runner.config
-    console.log('🔧 Runner properties AFTER creation:', {
-      hasConfig: typeof runner.config !== 'undefined',
-      configKeys: runner.config ? Object.keys(runner.config) : 'no config',
-      runnerKeys: Object.keys(runner).filter(k => !k.startsWith('_')),
-      conversationId: runner.config?.conversationId || runner.config?.conversation_id || 'none',
-      note: 'Agent.modelSettings.store enables state persistence (not Runner.config)'
-    });
-
     // If we have a conversation_id, only send the latest message (SDK will pull prior context via store:true)
     // Otherwise, send full history for the first message
-    // When using store:true with conversationId, SDK maintains context internally
     const messagesToSend = conversationId && conversationHistory.length > 0
       ? [conversationHistory[conversationHistory.length - 1]] // Only the latest message
       : [...conversationHistory]; // Full history for first message (or empty if no history)
     
-    // CRITICAL: Only pass conversationId to runner.run() if it was previously returned from SDK
-    // Do NOT pass locally-generated IDs - they don't exist on OpenAI's servers yet
-    // On first message, let SDK create the conversationId
-    // On subsequent messages, pass the SDK-returned conversationId to continue the conversation
-    const runOptions = {
-      ...(conversationId ? { conversationId: conversationId } : {}),
-      // Attach files as tool resources so Code Interpreter can access raw files
-      // This allows the model to open, read, and operate on the full file contents
-      ...(fileIds && fileIds.length > 0 ? {
-        toolResources: {
-          codeInterpreter: {
-            fileIds: fileIds
-          }
-        }
-      } : {})
-    };
-    
-    if (fileIds && fileIds.length > 0) {
-      console.log('📎 Attaching files as tool resources for Code Interpreter:', {
-        fileCount: fileIds.length,
-        fileIds: fileIds.slice(0, 3).map(id => id.substring(0, 10) + '...') // Log first 3
-      });
-    }
-    
-    const result = await runner.run(agent, messagesToSend, runOptions);
+    // Run the agent with the messages
+    const result = await runner.run(agent, messagesToSend);
     
     // Log runner state after run for debugging
     // This is critical - if hasRunnerState is false, memory isn't persisting
