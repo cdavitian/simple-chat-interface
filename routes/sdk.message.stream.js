@@ -1,7 +1,6 @@
 const { openai } = require('../lib/openai');
 const { ThreadService } = require('../services/thread.service');
 const { AttachmentService } = require('../services/attachment.service');
-const { buildResources } = require('../services/toolResourceMapper');
 
 function sendEvent(res, event, data) {
   res.write(`event: ${event}\n`);
@@ -41,11 +40,6 @@ async function sdkMessageStream(req, res) {
       tools.push({ type: 'code_interpreter' });
     }
 
-    const resources = buildResources({
-      vectorStoreId: thread.vector_store_id,
-      codeInterpreterFileIds: stagedFileIds.length > 0 ? stagedFileIds : undefined,
-    });
-
     const baseRequest = {
       model: process.env.OPENAI_MODEL || 'gpt-5',
       input: [
@@ -55,7 +49,6 @@ async function sdkMessageStream(req, res) {
         },
       ],
       tools,
-      ...resources,
     };
 
     if (thread.conversation_id) {

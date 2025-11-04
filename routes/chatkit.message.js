@@ -2,7 +2,6 @@ const { v4: uuid } = require('uuid');
 const { openai } = require('../lib/openai');
 const { ThreadService } = require('../services/thread.service');
 const { AttachmentService } = require('../services/attachment.service');
-const { buildResources } = require('../services/toolResourceMapper');
 
 async function chatkitMessage(req, res) {
   const body = req.body || {};
@@ -64,16 +63,10 @@ async function chatkitMessage(req, res) {
       tools.push({ type: 'code_interpreter' });
     }
 
-    const resources = buildResources({
-      vectorStoreId: thread.vector_store_id,
-      codeInterpreterFileIds: fileIdList.length > 0 ? fileIdList : undefined,
-    });
-
     const baseRequest = {
       model: process.env.OPENAI_MODEL || 'gpt-5',
       input: inputMessages,
       tools,
-      ...resources,
     };
 
     if (thread.conversation_id) {

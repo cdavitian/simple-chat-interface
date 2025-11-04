@@ -112,45 +112,30 @@ function createHostedMcpTool() {
   });
 }
 
-function createAgent() {
-  // CRITICAL: Always include file_search tool - it's required for file search to work
-  // The vector store IDs are passed at agent.respond() time via resources, not at agent creation time
+function createAgent(vectorStoreIdFromCall) {
   const tools = [codeInterpreter];
   const hostedMcp = createHostedMcpTool();
   if (hostedMcp) {
     tools.push(hostedMcp);
   }
 
-  // CRITICAL: Always include file_search tool - it's required for file search to work
-  // The vector store IDs are passed via resources at agent.respond() time, not here
-  // Note: fileSearchTool may require a vectorStoreId parameter, but we'll pass it via resources
-  // Try to create it without a vectorStoreId first (it may accept undefined)
+  // Bind file search once with a vector store id (static or per-session)
+  const boundVectorStoreId = (vectorStoreIdFromCall && String(vectorStoreIdFromCall).trim()) || (process.env.VECTOR_STORE_ID && String(process.env.VECTOR_STORE_ID).trim()) || null;
   if (fileSearchTool) {
-    try {
-      // Try creating fileSearchTool - it may accept undefined/null or require a vectorStoreId
-      // If it requires one, we'll need to handle that differently, but for now try undefined
-      let fileSearch;
+    if (boundVectorStoreId) {
       try {
-        fileSearch = fileSearchTool(undefined);
+        tools.push(fileSearchTool(boundVectorStoreId));
+        console.log('🧷 Bound fileSearchTool to vector store at agent creation');
       } catch (e) {
-        // If it requires a vectorStoreId, create with a placeholder - resources will override it
-        // This is a workaround - ideally fileSearchTool should accept resources at start time
-        console.warn('⚠️ fileSearchTool requires vectorStoreId, using placeholder (will be overridden by resources)');
-        fileSearch = fileSearchTool('placeholder'); // Will be overridden by resources at start
+        console.error('❌ SDK Agent: Failed to bind fileSearchTool with vector store id:', e?.message);
       }
-      tools.push(fileSearch);
-    } catch (e) {
-      console.error('❌ SDK Agent: Failed to create fileSearchTool:', {
-        error: e?.message,
-        stack: e?.stack,
-      });
+    } else if (!global._fileSearchToolVectorWarningLogged) {
+      console.warn('⚠️ No VECTOR_STORE_ID provided. File search will not be available.');
+      global._fileSearchToolVectorWarningLogged = true;
     }
-  } else {
-    // Only warn once if fileSearchTool module is missing
-    if (!global._fileSearchToolWarningLogged) {
-      console.warn('⚠️ SDK Agent: fileSearchTool not available from @openai/agents-openai');
-      global._fileSearchToolWarningLogged = true;
-    }
+  } else if (!global._fileSearchToolWarningLogged) {
+    console.warn('⚠️ SDK Agent: fileSearchTool not available from @openai/agents-openai');
+    global._fileSearchToolWarningLogged = true;
   }
 
   const agent = buildAgent({
@@ -193,47 +178,17 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
   }
 
   return withTrace(traceName, async () => {
-    // CRITICAL: Create agent once - always include file_search tool
-    // The vector store IDs are passed via resources at agent.respond() time
-    const agent = createAgent();
-    
-    // Build resources for agent.respond() - MUST include file_search with vectorStoreIds
-    const resources = {};
-    if (vectorStoreId) {
-      resources.file_search = {
-        vectorStoreIds: [vectorStoreId]
-      };
-      console.log('🔗 Attaching vector store to agent via resources:', {
-        vectorStoreId: vectorStoreId.substring(0, 20) + '...',
-        conversationId: conversationId || 'none'
-      });
-    } else {
-      console.warn('⚠️ No vectorStoreId provided - file_search will not work');
-    }
-    
-    // Add Code Interpreter file resources if files are provided
-    if (fileIds && fileIds.length > 0) {
-      resources.codeInterpreter = {
-        fileIds: fileIds
-      };
-      console.log('📎 Attaching files as tool resources for Code Interpreter:', {
-        fileCount: fileIds.length,
-        fileIds: fileIds.slice(0, 3).map(id => id.substring(0, 10) + '...')
-      });
-    }
-    
-    // CRITICAL: Use agent.respond() with conversationId, messages, and resources
-    // This wires the vector store via resources.file_search.vectorStoreIds
+    // Create agent with fileSearchTool bound to the provided or env vector store id
+    const agent = createAgent(vectorStoreId);
+
     // If we have a conversation_id, only send the latest message (SDK will pull prior context via store:true)
-    // Otherwise, send full history for the first message
     const messagesToSend = conversationId && conversationHistory.length > 0
-      ? [conversationHistory[conversationHistory.length - 1]] // Only the latest message
-      : [...conversationHistory]; // Full history for first message (or empty if no history)
-    
+      ? [conversationHistory[conversationHistory.length - 1]]
+      : [...conversationHistory];
+
     const respondOptions = {
       ...(conversationId ? { conversationId } : {}),
       messages: messagesToSend,
-      ...(Object.keys(resources).length > 0 ? { resources } : {}),
       metadata: {
         __trace_source__: 'agent-builder',
         workflow_id:
@@ -241,23 +196,18 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
           'wf_68efcaa7b9908190bfadd0ac72ef430001c44704e294f2a0',
       },
     };
-    
+
     console.log('🚀 Calling agent.respond() with:', {
       hasConversationId: !!conversationId,
       conversationId: conversationId || 'none',
-      hasResources: Object.keys(resources).length > 0,
-      resourceKeys: Object.keys(resources),
-      hasVectorStore: !!vectorStoreId,
-      vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
-      messageCount: messagesToSend.length
+      messageCount: messagesToSend.length,
+      vectorStoreBound: !!(vectorStoreId || process.env.VECTOR_STORE_ID),
     });
-    
-    // Assert that agent.respond() is available before calling
+
     if (typeof agent.respond !== 'function' && typeof agent.run !== 'function') {
       throw new Error('Agent runner not initialized: check @openai/agents import and builder');
     }
-    
-    // Call agent.respond() - returns result directly (no runner.run() needed)
+
     const result = await agent.respond(respondOptions);
     
     // Log result state after respond() for debugging
