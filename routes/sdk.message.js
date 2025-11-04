@@ -51,16 +51,17 @@ async function sdkMessage(req, res) {
       }
     }
 
-    // Build input using attachments for per-message file search
+    // Build input; attach files at top-level per Responses API
     const input = [{
       role: 'user',
       content: [{ type: 'input_text', text: text || 'Please review the uploaded files.' }],
-      attachments: fileIdList.map((id) => ({ file_id: id, tools: [{ type: 'file_search' }] })),
     }];
+    const attachments = fileIdList.map((id) => ({ file_id: id, tools: [{ type: 'file_search' }] }));
 
     const response = await openai.responses.create({
       model: process.env.OPENAI_MODEL || 'gpt-5',
       conversation: conversationId || undefined,
+      attachments,
       input,
     });
 
