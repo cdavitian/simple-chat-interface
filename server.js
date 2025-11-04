@@ -1407,6 +1407,18 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             console.log('🔗 Linking thread to vector store:', { vectorStoreId });
         }
         
+        // Explicitly remove chatkit_configuration.file_upload.accept if it exists (causes 400 errors)
+        // This parameter doesn't configure uploads server-side and only causes failed attempts
+        if (sessionConfig.chatkit_configuration) {
+            if (sessionConfig.chatkit_configuration.file_upload) {
+                delete sessionConfig.chatkit_configuration.file_upload;
+            }
+            // If chatkit_configuration is now empty, remove it entirely
+            if (Object.keys(sessionConfig.chatkit_configuration).length === 0) {
+                delete sessionConfig.chatkit_configuration;
+            }
+        }
+        
         const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
         console.log('Session created successfully:', {
@@ -1616,6 +1628,18 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
                 vector_store_ids: [vectorStoreId]
             };
             console.log('🔗 Linking thread to vector store:', { vectorStoreId });
+        }
+        
+        // Explicitly remove chatkit_configuration.file_upload.accept if it exists (causes 400 errors)
+        // This parameter doesn't configure uploads server-side and only causes failed attempts
+        if (sessionConfig.chatkit_configuration) {
+            if (sessionConfig.chatkit_configuration.file_upload) {
+                delete sessionConfig.chatkit_configuration.file_upload;
+            }
+            // If chatkit_configuration is now empty, remove it entirely
+            if (Object.keys(sessionConfig.chatkit_configuration).length === 0) {
+                delete sessionConfig.chatkit_configuration;
+            }
         }
         
         const session = await client.beta.chatkit.sessions.create(sessionConfig);
