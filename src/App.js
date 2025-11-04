@@ -593,12 +593,14 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       console.log('[ChatKit] 📤 [SEND] Outgoing content:', content);
 
       // Send the user message to the current session via our controlled endpoint
+      // Include thread_id to link message to the thread (which holds context and vector store)
       const resp = await fetch('/api/chatkit/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           session_id: sessionData.sessionId,
+          thread_id: sessionData.thread_id || undefined,  // ✅ NEW: Include thread_id
           text: userPrompt || undefined,
           staged_file_ids: fileStager.list(),
           staged_files: fileStager.listWithMetadata()  // Send metadata for content type routing

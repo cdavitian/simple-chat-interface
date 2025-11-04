@@ -1261,7 +1261,33 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         // Get or create a stable user ID for this session
         let userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        const session = await client.beta.chatkit.sessions.create({
+        // STEP 1: Create or get vector store FIRST (before creating session)
+        // This allows us to link the thread to the vector store during session creation
+        let vectorStoreId = null;
+        try {
+            console.log('🔍 ChatKit (GET): Creating/getting vector store BEFORE session creation...', {
+                userId,
+                hasExistingVectorStore: !!req.session?.vectorStoreId
+            });
+            // Use a temporary sessionId placeholder for vector store creation
+            // The actual sessionId will be created below
+            vectorStoreId = await getOrCreateVectorStore(client, req.session, null, userId);
+            console.log('✅ Vector store ready for ChatKit session (GET):', {
+                vectorStoreId,
+                storedInSession: !!req.session.vectorStoreId
+            });
+        } catch (vectorStoreError) {
+            console.error('❌ Failed to create vector store (GET):', {
+                error: vectorStoreError?.message,
+                stack: vectorStoreError?.stack,
+                name: vectorStoreError?.name,
+                userId
+            });
+            // Continue even if vector store creation fails, but log it prominently
+        }
+        
+        // STEP 2: Create session with thread linking to vector store (if available)
+        const sessionConfig = {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
@@ -1283,12 +1309,24 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
-        });
+        };
+        
+        // Link thread to vector store if we have one
+        if (vectorStoreId) {
+            sessionConfig.thread = {
+                vector_store_ids: [vectorStoreId]
+            };
+            console.log('🔗 Linking thread to vector store:', { vectorStoreId });
+        }
+        
+        const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
         console.log('Session created successfully:', {
             hasClientToken: Boolean(session.clientToken),
             hasClientSecret: Boolean(session.client_secret),
             hasSessionId: Boolean(session.id),
+            hasThread: Boolean(session.thread),
+            hasThreadId: Boolean(session.thread?.id),
             clientTokenType: typeof session.clientToken,
             clientSecretType: typeof session.client_secret,
             sessionKeys: Object.keys(session)
@@ -1298,37 +1336,30 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         const clientToken = session.clientToken || session.client_secret;
         const sessionId = session.id;
         
-        // Create or get vector store for this session
-        let vectorStoreId = null;
-        try {
-            console.log('🔍 ChatKit (GET): Attempting to get or create vector store...', {
-                sessionId,
-                userId,
-                hasExistingVectorStore: !!req.session?.vectorStoreId
+        // STEP 3: Extract thread_id from session response
+        let threadId = null;
+        if (session.thread?.id) {
+            threadId = session.thread.id;
+            console.log('✅ Extracted thread_id from session:', {
+                threadId: threadId.substring(0, 20) + '...',
+                hasVectorStoreLink: !!session.thread?.vector_store_ids
             });
-            vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
-            console.log('✅ Vector store ready for ChatKit session (GET):', {
-                sessionId,
-                vectorStoreId,
-                storedInSession: !!req.session.vectorStoreId,
-                sessionVectorStoreId: req.session.vectorStoreId
-            });
-        } catch (vectorStoreError) {
-            console.error('❌ Failed to create vector store (GET):', {
-                error: vectorStoreError?.message,
-                stack: vectorStoreError?.stack,
-                name: vectorStoreError?.name,
-                sessionId,
-                userId
-            });
-            // Continue even if vector store creation fails, but log it prominently
+        } else {
+            console.warn('⚠️ No thread_id found in session response. Session keys:', Object.keys(session));
         }
         
-        // Persist the latest ChatKit session id in the user's server session for reuse/fallbacks
+        // Persist the latest ChatKit session id and thread_id in the user's server session
         try {
             req.session.chatkitSessionId = sessionId;
+            if (threadId) {
+                req.session.chatkitThreadId = threadId;
+            }
+            // Update vector store ID if it wasn't already stored
+            if (vectorStoreId && !req.session.vectorStoreId) {
+                req.session.vectorStoreId = vectorStoreId;
+            }
         } catch (e) {
-            console.warn('Unable to persist chatkitSessionId in session (GET):', e?.message);
+            console.warn('Unable to persist chatkitSessionId/threadId in session (GET):', e?.message);
         }
         
         if (!clientToken) {
@@ -1371,17 +1402,21 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             ? process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
             : process.env.OPENAI_CHATKIT_PUBLIC_KEY;
 
-        // Return the session information that ChatKit needs
+        // Return the session information that ChatKit needs, including thread_id and vector_store_id
         const sessionData = {
             clientToken: clientToken,
             publicKey: publicKey,
-            sessionId: sessionId
+            sessionId: sessionId,
+            thread_id: threadId || null,  // ✅ NEW: Include thread_id
+            vector_store_id: vectorStoreId || null  // ✅ NEW: Include vector_store_id
         };
         
-        console.log('Sending ChatKit session data:', {
+        console.log('Sending ChatKit session data (GET):', {
             clientToken: clientToken.substring(0, 20) + '...',
             publicKey: sessionData.publicKey.substring(0, 20) + '...',
-            sessionId: sessionId
+            sessionId: sessionId,
+            thread_id: threadId ? threadId.substring(0, 20) + '...' : 'none',
+            vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
         });
         
         res.json(sessionData);
@@ -1449,7 +1484,33 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         // Get or create a stable user ID for this session
         let userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        const session = await client.beta.chatkit.sessions.create({
+        // STEP 1: Create or get vector store FIRST (before creating session)
+        // This allows us to link the thread to the vector store during session creation
+        let vectorStoreId = null;
+        try {
+            console.log('🔍 ChatKit (POST): Creating/getting vector store BEFORE session creation...', {
+                userId,
+                hasExistingVectorStore: !!req.session?.vectorStoreId
+            });
+            // Use a temporary sessionId placeholder for vector store creation
+            // The actual sessionId will be created below
+            vectorStoreId = await getOrCreateVectorStore(client, req.session, null, userId);
+            console.log('✅ Vector store ready for ChatKit session (POST):', {
+                vectorStoreId,
+                storedInSession: !!req.session.vectorStoreId
+            });
+        } catch (vectorStoreError) {
+            console.error('❌ Failed to create vector store (POST):', {
+                error: vectorStoreError?.message,
+                stack: vectorStoreError?.stack,
+                name: vectorStoreError?.name,
+                userId
+            });
+            // Continue even if vector store creation fails, but log it prominently
+        }
+        
+        // STEP 2: Create session with thread linking to vector store (if available)
+        const sessionConfig = {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
@@ -1471,12 +1532,24 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
-        });
+        };
+        
+        // Link thread to vector store if we have one
+        if (vectorStoreId) {
+            sessionConfig.thread = {
+                vector_store_ids: [vectorStoreId]
+            };
+            console.log('🔗 Linking thread to vector store:', { vectorStoreId });
+        }
+        
+        const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
         console.log('Session created successfully:', {
             hasClientToken: Boolean(session.clientToken),
             hasClientSecret: Boolean(session.client_secret),
             hasSessionId: Boolean(session.id),
+            hasThread: Boolean(session.thread),
+            hasThreadId: Boolean(session.thread?.id),
             clientTokenType: typeof session.clientToken,
             clientSecretType: typeof session.client_secret,
             sessionKeys: Object.keys(session)
@@ -1486,30 +1559,30 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         const clientToken = session.clientToken || session.client_secret;
         const sessionId = session.id;
         
-        // Create or get vector store for this session
-        let vectorStoreId = null;
+        // STEP 3: Extract thread_id from session response
+        let threadId = null;
+        if (session.thread?.id) {
+            threadId = session.thread.id;
+            console.log('✅ Extracted thread_id from session:', {
+                threadId: threadId.substring(0, 20) + '...',
+                hasVectorStoreLink: !!session.thread?.vector_store_ids
+            });
+        } else {
+            console.warn('⚠️ No thread_id found in session response. Session keys:', Object.keys(session));
+        }
+        
+        // Persist the latest ChatKit session id and thread_id in the user's server session
         try {
-            console.log('🔍 ChatKit (POST): Attempting to get or create vector store...', {
-                sessionId,
-                userId,
-                hasExistingVectorStore: !!req.session?.vectorStoreId
-            });
-            vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
-            console.log('✅ Vector store ready for ChatKit session (POST):', {
-                sessionId,
-                vectorStoreId,
-                storedInSession: !!req.session.vectorStoreId,
-                sessionVectorStoreId: req.session.vectorStoreId
-            });
-        } catch (vectorStoreError) {
-            console.error('❌ Failed to create vector store (POST):', {
-                error: vectorStoreError?.message,
-                stack: vectorStoreError?.stack,
-                name: vectorStoreError?.name,
-                sessionId,
-                userId
-            });
-            // Continue even if vector store creation fails, but log it prominently
+            req.session.chatkitSessionId = sessionId;
+            if (threadId) {
+                req.session.chatkitThreadId = threadId;
+            }
+            // Update vector store ID if it wasn't already stored
+            if (vectorStoreId && !req.session.vectorStoreId) {
+                req.session.vectorStoreId = vectorStoreId;
+            }
+        } catch (e) {
+            console.warn('Unable to persist chatkitSessionId/threadId in session (POST):', e?.message);
         }
         
         if (!clientToken) {
@@ -1552,17 +1625,21 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             ? process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
             : process.env.OPENAI_CHATKIT_PUBLIC_KEY;
 
-        // Return the session information that ChatKit needs
+        // Return the session information that ChatKit needs, including thread_id and vector_store_id
         const sessionData = {
             clientToken: clientToken,
             publicKey: publicKey,
-            sessionId: sessionId
+            sessionId: sessionId,
+            thread_id: threadId || null,  // ✅ NEW: Include thread_id
+            vector_store_id: vectorStoreId || null  // ✅ NEW: Include vector_store_id
         };
         
-        console.log('Sending ChatKit session data:', {
+        console.log('Sending ChatKit session data (POST):', {
             clientToken: clientToken.substring(0, 20) + '...',
             publicKey: sessionData.publicKey.substring(0, 20) + '...',
-            sessionId: sessionId
+            sessionId: sessionId,
+            thread_id: threadId ? threadId.substring(0, 20) + '...' : 'none',
+            vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
         });
         
         res.json(sessionData);
@@ -2092,12 +2169,27 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             });
         }
         
+        // Get thread_id from request body or session (fallback to session)
+        // The thread_id links the message to the thread that holds context and vector store
+        const threadId = req.body.thread_id || req.session?.chatkitThreadId;
+        
         // Send message using ChatKit API - NO file attachments, files are in vector store
         const messagePayload = {
             session_id: effectiveSessionId,
             role: 'user',
             content: content
         };
+        
+        // Include thread_id if available (links message to thread with vector store context)
+        if (threadId) {
+            messagePayload.thread_id = threadId;
+            console.log('🔗 Including thread_id in message:', {
+                threadId: threadId.substring(0, 20) + '...',
+                sessionId: effectiveSessionId.substring(0, 20) + '...'
+            });
+        } else {
+            console.warn('⚠️ No thread_id available for message. Thread context may not be preserved.');
+        }
         // NOTE: We intentionally do NOT add attachments here - files are retrieved via vector store
 
         const message = await client.beta.chatkit.messages.create(messagePayload);
@@ -2130,6 +2222,11 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             session_id: effectiveSessionId,
             store: true  // Explicitly enable logging - logs stored for up to 30 days
         };
+
+        // Include thread_id if available (ensures response is linked to the thread)
+        if (threadId) {
+            responseConfig.thread_id = threadId;
+        }
 
         // Add file_search tool with vector store if available
         const vectorStoreIdForResponse = req.session?.vectorStoreId;
