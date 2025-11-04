@@ -1,5 +1,5 @@
 const {
-  Agent,
+  buildAgent,
   Runner,
   withTrace,
   codeInterpreterTool,
@@ -153,7 +153,7 @@ function createAgent() {
     }
   }
 
-  return new Agent({
+  const agent = buildAgent({
     name: process.env.SDK_AGENT_NAME || 'My agent',
     instructions:
       process.env.SDK_AGENT_INSTRUCTIONS || 'Allow the user to query the MCP data sources.',
@@ -167,6 +167,13 @@ function createAgent() {
       store: true,
     },
   });
+
+  // Assert that the agent runner is properly initialized
+  if (typeof agent.respond !== 'function' && typeof agent.run !== 'function') {
+    throw new Error('Agent runner not initialized: check @openai/agents import and builder');
+  }
+
+  return agent;
 }
 
 async function runAgentConversation(conversationHistory, traceName = 'MCP Prod Test', vectorStoreId = null, conversationId = null, fileIds = null) {
@@ -244,6 +251,11 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
       messageCount: messagesToSend.length
     });
+    
+    // Assert that agent.respond() is available before calling
+    if (typeof agent.respond !== 'function' && typeof agent.run !== 'function') {
+      throw new Error('Agent runner not initialized: check @openai/agents import and builder');
+    }
     
     // Call agent.respond() - returns result directly (no runner.run() needed)
     const result = await agent.respond(respondOptions);
