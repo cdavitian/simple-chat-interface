@@ -1,4 +1,3 @@
-const { v4: uuid } = require('uuid');
 const { openai } = require('../lib/openai');
 const { ThreadService } = require('../services/thread.service');
 const { AttachmentService } = require('../services/attachment.service');
@@ -42,90 +41,38 @@ async function sdkMessage(req, res) {
       });
     }
 
-    const inputMessages = [];
-    if (text) {
-      inputMessages.push({ role: 'user', content: text });
-    } else {
-      inputMessages.push({ role: 'user', content: 'Please review the uploaded files.' });
-    }
-
-    const vectorStoreId = thread.vector_store_id || process.env.VECTOR_STORE_ID || null;
-    const tools = [];
-    if (vectorStoreId) {
-      tools.push({ type: 'file_search', vector_store_ids: [vectorStoreId] });
-    }
-    if (fileIdList.length > 0) {
-      tools.push({ type: 'code_interpreter' });
-    }
-
-    const baseRequest = {
-      model: process.env.OPENAI_MODEL || 'gpt-5',
-      input: inputMessages,
-      tools,
-    };
-
-    if (thread.conversation_id) {
-      baseRequest.conversation = thread.conversation_id;
-    }
-
-    const response = await openai.responses.create(baseRequest);
-
-    const conversationId = response?.conversation_id || thread.conversation_id || null;
-
-    if (!thread.conversation_id && conversationId) {
-      await ThreadService.setConversationId(thread.id, conversationId);
-    }
-
-    let finalText = null;
-    if (typeof response?.output_text === 'string') {
-      finalText = response.output_text;
-    } else if (Array.isArray(response?.output)) {
-      for (const item of response.output) {
-        if (Array.isArray(item?.content)) {
-          for (const contentItem of item.content) {
-            if (typeof contentItem?.text === 'string' && contentItem.text) {
-              finalText = contentItem.text;
-              break;
-            }
-            if (contentItem?.text?.value) {
-              finalText = contentItem.text.value;
-              break;
-            }
-          }
-        }
-        if (finalText) {
-          break;
-        }
+    // Ensure a conversation exists before sending
+    let conversationId = thread.conversation_id || null;
+    if (!conversationId) {
+      const conv = await openai.conversations.create();
+      conversationId = conv?.id || null;
+      if (conversationId) {
+        await ThreadService.setConversationId(thread.id, conversationId);
       }
     }
 
-    const now = new Date().toISOString();
-    const conversation = [];
+    // Build input using attachments for per-message file search
+    const input = [{
+      role: 'user',
+      content: [{ type: 'input_text', text: text || 'Please review the uploaded files.' }],
+      attachments: fileIdList.map((id) => ({ file_id: id, tools: [{ type: 'file_search' }] })),
+    }];
 
-    if (text) {
-      conversation.push({
-        id: uuid(),
-        role: 'user',
-        content: text,
-        createdAt: now,
-      });
-    }
+    const response = await openai.responses.create({
+      model: process.env.OPENAI_MODEL || 'gpt-5',
+      conversation: conversationId || undefined,
+      input,
+    });
 
-    if (finalText) {
-      conversation.push({
-        id: uuid(),
-        role: 'assistant',
-        content: finalText,
-        createdAt: now,
-      });
-    }
+    const responseId = response?.id || null;
+    const textOut = typeof response?.output_text === 'string' ? response.output_text : '';
 
     return res.json({
-      conversation,
-      final_output: finalText,
-      guardrail_results: response?.guardrails || null,
+      success: true,
+      conversationId: conversationId || null,
+      responseId,
+      text: textOut,
       usage: response?.usage || null,
-      conversationId,
     });
   } catch (error) {
     console.error('sdk.message error:', error);
