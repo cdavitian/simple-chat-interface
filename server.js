@@ -1130,11 +1130,11 @@ async function waitUntilVectorStoreFilesCompleted(client, vectorStoreId, fileIds
  * @param {string} vectorStoreId - Vector store ID
  * @param {string} fileId - File ID to check
  * @param {Object} options - Options object
- * @param {number} options.timeoutMs - Timeout in milliseconds (default: 60000)
+ * @param {number} options.timeoutMs - Timeout in milliseconds (default: 120000)
  * @param {number} options.pollIntervalMs - Poll interval in milliseconds (default: 1000)
  * @returns {Promise<Object>} The vector store file object with status 'completed'
  */
-async function waitForVectorIndex(client, vectorStoreId, fileId, { timeoutMs = 60000, pollIntervalMs = 1000 } = {}) {
+async function waitForVectorIndex(client, vectorStoreId, fileId, { timeoutMs = 120000, pollIntervalMs = 1000 } = {}) {
     const start = Date.now();
     
     // Helper to retrieve vector store file status
@@ -2156,24 +2156,49 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
             content_type: resolvedContentType
         });
 
-        // Add file to session's vector store for persistent file awareness
-        // Create vector store if it doesn't exist (files are ingested before messages are sent)
+        // Add file to conversation's vector store for persistent file awareness
+        // CRITICAL: Use conversation-based vector store (one per conversationId) - persist and reuse
         try {
-            let vectorStoreId = req.session?.vectorStoreId;
+            let vectorStoreId = null;
             
-            // If no vector store exists, create one now so files can be added
-            if (!vectorStoreId) {
-                console.log('🔍 ingest-s3: No vector store found, creating one...');
+            // First, try to get or create conversationId and use conversation-based vector store
+            let conversationId = null;
+            try {
+                conversationId = await getOrCreateConversationId(req);
+            } catch (convError) {
+                console.warn('⚠️ ingest-s3: Failed to get/create conversationId, falling back to session-based vector store:', convError?.message);
+            }
+            
+            if (conversationId) {
+                // Use conversation-based vector store (one per conversation)
                 try {
-                    const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                    const sessionId = `ingest_${userId}_${req.sessionID}`;
-                    vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
-                    console.log('✅ ingest-s3: Created vector store for file:', {
-                        vectorStoreId,
+                    vectorStoreId = await getOrCreateVectorStoreForConversation(client, conversationId, req.session);
+                    console.log('✅ ingest-s3: Using conversation-based vector store:', {
+                        vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
+                        conversationId: conversationId.substring(0, 20) + '...',
+                        file_id: uploaded.id
+                    });
+                } catch (vsError) {
+                    console.error('❌ ingest-s3: Failed to get conversation-based vector store:', {
+                        error: vsError?.message,
+                        conversationId: conversationId.substring(0, 20) + '...',
+                        file_id: uploaded.id
+                    });
+                }
+            }
+            
+            // Fallback to session-based vector store if no conversationId or conversation-based store failed
+            if (!vectorStoreId) {
+                const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const sdkSessionId = `sdk_${userId}_${req.sessionID}`;
+                try {
+                    vectorStoreId = await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
+                    console.log('✅ ingest-s3: Using session-based vector store (fallback):', {
+                        vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
                         file_id: uploaded.id
                     });
                 } catch (createError) {
-                    console.error('❌ ingest-s3: Failed to create vector store:', {
+                    console.error('❌ ingest-s3: Failed to create session-based vector store:', {
                         error: createError?.message,
                         stack: createError?.stack,
                         file_id: uploaded.id
@@ -2715,23 +2740,9 @@ app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, async (req, 
             req.session.sdkConversation = [];
         }
 
-        // Check if user is arriving from homepage - if so, start a new conversation
-        const fromHomepage = req.query.from === 'homepage' || 
-                            (req.get('referer') && req.get('referer').includes('/homepage'));
-        
-        if (fromHomepage) {
-            // Clear existing conversation ID and history to force creation of new one
-            const oldConversationId = req.session.sdkConversationId;
-            req.session.sdkConversationId = null;
-            req.session.sdkConversation = []; // Clear conversation history
-            console.log('🔄 SDK: Starting new conversation from homepage', {
-                oldConversationId: oldConversationId || 'none',
-                userId: req.session.user?.id || 'unknown',
-                userEmail: req.session.user?.email || 'unknown',
-                sessionId: req.sessionID,
-                timestamp: new Date().toISOString()
-            });
-        }
+        // CRITICAL: Don't reset conversation unless explicitly requested via /api/sdk/conversation/reset
+        // This ensures continuity - one conversation per session, one vector store per conversation
+        // Only the /api/sdk/conversation/reset endpoint should clear conversationId
 
         // Get or create conversation ID - ensures we have a durable conversation once per session
         const conversationId = await getOrCreateConversationId(req);
@@ -3086,7 +3097,7 @@ app.post('/api/sdk/message', requireAuth, checkUserPermissions, async (req, res)
         }
 
         // CRITICAL: Pass conversationId and vectorStoreId to agent
-        // The agent.start() will wire the vector store via resources.file_search.vectorStoreIds
+        // The agent.respond() will wire the vector store via resources.file_search.vectorStoreIds
         const agentResult = await runAgentConversation(
             messagesToSend, 
             'SDK Conversation', 

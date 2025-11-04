@@ -114,7 +114,7 @@ function createHostedMcpTool() {
 
 function createAgent() {
   // CRITICAL: Always include file_search tool - it's required for file search to work
-  // The vector store IDs are passed at agent.start() time, not at agent creation time
+  // The vector store IDs are passed at agent.respond() time via resources, not at agent creation time
   const tools = [codeInterpreter];
   const hostedMcp = createHostedMcpTool();
   if (hostedMcp) {
@@ -122,7 +122,7 @@ function createAgent() {
   }
 
   // CRITICAL: Always include file_search tool - it's required for file search to work
-  // The vector store IDs are passed via resources at agent.start() time, not here
+  // The vector store IDs are passed via resources at agent.respond() time, not here
   // Note: fileSearchTool may require a vectorStoreId parameter, but we'll pass it via resources
   // Try to create it without a vectorStoreId first (it may accept undefined)
   if (fileSearchTool) {
@@ -187,10 +187,10 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
 
   return withTrace(traceName, async () => {
     // CRITICAL: Create agent once - always include file_search tool
-    // The vector store IDs are passed via resources at agent.start() time
+    // The vector store IDs are passed via resources at agent.respond() time
     const agent = createAgent();
     
-    // Build resources for agent.start() - MUST include file_search with vectorStoreIds
+    // Build resources for agent.respond() - MUST include file_search with vectorStoreIds
     const resources = {};
     if (vectorStoreId) {
       resources.file_search = {
@@ -215,12 +215,19 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       });
     }
     
-    // CRITICAL: Use agent.start() with conversationId and resources
-    // This wires the vector store to the runner so file_search works
-    const startOptions = {
+    // CRITICAL: Use agent.respond() with conversationId, messages, and resources
+    // This wires the vector store via resources.file_search.vectorStoreIds
+    // If we have a conversation_id, only send the latest message (SDK will pull prior context via store:true)
+    // Otherwise, send full history for the first message
+    const messagesToSend = conversationId && conversationHistory.length > 0
+      ? [conversationHistory[conversationHistory.length - 1]] // Only the latest message
+      : [...conversationHistory]; // Full history for first message (or empty if no history)
+    
+    const respondOptions = {
       ...(conversationId ? { conversationId } : {}),
+      messages: messagesToSend,
       ...(Object.keys(resources).length > 0 ? { resources } : {}),
-      traceMetadata: {
+      metadata: {
         __trace_source__: 'agent-builder',
         workflow_id:
           process.env.SDK_AGENT_WORKFLOW_ID ||
@@ -228,33 +235,22 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       },
     };
     
-    console.log('🚀 Starting agent with:', {
+    console.log('🚀 Calling agent.respond() with:', {
       hasConversationId: !!conversationId,
       conversationId: conversationId || 'none',
       hasResources: Object.keys(resources).length > 0,
       resourceKeys: Object.keys(resources),
       hasVectorStore: !!vectorStoreId,
-      vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
+      vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
+      messageCount: messagesToSend.length
     });
     
-    // Start the runner with conversationId and resources
-    const runner = await agent.start(startOptions);
+    // Call agent.respond() - returns result directly (no runner.run() needed)
+    const result = await agent.respond(respondOptions);
     
-    // If we have a conversation_id, only send the latest message (SDK will pull prior context via store:true)
-    // Otherwise, send full history for the first message
-    const messagesToSend = conversationId && conversationHistory.length > 0
-      ? [conversationHistory[conversationHistory.length - 1]] // Only the latest message
-      : [...conversationHistory]; // Full history for first message (or empty if no history)
-    
-    // Run the agent with the messages
-    const result = await runner.run(agent, messagesToSend);
-    
-    // Log runner state after run for debugging
-    // This is critical - if hasRunnerState is false, memory isn't persisting
-    console.log('🔍 Runner state after run:', {
-      hasRunnerState: !!runner?.state,
-      runnerStateType: runner?.state ? typeof runner.state : 'none',
-      runnerStateKeys: runner?.state ? Object.keys(runner.state) : [],
+    // Log result state after respond() for debugging
+    // This is critical - state persistence is controlled by Agent.modelSettings.store (already set to true)
+    console.log('🔍 Agent respond() result:', {
       resultType: result ? typeof result : 'none',
       resultIsObject: result ? typeof result === 'object' : false,
       resultKeys: result ? Object.keys(result) : [],
@@ -263,15 +259,12 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       note: 'State persistence is controlled by Agent.modelSettings.store (already set to true)'
     });
     
-    // Info: runner.state is often empty when using server-side persistence
-    // Note: The Agents platform persists conversation state server-side when Agent.modelSettings.store = true.
-    // The local runner.state is often empty unless you put custom runner state there.
+    // Info: The Agents platform persists conversation state server-side when Agent.modelSettings.store = true.
     // This is expected behavior - the conversationId links to the stored state on the server.
-    if (conversationId && !runner?.state) {
-      console.info('ℹ️ Conversation ID exists but runner.state is empty (expected with server-side persistence)', {
+    if (conversationId) {
+      console.info('ℹ️ Conversation ID provided (server-side persistence enabled)', {
         conversationId,
-        note: 'State is stored server-side. Agent.modelSettings.store: true enables persistence.',
-        runnerConfig: runner?.config ? Object.keys(runner.config) : 'no config'
+        note: 'State is stored server-side. Agent.modelSettings.store: true enables persistence.'
       });
     }
 
@@ -305,7 +298,7 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
 
     // Extract conversation_id from result for persistence
     // Robust extraction that checks all possible locations
-    function pickConversationId(result, runner) {
+    function pickConversationId(result) {
       // top-level first (most common)
       if (result?.conversationId) return result.conversationId;
       if (result?.conversation_id) return result.conversation_id;
@@ -316,15 +309,11 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       if (result?.finalOutput?.conversationId) return result.finalOutput.conversationId;
       if (result?.finalOutput?.conversation_id) return result.finalOutput.conversation_id;
 
-      // runner may hold it
-      if (runner?.state?.conversationId) return runner.state.conversationId;
-      if (runner?.state?.conversation_id) return runner.state.conversation_id;
-
       return null;
     }
     
     // Extract the conversation ID
-    let returnedConversationId = pickConversationId(result, runner);
+    let returnedConversationId = pickConversationId(result);
     
     // If we had an input conversationId and didn't extract one, use the input (it should persist)
     if (!returnedConversationId && conversationId) {
@@ -339,8 +328,7 @@ async function runAgentConversation(conversationHistory, traceName = 'MCP Prod T
       input: conversationId || 'none',
       extracted: returnedConversationId || 'none',
       usingInput: !!conversationId && returnedConversationId === conversationId,
-      resultHasConversationId: !!(result?.conversation_id || result?.conversationId),
-      runnerHasConversationId: !!(runner?.conversation_id || runner?.conversationId || runner?.state?.conversation_id || runner?.state?.conversationId)
+      resultHasConversationId: !!(result?.conversation_id || result?.conversationId)
     });
 
     return {
