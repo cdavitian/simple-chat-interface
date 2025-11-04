@@ -1068,13 +1068,15 @@ async function waitUntilVectorStoreFilesCompleted(client, vectorStoreId, fileIds
             const inProgressFiles = [];
             
             // Check status of each target file
+            // Vector store file objects have a 'file_id' field (the original file ID) and 'status' field
             for (const file of files) {
-                if (targetFileIds.has(file.id)) {
+                const fileId = file.file_id || file.id; // Support both formats
+                if (targetFileIds.has(fileId)) {
                     if (file.status === 'completed') {
-                        completedFiles.add(file.id);
+                        completedFiles.add(fileId);
                     } else if (file.status === 'in_progress' || file.status === 'queued') {
                         inProgressFiles.push({
-                            file_id: file.id.substring(0, 10) + '...',
+                            file_id: fileId.substring(0, 10) + '...',
                             status: file.status
                         });
                     }
@@ -1175,6 +1177,153 @@ async function waitForVectorIndex(client, vectorStoreId, fileId, { timeoutMs = 6
             console.log('⏳ Waiting for vector store file indexing...', {
                 fileId: fileId.substring(0, 20) + '...',
                 status: file.status,
+                elapsed: `${Math.round(elapsed / 1000)}s`
+            });
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+}
+
+/**
+ * Create a batch of files in a vector store via HTTP API (fallback)
+ */
+async function createVectorStoreFileBatchViaHTTP(vectorStoreId, fileIds, apiKey) {
+    const https = require('https');
+    
+    return new Promise((resolve, reject) => {
+        const postData = JSON.stringify({
+            file_ids: fileIds
+        });
+        
+        const options = {
+            hostname: 'api.openai.com',
+            path: `/v1/vector_stores/${vectorStoreId}/file_batches`,
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData),
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                if (res.statusCode === 200) {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        reject(new Error(`Failed to parse response: ${e.message}`));
+                    }
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+        
+        req.on('error', reject);
+        req.write(postData);
+        req.end();
+    });
+}
+
+/**
+ * Retrieve a vector store file batch status via HTTP API (fallback)
+ */
+async function retrieveVectorStoreFileBatchViaHTTP(vectorStoreId, batchId, apiKey) {
+    const https = require('https');
+    
+    return new Promise((resolve, reject) => {
+        const options = {
+            hostname: 'api.openai.com',
+            path: `/v1/vector_stores/${vectorStoreId}/file_batches/${batchId}`,
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                if (res.statusCode === 200) {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        reject(new Error(`Failed to parse response: ${e.message}`));
+                    }
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+        
+        req.on('error', reject);
+        req.end();
+    });
+}
+
+/**
+ * Wait for a vector store file batch to complete indexing
+ * Polls the batch status until it's 'completed', 'failed', or 'cancelled'
+ * @param {OpenAI} client - OpenAI client instance
+ * @param {string} vectorStoreId - Vector store ID
+ * @param {string} batchId - Batch ID to check
+ * @param {Object} options - Options object
+ * @param {number} options.timeoutMs - Timeout in milliseconds (default: 120000)
+ * @param {number} options.pollIntervalMs - Poll interval in milliseconds (default: 1000)
+ * @returns {Promise<Object>} The batch object with status 'completed'
+ */
+async function waitForVectorStoreBatch(client, vectorStoreId, batchId, { timeoutMs = 120000, pollIntervalMs = 1000 } = {}) {
+    const start = Date.now();
+    
+    // Helper to retrieve batch status
+    const retrieveStatus = async () => {
+        if (client.beta?.vectorStores?.fileBatches?.retrieve) {
+            return await client.beta.vectorStores.fileBatches.retrieve(vectorStoreId, batchId);
+        } else {
+            // Fallback to HTTP API
+            const apiKey = process.env.OPENAI_API_KEY;
+            if (!apiKey) {
+                throw new Error('OPENAI_API_KEY not found for vector store batch retrieval');
+            }
+            return await retrieveVectorStoreFileBatchViaHTTP(vectorStoreId, batchId, apiKey);
+        }
+    };
+    
+    for (;;) {
+        const batch = await retrieveStatus();
+        
+        if (batch.status === 'completed') {
+            console.log('✅ Vector store file batch indexing completed:', {
+                batchId: batchId.substring(0, 20) + '...',
+                vectorStoreId: vectorStoreId.substring(0, 20) + '...',
+                fileCount: batch.file_counts?.total || 0,
+                elapsed: Date.now() - start
+            });
+            return batch;
+        }
+        
+        if (batch.status === 'failed' || batch.status === 'cancelled') {
+            throw new Error(`Vector store file batch indexing ${batch.status}: ${batchId}`);
+        }
+        
+        if (Date.now() - start > timeoutMs) {
+            throw new Error(`Vector store file batch indexing timeout after ${timeoutMs}ms for batch: ${batchId}`);
+        }
+        
+        // Log progress every 5 seconds
+        const elapsed = Date.now() - start;
+        if (elapsed % 5000 < pollIntervalMs) {
+            console.log('⏳ Waiting for vector store file batch indexing...', {
+                batchId: batchId.substring(0, 20) + '...',
+                status: batch.status,
+                fileCount: batch.file_counts?.total || 0,
                 elapsed: `${Math.round(elapsed / 1000)}s`
             });
         }
@@ -2288,8 +2437,34 @@ app.post('/api/chatkit/message', requireAuth, async (req, res) => {
             uploadedFileIds.add(file_id.trim());
         }
         
-        // Verify vector store exists and log file availability
+        // Wait for vector store files to complete indexing before sending message
+        // This ensures files are searchable via file_search tool
         const vectorStoreId = req.session?.vectorStoreId;
+        if (vectorStoreId && uploadedFileIds.size > 0 && client) {
+            try {
+                const fileIdsArray = Array.from(uploadedFileIds);
+                console.log('⏳ ChatKit: Waiting for vector store files to complete indexing before sending message...', {
+                    vectorStoreId,
+                    fileCount: fileIdsArray.length
+                });
+                
+                await waitUntilVectorStoreFilesCompleted(client, vectorStoreId, fileIdsArray, 120000, 2000);
+                
+                console.log('✅ ChatKit: Vector store files ready for search:', {
+                    vectorStoreId,
+                    fileCount: fileIdsArray.length
+                });
+            } catch (waitError) {
+                console.warn('⚠️ ChatKit: Error waiting for vector store files, continuing anyway:', {
+                    error: waitError?.message,
+                    vectorStoreId,
+                    fileCount: uploadedFileIds.size
+                });
+                // Continue - files may still be indexing, but we'll try anyway
+            }
+        }
+        
+        // Verify vector store exists and log file availability
         if (vectorStoreId && uploadedFileIds.size > 0) {
             try {
                 let vs;
