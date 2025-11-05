@@ -118,6 +118,25 @@ function App() {
 
 function ChatInterface({ user }) {
   const [messages, setMessages] = useState([]);
+  
+  useEffect(() => {
+    // expose simple controls in the console
+    window.chatDebug = {
+      push(m) {
+        setMessages(prev => [...prev, {
+          id: m?.id ?? `debug-${Date.now()}`,
+          role: m?.role ?? 'assistant',
+          text: m?.text ?? '(no text)',
+          content: [{ type: 'text', text: m?.text ?? '(no text)' }],
+          createdAt: m?.createdAt ?? new Date().toISOString(),
+        }]);
+      },
+      clear() { setMessages([]); },
+      log()   { console.log('messages:', messages); },
+      len()   { console.log('len:', messages.length); },
+    };
+  }, [messages]);
+  
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState(null);
@@ -196,6 +215,21 @@ function ChatInterface({ user }) {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isSending, scrollToBottom]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      // push any payload into the chat
+      setMessages(prev => [...prev, {
+        id: e.detail?.id ?? `debug-${Date.now()}`,
+        role: e.detail?.role ?? 'assistant',
+        text: e.detail?.text ?? '👋 debug message',
+        content: [{ type: 'text', text: e.detail?.text ?? '👋 debug message' }],
+        createdAt: e.detail?.createdAt ?? new Date().toISOString(),
+      }]);
+    };
+    window.addEventListener('fake-message', handler);
+    return () => window.removeEventListener('fake-message', handler);
+  }, []);
 
   const handleFileUpload = useCallback(
     async (file) => {
