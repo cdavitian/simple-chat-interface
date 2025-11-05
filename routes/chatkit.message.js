@@ -8,7 +8,7 @@ async function chatkitMessage(req, res) {
   const userId = req.session?.user?.id || 'anonymous';
 
   const sessionId = body.session_id ?? req.session?.chatkitSessionId ?? null;
-  const threadId = body.thread_id || sessionId || `thread:${userId}`;
+  const threadId = sessionId || `thread:${userId}`;
 
   const text = typeof body.text === 'string' ? body.text.trim() : '';
 

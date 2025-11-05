@@ -12,7 +12,7 @@ async function sdkMessageStream(req, res) {
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   const stagedFileIds = Array.isArray(body.staged_file_ids) ? body.staged_file_ids : [];
   const userId = req.session?.user?.id || 'anonymous';
-  const threadId = body.thread_id || `sdk:${userId}`;
+  const threadId = `sdk:${userId}`;
 
   if (!text && stagedFileIds.length === 0) {
     return res.status(400).json({ error: 'No text or files provided' });

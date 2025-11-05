@@ -1825,7 +1825,8 @@ var ChatKit = react.forwardRef(
             "chatkit.log": "onLog",
             "chatkit.thread.change": "onThreadChange",
             "chatkit.thread.load.start": "onThreadLoadStart",
-            "chatkit.thread.load.end": "onThreadLoadEnd"
+            "chatkit.thread.load.end": "onThreadLoadEnd",
+            "chatkit.ready": "onReady"
           };
           const eventNames = Object.keys(events);
           for (const event of eventNames) {
@@ -3160,7 +3161,6 @@ function ChatKitComponent(_ref4) {
             console.log('[ChatKit] 📤 [SEND] Outgoing content:', content);
 
             // Send the user message to the current session via our controlled endpoint
-            // Include thread_id to link message to the thread (which holds context and vector store)
             _context5.n = 5;
             return fetch('/api/chatkit/message', {
               method: 'POST',
@@ -3170,8 +3170,6 @@ function ChatKitComponent(_ref4) {
               credentials: 'include',
               body: JSON.stringify({
                 session_id: sessionData.sessionId,
-                thread_id: sessionData.thread_id || undefined,
-                // ✅ NEW: Include thread_id
                 text: userPrompt || undefined,
                 staged_file_ids: fileStager.list(),
                 staged_files: fileStager.listWithMetadata() // Send metadata for content type routing

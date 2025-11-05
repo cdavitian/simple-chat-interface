@@ -605,9 +605,11 @@ function ChatSDKClient() {
     _useState10 = _slicedToArray(_useState1, 2),
     sessionReady = _useState10[0],
     setSessionReady = _useState10[1];
+  var messagesRef = (0,react.useRef)([]);
+  (0,react.useEffect)(function () {
+    messagesRef.current = messages;
+  }, [messages]);
   var messagesEndRef = (0,react.useRef)(null);
-
-  // ===== DEBUG: global console API
   (0,react.useEffect)(function () {
     var pushOne = function pushOne(m) {
       return setMessages(function (prev) {
@@ -622,10 +624,10 @@ function ChatSDKClient() {
         return setMessages([]);
       },
       log: function log() {
-        return console.log("messages:", messages);
+        return console.log("messages:", messagesRef.current);
       },
       len: function len() {
-        return console.log("len:", messages.length);
+        return console.log("len:", messagesRef.current.length);
       }
     };
     if (!document.getElementById("build-banner")) {
@@ -639,7 +641,7 @@ function ChatSDKClient() {
       }, 3000);
     }
     console.log("[chatDebug] ready");
-  }, [messages]);
+  }, []); // register once, not per-message render
 
   // ===== autoscroll
   (0,react.useEffect)(function () {
@@ -653,7 +655,7 @@ function ChatSDKClient() {
   (0,react.useEffect)(function () {
     var canceled = false;
     _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
-      var r, data, initial, _t;
+      var _data$session, r, errText, data, sid, initial, _t;
       return _regenerator().w(function (_context) {
         while (1) switch (_context.p = _context.n) {
           case 0:
@@ -666,34 +668,43 @@ function ChatSDKClient() {
           case 1:
             r = _context.v;
             if (r.ok) {
-              _context.n = 2;
+              _context.n = 3;
               break;
             }
-            throw new Error("Session bootstrap failed (".concat(r.status, ")"));
+            _context.n = 2;
+            return r.text();
           case 2:
-            _context.n = 3;
-            return r.json();
+            errText = _context.v;
+            throw new Error("Session bootstrap failed (".concat(r.status, "): ").concat(errText));
           case 3:
+            _context.n = 4;
+            return r.json();
+          case 4:
             data = _context.v;
+            // capture session id for console checks & later calls
+            sid = (data === null || data === void 0 || (_data$session = data.session) === null || _data$session === void 0 ? void 0 : _data$session.id) || (data === null || data === void 0 ? void 0 : data.sessionId) || (data === null || data === void 0 ? void 0 : data.id);
+            if (sid) {
+              globalThis.currentSessionId = sid; // visible in console as window.currentSessionId
+            }
             // If your API returns any prior messages, normalize + replace.
             initial = Array.isArray(data === null || data === void 0 ? void 0 : data.messages) ? data.messages : [];
             if (!canceled) {
               setMessages(initial.map(normalizeMessage));
-              setSessionReady(true);
+              setSessionReady(!!sid); // or just: setSessionReady(true)
             }
-            _context.n = 5;
+            _context.n = 6;
             break;
-          case 4:
-            _context.p = 4;
+          case 5:
+            _context.p = 5;
             _t = _context.v;
             console.error("bootstrap error:", _t);
             if (!canceled) {
               setBootError(_t.message || "Failed to init session");
             }
-          case 5:
+          case 6:
             return _context.a(2);
         }
-      }, _callee, null, [[0, 4]]);
+      }, _callee, null, [[0, 5]]);
     }))();
     return function () {
       canceled = true;
@@ -805,6 +816,12 @@ function ChatSDKClient() {
       handleSend();
     }
   };
+  // ===== sort messages chronologically before render
+  var orderedMessages = react.useMemo(function () {
+    return _toConsumableArray(messages).sort(function (a, b) {
+      return new Date(a.createdAt) - new Date(b.createdAt);
+    });
+  }, [messages]);
   return /*#__PURE__*/react.createElement("div", {
     className: "sdk-chat-root",
     style: styles.root

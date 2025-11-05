@@ -1699,30 +1699,15 @@ if (sessionConfig.thread) {
         const clientToken = session.clientToken || session.client_secret;
         const sessionId = session.id;
         
-        // STEP 3: Extract thread_id from session response
-        let threadId = null;
-        if (session.thread?.id) {
-            threadId = session.thread.id;
-            console.log('✅ Extracted thread_id from session:', {
-                threadId: threadId.substring(0, 20) + '...',
-                hasVectorStoreLink: !!session.thread?.vector_store_ids
-            });
-        } else {
-            console.warn('⚠️ No thread_id found in session response. Session keys:', Object.keys(session));
-        }
-        
-        // Persist the latest ChatKit session id and thread_id in the user's server session
+        // Persist the latest ChatKit session id in the user's server session
         try {
             req.session.chatkitSessionId = sessionId;
-            if (threadId) {
-                req.session.chatkitThreadId = threadId;
-            }
             // Update vector store ID if it wasn't already stored
             if (vectorStoreId && !req.session.vectorStoreId) {
                 req.session.vectorStoreId = vectorStoreId;
             }
         } catch (e) {
-            console.warn('Unable to persist chatkitSessionId/threadId in session (GET):', e?.message);
+            console.warn('Unable to persist chatkitSessionId in session (GET):', e?.message);
         }
         
         if (!clientToken) {
@@ -1765,12 +1750,11 @@ if (sessionConfig.thread) {
             ? process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
             : process.env.OPENAI_CHATKIT_PUBLIC_KEY;
 
-        // Return the session information that ChatKit needs, including thread_id and vector_store_id
+        // Return the session information that ChatKit needs, including vector_store_id
         const sessionData = {
             clientToken: clientToken,
             publicKey: publicKey,
             sessionId: sessionId,
-            thread_id: threadId || null,  // ✅ NEW: Include thread_id
             vector_store_id: vectorStoreId || null  // ✅ NEW: Include vector_store_id
         };
         
@@ -1778,7 +1762,6 @@ if (sessionConfig.thread) {
             clientToken: clientToken.substring(0, 20) + '...',
             publicKey: sessionData.publicKey.substring(0, 20) + '...',
             sessionId: sessionId,
-            thread_id: threadId ? threadId.substring(0, 20) + '...' : 'none',
             vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
         });
         
@@ -1917,30 +1900,15 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         const clientToken = session.clientToken || session.client_secret;
         const sessionId = session.id;
         
-        // STEP 3: Extract thread_id from session response
-        let threadId = null;
-        if (session.thread?.id) {
-            threadId = session.thread.id;
-            console.log('✅ Extracted thread_id from session:', {
-                threadId: threadId.substring(0, 20) + '...',
-                hasVectorStoreLink: !!session.thread?.vector_store_ids
-            });
-        } else {
-            console.warn('⚠️ No thread_id found in session response. Session keys:', Object.keys(session));
-        }
-        
-        // Persist the latest ChatKit session id and thread_id in the user's server session
+        // Persist the latest ChatKit session id in the user's server session
         try {
             req.session.chatkitSessionId = sessionId;
-            if (threadId) {
-                req.session.chatkitThreadId = threadId;
-            }
             // Update vector store ID if it wasn't already stored
             if (vectorStoreId && !req.session.vectorStoreId) {
                 req.session.vectorStoreId = vectorStoreId;
             }
         } catch (e) {
-            console.warn('Unable to persist chatkitSessionId/threadId in session (POST):', e?.message);
+            console.warn('Unable to persist chatkitSessionId in session (POST):', e?.message);
         }
         
         if (!clientToken) {
@@ -1983,12 +1951,11 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             ? process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
             : process.env.OPENAI_CHATKIT_PUBLIC_KEY;
 
-        // Return the session information that ChatKit needs, including thread_id and vector_store_id
+        // Return the session information that ChatKit needs, including vector_store_id
         const sessionData = {
             clientToken: clientToken,
             publicKey: publicKey,
             sessionId: sessionId,
-            thread_id: threadId || null,  // ✅ NEW: Include thread_id
             vector_store_id: vectorStoreId || null  // ✅ NEW: Include vector_store_id
         };
         
@@ -1996,7 +1963,6 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             clientToken: clientToken.substring(0, 20) + '...',
             publicKey: sessionData.publicKey.substring(0, 20) + '...',
             sessionId: sessionId,
-            thread_id: threadId ? threadId.substring(0, 20) + '...' : 'none',
             vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
         });
         
