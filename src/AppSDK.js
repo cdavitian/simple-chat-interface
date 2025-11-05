@@ -169,7 +169,7 @@ function ChatInterface({ user }) {
       // Clear messages if conversation is empty (new session)
       // This ensures the message window is cleared when starting fresh
       const conversation = Array.isArray(data.conversation) ? data.conversation : [];
-      setMessages(prev => mergeMessages(prev, conversation));
+      setMessages(conversation);
       
       // Log conversation ID if present (for new sessions)
       if (data.conversationId) {
