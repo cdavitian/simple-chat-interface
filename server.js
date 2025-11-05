@@ -3187,7 +3187,7 @@ app.use(express.static(path.join(__dirname, "public")));
 // For SPA routes, always send a fresh index.html
 app.get("*", (req, res) => {
 	res.set("Cache-Control", "no-store");
-	res.sendFile(path.join(__dirname, "public", "index.html"));
+	res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 // Start the server
