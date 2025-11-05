@@ -2,6 +2,12 @@ const { openai } = require('../lib/openai');
 const { ThreadService } = require('../services/thread.service');
 const { AttachmentService } = require('../services/attachment.service');
 
+console.log("OpenAI SDK version =", require("openai/package.json").version);
+
+console.log("Has responses API? ", typeof openai.responses?.create === "function");
+
+console.log("Has chat.completions? ", !!openai.chat?.completions);
+
 async function sdkMessage(req, res) {
   console.log('🚀 SDK MESSAGE: Request received');
   const body = req.body || {};
@@ -61,17 +67,46 @@ async function sdkMessage(req, res) {
     }];
 
     const vectorStoreId = thread?.vector_store_id; // or a value from req.body if you allow overrides
-    const response = await openai.responses.create({
-      model: process.env.OPENAI_MODEL || 'gpt-5',
-      conversation: conversationId || undefined,
-      tools: [{ type: 'file_search' }],               // declare the tool
-      ...(vectorStoreId ? {
-        tool_resources: {                              // attach the resources
-          file_search: { vector_store_ids: [vectorStoreId] }
-        }
-      } : {}),
-      input,
-    });
+
+        // routes/sdk.message.js
+
+    const OpenAI = require("openai");
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    console.log("OpenAI SDK version =", require("openai/package.json").version);
+    console.log("Using Responses? ", typeof client.responses?.create === "function");
+
+    module.exports.sdkMessage = async (req, res) => {
+      try {
+        const { text } = req.body || {};
+        const userId = req.session?.user?.id;
+        const vectorStoreId = req.session?.vectorStoreId;
+
+        if (!text) return res.status(400).json({ error: "Missing text" });
+
+        const response = await client.responses.create({
+          model: process.env.OPENAI_MODEL || "gpt-5",
+          input: [{ role: "user", content: text }],
+          tools: [{ type: "file_search" }],
+          ...(vectorStoreId
+            ? { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } }
+            : {}),
+          metadata: { route: "sdk.message", userId },
+        });
+
+        const out =
+          response.output_text ??
+          response.output?.[0]?.content?.[0]?.text?.value ??
+          "";
+
+        res.json({ success: true, response_id: response.id, text: out });
+      } catch (err) {
+        console.error("sdk.message error:", err);
+        res.status(err.status || 500).json({ error: String(err) });
+      }
+    };
+
+
 
     const responseId = response?.id || null;
     const textOut = typeof response?.output_text === 'string' ? response.output_text : '';
