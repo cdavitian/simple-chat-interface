@@ -61,6 +61,7 @@ async function sdkMessage(req, res) {
     const response = await openai.responses.create({
       model: process.env.OPENAI_MODEL || 'gpt-5',
       conversation: conversationId || undefined,
+      tools: [{ type: 'file_search' }],
       attachments,
       input,
     });
