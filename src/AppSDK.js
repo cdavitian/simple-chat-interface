@@ -5,6 +5,9 @@ import { buildMessageContent } from './utils/fileTypeDetector';
 import { registerUploadedS3Object } from './api';
 import MenuBar from './components/MenuBar';
 
+// BOOT MARKER — proves this file is in the bundle
+console.log("[BOOT] AppSDK.js loaded");
+
 const fileStager = createFileStager();
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
@@ -117,17 +120,25 @@ function App() {
 function ChatInterface({ user }) {
   const [messages, setMessages] = useState([]);
   
+  // MOUNT MARKER — proves this component actually renders
+  console.log("[MOUNT] ChatInterface render");
+
+  // Minimal debug injector — creates window.chatDebug
   useEffect(() => {
-    console.log("✅ useEffect ran inside this component");
     window.chatDebug = {
       push: (m) => {
-        const msg = { id:'dbg-'+Date.now(), role:m.role||'assistant', text:m.text||String(m)||'(empty)' };
+        const msg = { id: 'dbg-' + Date.now(), role: m.role || 'assistant', text: m.text || String(m) || '(empty)' };
         setMessages(prev => [...prev, msg]);
       },
       clear: () => setMessages([]),
     };
     console.log("[chatDebug] ready");
   }, []);
+
+  // Optional: show count each render (helps confirm state updates)
+  useEffect(() => {
+    console.log("[messages] count =", messages.length);
+  }, [messages]);
   
   const pushRef = useRef(null);
   const messagesRef = useRef([]);
