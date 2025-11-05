@@ -51,18 +51,16 @@ async function sdkMessage(req, res) {
       }
     }
 
-    // Build input; attach files at top-level per Responses API
+    // Build input only; no attachments. We bind File Search via vector_store_ids at top level.
     const input = [{
       role: 'user',
       content: [{ type: 'input_text', text: text || 'Please review the uploaded files.' }],
     }];
-    const attachments = fileIdList.map((id) => ({ file_id: id, tools: [{ type: 'file_search' }] }));
 
     const response = await openai.responses.create({
       model: process.env.OPENAI_MODEL || 'gpt-5',
       conversation: conversationId || undefined,
-      tools: [{ type: 'file_search' }],
-      attachments,
+      tools: [{ type: 'file_search', vector_store_ids: [thread.vector_store_id] }],
       input,
     });
 
