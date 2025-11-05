@@ -134,6 +134,7 @@ export default function ChatSDKClient() {
     setSendError(null);
 
     try {
+      console.log("🚀 CLIENT: Sending message to /api/sdk/message");
       const res = await fetch("/api/sdk/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -141,12 +142,15 @@ export default function ChatSDKClient() {
         body: JSON.stringify({ text }),
       });
 
+      console.log("📡 CLIENT: Response received", { status: res.status, ok: res.ok });
+
       if (!res.ok) {
         const t = await res.text();
         throw new Error(t || `Assistant request failed (${res.status})`);
       }
 
       const data = await res.json();
+      console.log("📦 CLIENT: Response data:", data);
 
       const assistant = normalizeMessage({
         id: data?.message?.id ?? data?.responseId ?? `resp-${Date.now()}`,
@@ -155,10 +159,17 @@ export default function ChatSDKClient() {
         createdAt: data?.message?.createdAt,
       });
 
-      setMessages(prev => mergeMessages(prev, [assistant]));
+      console.log("💬 CLIENT: Normalized assistant message:", assistant);
+      console.log("📝 CLIENT: Current messages count:", messages.length);
+
+      setMessages(prev => {
+        const updated = mergeMessages(prev, [assistant]);
+        console.log("✅ CLIENT: Messages updated, new count:", updated.length);
+        return updated;
+      });
       setInputValue("");
     } catch (err) {
-      console.error("send error:", err);
+      console.error("❌ CLIENT: send error:", err);
       setSendError(err.message || "Failed to send message");
       // roll back optimistic
       setMessages(prev => prev.filter(m => m.id !== optimistic.id));
