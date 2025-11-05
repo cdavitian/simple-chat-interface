@@ -54,29 +54,31 @@ export default function ChatSDKClient() {
   const [bootError, setBootError] = useState(null);
   const [sendError, setSendError] = useState(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const messagesRef = useRef([]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   const messagesEndRef = useRef(null);
 
-  // ===== DEBUG: global console API
+
   useEffect(() => {
     const pushOne = (m) => setMessages(prev => [...prev, normalizeMessage(m)]);
     globalThis.chatDebug = {
-      push: (m) => pushOne(m),
-      clear: () => setMessages([]),
-      log: () => console.log("messages:", messages),
-      len: () => console.log("len:", messages.length),
+         push: (m) => pushOne(m),
+    clear: () => setMessages([]),
+    log: () => console.log("messages:", messagesRef.current),
+    len: () => console.log("len:", messagesRef.current.length),
     };
     if (!document.getElementById("build-banner")) {
-      const el = document.createElement("div");
-      el.id = "build-banner";
-      el.textContent = "LOCAL SDK CHAT • " + new Date().toISOString();
-      el.style.cssText =
-        "position:fixed;z-index:99999;top:0;left:0;padding:6px 10px;background:#222;color:#0f0;font:12px/1.2 monospace";
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 3000);
+        const el = document.createElement("div");
+        el.id = "build-banner";
+        el.textContent = "LOCAL SDK CHAT • " + new Date().toISOString();
+        el.style.cssText =
+         "position:fixed;z-index:99999;top:0;left:0;padding:6px 10px;background:#222;color:#0f0;font:12px/1.2 monospace";
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3000);
     }
     console.log("[chatDebug] ready");
-  }, [messages]);
+    }, []); // register once, not per-message render
 
   // ===== autoscroll
   useEffect(() => {
@@ -95,14 +97,21 @@ export default function ChatSDKClient() {
           credentials: "include",
         });
         if (!r.ok) {
-          throw new Error(`Session bootstrap failed (${r.status})`);
+        
+          const errText = await r.text();
+          throw new Error(`Session bootstrap failed (${r.status}): ${errText}`);
         }
         const data = await r.json();
+         // capture session id for console checks & later calls
+        const sid = data?.session?.id || data?.sessionId || data?.id;
+        if (sid) {
+          globalThis.currentSessionId = sid; // visible in console as window.currentSessionId
+        }
         // If your API returns any prior messages, normalize + replace.
         const initial = Array.isArray(data?.messages) ? data.messages : [];
         if (!canceled) {
           setMessages(initial.map(normalizeMessage));
-          setSessionReady(true);
+          setSessionReady(!!sid);                 // or just: setSessionReady(true)
         }
       } catch (err) {
         console.error("bootstrap error:", err);
@@ -185,6 +194,11 @@ export default function ChatSDKClient() {
       handleSend();
     }
   };
+   // ===== sort messages chronologically before render
+   const orderedMessages = React.useMemo(
+     () => [...messages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)),
+     [messages]
+   );
 
   return (
     <div className="sdk-chat-root" style={styles.root}>

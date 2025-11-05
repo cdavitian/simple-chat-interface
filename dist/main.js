@@ -2843,16 +2843,17 @@ function ChatKitComponent(_ref4) {
             }
             throw new Error("Failed to upload to S3: ".concat(uploadResp.status));
           case 6:
-            setUploadStatus('Importing to OpenAI...');
+            setUploadStatus('Importing and indexing file...');
 
-            // 3) Quiet ingest: register uploaded S3 object and stage file_id
+            // 3) Quiet ingest: register uploaded S3 object, add to vector store, and wait for indexing
+            // The backend now waits for vector store indexing to complete before returning
             _context3.n = 7;
             return onCustomToolS3UploadSuccess({
               key: objectKey,
               filename: file.name
             });
           case 7:
-            setUploadStatus("\u2713 ".concat(file.name, " uploaded! The file will be used on your next prompt."));
+            setUploadStatus("\u2713 ".concat(file.name, " ready! The file is indexed and searchable."));
             console.log('[ChatKit] File uploaded successfully and staged for quiet ingest:', {
               filename: file.name,
               objectKey: objectKey,
@@ -3159,6 +3160,7 @@ function ChatKitComponent(_ref4) {
             console.log('[ChatKit] 📤 [SEND] Outgoing content:', content);
 
             // Send the user message to the current session via our controlled endpoint
+            // Include thread_id to link message to the thread (which holds context and vector store)
             _context5.n = 5;
             return fetch('/api/chatkit/message', {
               method: 'POST',
@@ -3168,6 +3170,8 @@ function ChatKitComponent(_ref4) {
               credentials: 'include',
               body: JSON.stringify({
                 session_id: sessionData.sessionId,
+                thread_id: sessionData.thread_id || undefined,
+                // ✅ NEW: Include thread_id
                 text: userPrompt || undefined,
                 staged_file_ids: fileStager.list(),
                 staged_files: fileStager.listWithMetadata() // Send metadata for content type routing

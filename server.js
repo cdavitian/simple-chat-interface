@@ -1654,10 +1654,10 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
-        // Link tool resources (file_search) to vector store if we have one
+        // Pass vector store IDs as workflow inputs (not tool_resources)
         if (vectorStoreId) {
-            sessionConfig.tool_resources = {
-                file_search: { vector_store_ids: [vectorStoreId] }
+            sessionConfig.workflow.inputs = {
+                vector_store_ids: [vectorStoreId]
             };
             console.log('🔗 Linking thread to vector store:', { vectorStoreId });
         }
@@ -1682,12 +1682,6 @@ if (sessionConfig.thread) {
   // Ensure workflow is an object with an id (defensive)
   if (typeof sessionConfig.workflow === "string") {
     sessionConfig.workflow = { id: sessionConfig.workflow };
-  }
-  
-  // Optional: clamp tool_resources shape
-  if (sessionConfig.tool_resources?.file_search?.vector_store_ids) {
-    const ids = sessionConfig.tool_resources.file_search.vector_store_ids;
-    sessionConfig.tool_resources.file_search.vector_store_ids = Array.isArray(ids) ? ids : [ids];
   }
   
   // Log exactly what we send (keys + pretty JSON)
@@ -1897,10 +1891,10 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
-        // Link tool resources (file_search) to vector store if we have one
+        // Pass vector store IDs as workflow inputs (not tool_resources)
         if (vectorStoreId) {
-            sessionConfig.tool_resources = {
-                file_search: { vector_store_ids: [vectorStoreId] }
+            sessionConfig.workflow.inputs = {
+                vector_store_ids: [vectorStoreId]
             };
             console.log('🔗 Linking thread to vector store:', { vectorStoreId });
         }
