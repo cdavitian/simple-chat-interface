@@ -5,7 +5,7 @@ import { buildMessageContent } from './utils/fileTypeDetector';
 import { registerUploadedS3Object } from './api';
 import MenuBar from './components/MenuBar';
 
-// BOOT MARKER — proves this file is in the bundle
+// PROVE THIS FILE LOADED IN BROWSER
 console.log("[BOOT] AppSDK.js loaded");
 
 const fileStager = createFileStager();
@@ -119,21 +119,52 @@ function App() {
 
 function ChatInterface({ user }) {
   const [messages, setMessages] = useState([]);
-  
-  // MOUNT MARKER — proves this component actually renders
+
+// PROVE THIS COMPONENT MOUNTED + create chatDebug
+
+useEffect(() => {
+
+  // 1) Big on-screen banner so you can't miss it
+
+  const tag = "STAGING BUILD " + new Date().toISOString();
+
+  const el = document.createElement("div");
+
+  el.id = "build-banner";
+
+  el.textContent = tag;
+
+  el.style.cssText = "position:fixed;z-index:99999;top:0;left:0;padding:6px 10px;background:#222;color:#0f0;font:12px/1.2 monospace";
+
+  document.body.appendChild(el);
+
+  // 2) Console markers
+
   console.log("[MOUNT] ChatInterface render");
 
-  // Minimal debug injector — creates window.chatDebug
-  useEffect(() => {
-    window.chatDebug = {
-      push: (m) => {
-        const msg = { id: 'dbg-' + Date.now(), role: m.role || 'assistant', text: m.text || String(m) || '(empty)' };
-        setMessages(prev => [...prev, msg]);
-      },
-      clear: () => setMessages([]),
-    };
-    console.log("[chatDebug] ready");
-  }, []);
+  console.log("[BUILD TAG]", tag);
+
+  // 3) Minimal debug helper
+
+  window.chatDebug = {
+
+    push: (m) => {
+
+      const msg = { id: 'dbg-' + Date.now(), role: m?.role || 'assistant', text: m?.text || String(m) || '(empty)' };
+
+      setMessages(prev => [...prev, msg]);
+
+    },
+
+    clear: () => setMessages([]),
+
+  };
+
+  console.log("[chatDebug] ready");
+
+  return () => el.remove();
+
+}, []);
 
   // Optional: show count each render (helps confirm state updates)
   useEffect(() => {

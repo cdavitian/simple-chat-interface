@@ -1645,10 +1645,10 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
-        // Link thread to vector store if we have one
+        // Link tool resources (file_search) to vector store if we have one
         if (vectorStoreId) {
-            sessionConfig.thread = {
-                vector_store_ids: [vectorStoreId]
+            sessionConfig.tool_resources = {
+                file_search: { vector_store_ids: [vectorStoreId] }
             };
             console.log('🔗 Linking thread to vector store:', { vectorStoreId });
         }
@@ -1868,10 +1868,10 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
-        // Link thread to vector store if we have one
+        // Link tool resources (file_search) to vector store if we have one
         if (vectorStoreId) {
-            sessionConfig.thread = {
-                vector_store_ids: [vectorStoreId]
+            sessionConfig.tool_resources = {
+                file_search: { vector_store_ids: [vectorStoreId] }
             };
             console.log('🔗 Linking thread to vector store:', { vectorStoreId });
         }
