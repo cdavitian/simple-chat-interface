@@ -12,21 +12,19 @@ const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
 function normalizeMessage(m) {
   if (!m) return null;
-  const role = m.role || (m.author ? m.author : "assistant");
 
-  // Prefer a root text. Fallback to common shapes.
   const text =
     m.text ??
-    m.content?.[0]?.text ??
     (Array.isArray(m.content) && m.content.find(x => x?.type === "text")?.text) ??
+    m.content?.[0]?.text ??
     (typeof m.content === "string" ? m.content : "") ??
     "";
 
   return {
-    id: m.id ?? `msg-${crypto?.randomUUID?.() ?? Date.now()}`,
-    role,
+    id: m.id ?? `msg-${(globalThis.crypto?.randomUUID?.() ?? Date.now())}`,
+    role: m.role || "assistant",
     text,
-    content: [{ type: "text", text }], // mirror for any legacy paths
+    content: [{ type: "text", text }],     // mirror for any legacy paths in your UI
     createdAt: m.createdAt ?? new Date().toISOString(),
   };
 }
@@ -119,23 +117,23 @@ function App() {
 function ChatInterface({ user }) {
   const [messages, setMessages] = useState([]);
   
+  const pushRef = useRef(null);
+
+  // stable setter usable from window/chatDebug
   useEffect(() => {
-    // Minimal console helpers
+    pushRef.current = (m) => setMessages(prev => [...prev, normalizeMessage(m)]);
+  }, [setMessages]);
+
+  // make debug API available in the browser console
+  useEffect(() => {
     window.chatDebug = {
-      push(m) {
-        setMessages(prev => [...prev, {
-          id: m?.id ?? `debug-${Date.now()}`,
-          role: m?.role ?? 'assistant',
-          text: m?.text ?? '(no text)',
-          content: [{ type: 'text', text: m?.text ?? '(no text)' }],
-          createdAt: m?.createdAt ?? new Date().toISOString(),
-        }]);
-      },
+      push(m) { pushRef.current?.(m); },
       clear() { setMessages([]); },
-      log()   { console.log('messages:', messages); },
-      len()   { console.log('len:', messages.length); },
+      len()   { console.log("len:", messages.length); },
+      log()   { console.log("messages:", messages); },
     };
-  }, [messages, setMessages]);
+    console.log("[chatDebug] ready");
+  }, [messages]);
   
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -188,7 +186,7 @@ function ChatInterface({ user }) {
       // Clear messages if conversation is empty (new session)
       // This ensures the message window is cleared when starting fresh
       const conversation = Array.isArray(data.conversation) ? data.conversation : [];
-      setMessages(conversation);
+      setMessages(conversation.map(normalizeMessage));
       
       // Log conversation ID if present (for new sessions)
       if (data.conversationId) {
@@ -216,19 +214,11 @@ function ChatInterface({ user }) {
     scrollToBottom();
   }, [messages, isSending, scrollToBottom]);
 
+  // optional: event path
   useEffect(() => {
-    const handler = (e) => {
-      const d = e.detail || {};
-      setMessages(prev => [...prev, {
-        id: d.id ?? `debug-${Date.now()}`,
-        role: d.role ?? 'assistant',
-        text: d.text ?? '👋 debug message',
-        content: [{ type: 'text', text: d.text ?? '👋 debug message' }],
-        createdAt: d.createdAt ?? new Date().toISOString(),
-      }]);
-    };
-    window.addEventListener('fake-message', handler);
-    return () => window.removeEventListener('fake-message', handler);
+    const handler = (e) => pushRef.current?.(e.detail || { text: "👋 debug message" });
+    window.addEventListener("fake-message", handler);
+    return () => window.removeEventListener("fake-message", handler);
   }, []);
 
   const handleFileUpload = useCallback(
@@ -324,35 +314,30 @@ function ChatInterface({ user }) {
   const handleSend = useCallback(async () => {
     if (isSending) return;
 
-    const text = inputValue.trim();
+    const text = (inputValue || "").trim();
     const fileIds = fileStager.list();
 
     if (!text && fileIds.length === 0) return;
 
-    // --- Build a single normalized user bubble (root text + content mirror) ---
+    // optimistic user bubble (normalized)
+    const optimistic = normalizeMessage({
+      id: `local-${Date.now()}`,
+      role: "user",
+      text,
+    });
 
-    const optimisticId = `local-${Date.now()}`;
-    const optimisticMessage = {
-      id: optimisticId,
-      role: 'user',
-      text,                                           // <-- NEW: always keep root text
-      content: text ? [{ type: 'text', text }] : [],  // <-- normalize to type:'text'
-      createdAt: new Date().toISOString(),
-      optimistic: true,
-    };
+    setMessages(prev => mergeMessages(prev, [optimistic]));
 
-    setMessages(prev => mergeMessages(prev, [optimisticMessage]));
     setIsSending(true);
     setSendError(null);
 
     try {
-      const response = await fetch('/api/sdk/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      const response = await fetch("/api/sdk/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           text,
-          // keep these if your server ignores them; otherwise you can drop them
           staged_file_ids: fileIds,
           staged_files: fileStager.listWithMetadata(),
         }),
@@ -365,23 +350,22 @@ function ChatInterface({ user }) {
 
       const data = await response.json();
 
-      // --- Normalize assistant bubble to the same shape (root text + content mirror) ---
-      const assistantText = data?.message?.text ?? data?.text ?? '';
-      const assistantMessage = {
+      const assistantText = data?.message?.text ?? data?.text ?? "";
+      const assistant = normalizeMessage({
         id: data?.message?.id ?? data?.responseId ?? `resp-${Date.now()}`,
-        role: 'assistant',
-        text: assistantText,                               // <-- root text used by renderer
-        content: [{ type: 'text', text: assistantText }],  // <-- mirror for any legacy renderer
-        createdAt: data?.message?.createdAt ?? new Date().toISOString(),
-      };
+        role: "assistant",
+        text: assistantText,
+        createdAt: data?.message?.createdAt,
+      });
 
-      setMessages(prev => mergeMessages(prev, [assistantMessage]));
-      setInputValue('');
+      setMessages(prev => mergeMessages(prev, [assistant]));
+      setInputValue("");
       resetUploads();
+
     } catch (err) {
-      console.error('Failed to send message:', err);
-      setSendError(err.message || 'Failed to send message');
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      console.error("Failed to send message:", err);
+      setSendError(err.message || "Failed to send message");
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
     } finally {
       setIsSending(false);
     }
@@ -507,6 +491,8 @@ function ChatInterface({ user }) {
 }
 
 function MessageList({ messages, currentUser }) {
+  console.log("[MessageList] messages length =", messages?.length);
+
   if (!messages.length) {
     return (
       <div className="empty-state">
@@ -529,31 +515,20 @@ function MessageBubble({ message }) {
   const roleClass = getRoleClass(message.role);
   const timestamp = message.createdAt ? formatTimestamp(message.createdAt) : null;
 
-  // Derive a normalized list of items to render
   const displayItems = (() => {
-    // 1) If we have a root text, prefer it
     if (typeof message.text === "string" && message.text.length > 0) {
       return [{ type: "text", text: message.text }];
     }
 
-    // 2) Else, adapt any array content into 'text' items when possible
     if (Array.isArray(message.content) && message.content.length > 0) {
       return message.content.map((it) => {
         if (!it) return it;
-
-        // Coerce common text-like variants to {type:'text', text:...}
-        if (it.type === "input_text" || it.type === "output_text") {
+        if (it.type === "input_text" || it.type === "output_text")
           return { type: "text", text: it.text ?? "" };
-        }
-
-        if (it.type === "text") return it;
-
-        // leave files/tools as-is to hit the switch below
         return it;
       });
     }
 
-    // 3) Absolute fallback: show the raw object (should basically never happen now)
     return [{ type: "text", text: JSON.stringify(message, null, 2) }];
   })();
 
