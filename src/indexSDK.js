@@ -1,11 +1,11 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import ChatInterface from './AppSDK';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import ChatSDKClient from "./ChatSDKClient";
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
+ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ChatInterface user={{ email: 'test@example.com' }} />
+    <ChatSDKClient />
   </React.StrictMode>
 );
+
 
