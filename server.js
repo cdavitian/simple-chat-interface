@@ -1654,13 +1654,7 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
-        // Pass vector store IDs as workflow inputs (not tool_resources)
-        if (vectorStoreId) {
-            sessionConfig.workflow.inputs = {
-                vector_store_ids: [vectorStoreId]
-            };
-            console.log('🔗 Linking thread to vector store:', { vectorStoreId });
-        }
+       
         
         // Explicitly remove chatkit_configuration.file_upload.accept if it exists (causes 400 errors)
         // This parameter doesn't configure uploads server-side and only causes failed attempts
@@ -1891,13 +1885,8 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
-        // Pass vector store IDs as workflow inputs (not tool_resources)
-        if (vectorStoreId) {
-            sessionConfig.workflow.inputs = {
-                vector_store_ids: [vectorStoreId]
-            };
-            console.log('🔗 Linking thread to vector store:', { vectorStoreId });
-        }
+        
+        
         
         // Explicitly remove chatkit_configuration.file_upload.accept if it exists (causes 400 errors)
         // This parameter doesn't configure uploads server-side and only causes failed attempts

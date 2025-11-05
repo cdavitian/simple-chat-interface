@@ -60,10 +60,16 @@ async function sdkMessage(req, res) {
       content: [{ type: 'input_text', text: text || 'Please review the uploaded files.' }],
     }];
 
+    const vectorStoreId = thread?.vector_store_id; // or a value from req.body if you allow overrides
     const response = await openai.responses.create({
       model: process.env.OPENAI_MODEL || 'gpt-5',
       conversation: conversationId || undefined,
-      tools: [{ type: 'file_search', vector_store_ids: [thread.vector_store_id] }],
+      tools: [{ type: 'file_search' }],               // declare the tool
+      ...(vectorStoreId ? {
+        tool_resources: {                              // attach the resources
+          file_search: { vector_store_ids: [vectorStoreId] }
+        }
+      } : {}),
       input,
     });
 
