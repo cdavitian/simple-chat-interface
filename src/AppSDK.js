@@ -495,6 +495,34 @@ function MessageBubble({ message }) {
   const roleClass = getRoleClass(message.role);
   const timestamp = message.createdAt ? formatTimestamp(message.createdAt) : null;
 
+  // Derive a normalized list of items to render
+  const displayItems = (() => {
+    // 1) If we have a root text, prefer it
+    if (typeof message.text === "string" && message.text.length > 0) {
+      return [{ type: "text", text: message.text }];
+    }
+
+    // 2) Else, adapt any array content into 'text' items when possible
+    if (Array.isArray(message.content) && message.content.length > 0) {
+      return message.content.map((it) => {
+        if (!it) return it;
+
+        // Coerce common text-like variants to {type:'text', text:...}
+        if (it.type === "input_text" || it.type === "output_text") {
+          return { type: "text", text: it.text ?? "" };
+        }
+
+        if (it.type === "text") return it;
+
+        // leave files/tools as-is to hit the switch below
+        return it;
+      });
+    }
+
+    // 3) Absolute fallback: show the raw object (should basically never happen now)
+    return [{ type: "text", text: JSON.stringify(message, null, 2) }];
+  })();
+
   return (
     <li className={`message-bubble ${roleClass}`}>
       <div className="message-meta">
@@ -502,13 +530,9 @@ function MessageBubble({ message }) {
         {timestamp && <time className="message-timestamp">{timestamp}</time>}
       </div>
       <div className="message-content">
-        {message.text ? (
-          <MessageContent item={{ type: 'text', text: message.text }} />
-        ) : Array.isArray(message.content) && message.content.length > 0 ? (
-          message.content.map((item, idx) => <MessageContent key={idx} item={item} />)
-        ) : (
-          <MessageContent item={{ type: 'text', text: JSON.stringify(message, null, 2) }} />
-        )}
+        {displayItems.map((item, idx) => (
+          <MessageContent key={idx} item={item} />
+        ))}
       </div>
     </li>
   );
@@ -517,6 +541,11 @@ function MessageBubble({ message }) {
 function MessageContent({ item }) {
   if (!item) {
     return null;
+  }
+
+  // Guard: if item has text but no type, render as text
+  if (typeof item.text === "string" && (item.type === undefined || item.type === null)) {
+    return <p className="message-text">{item.text}</p>;
   }
 
   switch (item.type) {
