@@ -71,7 +71,15 @@ async function sdkMessage(req, res) {
       success: true,
       conversationId: conversationId || null,
       responseId,
+      // Keep raw text for backward compatibility
       text: textOut,
+      // Provide a UI-friendly message wrapper
+      message: {
+        id: responseId,
+        role: 'assistant',
+        text: textOut,
+        createdAt: new Date().toISOString(),
+      },
       usage: response?.usage || null,
     });
   } catch (error) {

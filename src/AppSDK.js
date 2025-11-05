@@ -309,7 +309,24 @@ function ChatInterface({ user }) {
       }
 
       const data = await response.json();
-      setMessages(Array.isArray(data.conversation) ? data.conversation : []);
+
+      // Build assistant message from server response
+      const assistantMessage = data?.message
+        ? {
+            id: data.message.id,
+            role: data.message.role || 'assistant',
+            content: [{ type: 'text', text: data.message.text || '' }],
+            createdAt: data.message.createdAt || new Date().toISOString(),
+          }
+        : {
+            id: data.responseId || `resp-${Date.now()}`,
+            role: 'assistant',
+            content: [{ type: 'text', text: data?.text || '' }],
+            createdAt: new Date().toISOString(),
+          };
+
+      // Append assistant reply; keep existing messages including optimistic user entry
+      setMessages((prev) => [...prev, assistantMessage]);
       setInputValue('');
       resetUploads();
     } catch (err) {
