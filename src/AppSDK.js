@@ -117,22 +117,16 @@ function App() {
 function ChatInterface({ user }) {
   const [messages, setMessages] = useState([]);
   
-  // --- Simple debug injector ---
   useEffect(() => {
-    // create or overwrite a minimal global helper for console testing
+    console.log("✅ useEffect ran inside this component");
     window.chatDebug = {
       push: (m) => {
-        const msg = {
-          id: 'dbg-' + Date.now(),
-          role: m.role || 'assistant',
-          text: m.text || String(m) || '(empty)',
-        };
+        const msg = { id:'dbg-'+Date.now(), role:m.role||'assistant', text:m.text||String(m)||'(empty)' };
         setMessages(prev => [...prev, msg]);
       },
       clear: () => setMessages([]),
     };
-
-    console.log('[chatDebug] ready');  // visible in browser console after reload
+    console.log("[chatDebug] ready");
   }, []);
   
   const pushRef = useRef(null);
