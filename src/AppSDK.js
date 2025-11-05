@@ -120,7 +120,7 @@ function ChatInterface({ user }) {
   const [messages, setMessages] = useState([]);
   
   useEffect(() => {
-    // expose simple controls in the console
+    // Minimal console helpers
     window.chatDebug = {
       push(m) {
         setMessages(prev => [...prev, {
@@ -135,7 +135,7 @@ function ChatInterface({ user }) {
       log()   { console.log('messages:', messages); },
       len()   { console.log('len:', messages.length); },
     };
-  }, [messages]);
+  }, [messages, setMessages]);
   
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -218,13 +218,13 @@ function ChatInterface({ user }) {
 
   useEffect(() => {
     const handler = (e) => {
-      // push any payload into the chat
+      const d = e.detail || {};
       setMessages(prev => [...prev, {
-        id: e.detail?.id ?? `debug-${Date.now()}`,
-        role: e.detail?.role ?? 'assistant',
-        text: e.detail?.text ?? '👋 debug message',
-        content: [{ type: 'text', text: e.detail?.text ?? '👋 debug message' }],
-        createdAt: e.detail?.createdAt ?? new Date().toISOString(),
+        id: d.id ?? `debug-${Date.now()}`,
+        role: d.role ?? 'assistant',
+        text: d.text ?? '👋 debug message',
+        content: [{ type: 'text', text: d.text ?? '👋 debug message' }],
+        createdAt: d.createdAt ?? new Date().toISOString(),
       }]);
     };
     window.addEventListener('fake-message', handler);
