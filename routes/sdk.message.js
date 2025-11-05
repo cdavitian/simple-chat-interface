@@ -18,9 +18,7 @@ const sdkMessage = async (req, res) => {
       model: process.env.OPENAI_MODEL || 'gpt-5',
       input: [{ role: 'user', content: text }],
       tools: [{ type: 'file_search' }],
-      ...(vectorStoreId
-        ? { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } }
-        : {}),
+      input: [{ role: 'user', content: text, attachments }],
       metadata: { route: 'sdk.message', userId },
     });
 

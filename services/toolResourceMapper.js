@@ -17,9 +17,8 @@ function buildResources({ vectorStoreId, codeInterpreterFileIds } = {}) {
     return {};
   }
 
-  return {
-    tool_resources: toolResources,
-  };
+  // Previously wrapped in { tool_resources: ... }, now return directly
+  return resources;
 }
 
 module.exports = {
