@@ -699,6 +699,7 @@ function formatTimestamp(value) {
   }
 }
 
-export default App;
+export { App };
+export default ChatInterface;
 
 
