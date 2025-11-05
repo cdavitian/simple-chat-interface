@@ -8,6 +8,40 @@ import MenuBar from './components/MenuBar';
 const fileStager = createFileStager();
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
+// --- message shape helpers ---
+
+function normalizeMessage(m) {
+  if (!m) return null;
+  const role = m.role || (m.author ? m.author : "assistant");
+
+  // Prefer a root text. Fallback to common shapes.
+  const text =
+    m.text ??
+    m.content?.[0]?.text ??
+    (Array.isArray(m.content) && m.content.find(x => x?.type === "text")?.text) ??
+    (typeof m.content === "string" ? m.content : "") ??
+    "";
+
+  return {
+    id: m.id ?? `msg-${crypto?.randomUUID?.() ?? Date.now()}`,
+    role,
+    text,
+    content: [{ type: "text", text }], // mirror for any legacy paths
+    createdAt: m.createdAt ?? new Date().toISOString(),
+  };
+}
+
+// Merge by id, keep order = old first then new (replace on id collision)
+function mergeMessages(prev, incoming) {
+  const map = new Map(prev.map(x => [x.id, x]));
+  for (const raw of incoming) {
+    const nm = normalizeMessage(raw);
+    if (!nm) continue;
+    map.set(nm.id, { ...(map.get(nm.id) || {}), ...nm });
+  }
+  return Array.from(map.values());
+}
+
 export async function onCustomToolS3UploadSuccess({ key, filename, bucket }) {
   const { file_id, content_type, category } = await registerUploadedS3Object({ key, filename, bucket });
   fileStager.add(file_id, { content_type, filename, category });
@@ -135,7 +169,7 @@ function ChatInterface({ user }) {
       // Clear messages if conversation is empty (new session)
       // This ensures the message window is cleared when starting fresh
       const conversation = Array.isArray(data.conversation) ? data.conversation : [];
-      setMessages(conversation);
+      setMessages(prev => mergeMessages(prev, conversation));
       
       // Log conversation ID if present (for new sessions)
       if (data.conversationId) {
@@ -254,40 +288,26 @@ function ChatInterface({ user }) {
   }, []);
 
   const handleSend = useCallback(async () => {
-    if (isSending) {
-      return;
-    }
+    if (isSending) return;
 
     const text = inputValue.trim();
     const fileIds = fileStager.list();
 
-    if (!text && fileIds.length === 0) {
-      return;
-    }
+    if (!text && fileIds.length === 0) return;
 
-    const content = [];
-    if (text) {
-      content.push({ type: 'input_text', text });
-    }
-    fileStager.listWithMetadata().forEach(({ file_id, ...metadata }) => {
-      const messageContent = buildMessageContent(file_id, metadata);
-      content.push({
-        type: messageContent.type,
-        file_id: messageContent.file_id,
-        display_name: messageContent.display_name,
-      });
-    });
+    // --- Build a single normalized user bubble (root text + content mirror) ---
 
     const optimisticId = `local-${Date.now()}`;
     const optimisticMessage = {
       id: optimisticId,
       role: 'user',
-      content,
+      text,                                           // <-- NEW: always keep root text
+      content: text ? [{ type: 'text', text }] : [],  // <-- normalize to type:'text'
       createdAt: new Date().toISOString(),
       optimistic: true,
     };
 
-    setMessages((prev) => [...prev, optimisticMessage]);
+    setMessages(prev => mergeMessages(prev, [optimisticMessage]));
     setIsSending(true);
     setSendError(null);
 
@@ -298,8 +318,9 @@ function ChatInterface({ user }) {
         credentials: 'include',
         body: JSON.stringify({
           text,
+          // keep these if your server ignores them; otherwise you can drop them
           staged_file_ids: fileIds,
-          staged_files: fileStager.listWithMetadata()
+          staged_files: fileStager.listWithMetadata(),
         }),
       });
 
@@ -310,29 +331,23 @@ function ChatInterface({ user }) {
 
       const data = await response.json();
 
-      // Build assistant message from server response
-      const assistantMessage = data?.message
-        ? {
-            id: data.message.id,
-            role: data.message.role || 'assistant',
-            content: [{ type: 'text', text: data.message.text || '' }],
-            createdAt: data.message.createdAt || new Date().toISOString(),
-          }
-        : {
-            id: data.responseId || `resp-${Date.now()}`,
-            role: 'assistant',
-            content: [{ type: 'text', text: data?.text || '' }],
-            createdAt: new Date().toISOString(),
-          };
+      // --- Normalize assistant bubble to the same shape (root text + content mirror) ---
+      const assistantText = data?.message?.text ?? data?.text ?? '';
+      const assistantMessage = {
+        id: data?.message?.id ?? data?.responseId ?? `resp-${Date.now()}`,
+        role: 'assistant',
+        text: assistantText,                               // <-- root text used by renderer
+        content: [{ type: 'text', text: assistantText }],  // <-- mirror for any legacy renderer
+        createdAt: data?.message?.createdAt ?? new Date().toISOString(),
+      };
 
-      // Append assistant reply; keep existing messages including optimistic user entry
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages(prev => mergeMessages(prev, [assistantMessage]));
       setInputValue('');
       resetUploads();
     } catch (err) {
       console.error('Failed to send message:', err);
       setSendError(err.message || 'Failed to send message');
-      setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
     } finally {
       setIsSending(false);
     }
@@ -487,7 +502,9 @@ function MessageBubble({ message }) {
         {timestamp && <time className="message-timestamp">{timestamp}</time>}
       </div>
       <div className="message-content">
-        {Array.isArray(message.content) && message.content.length > 0 ? (
+        {message.text ? (
+          <MessageContent item={{ type: 'text', text: message.text }} />
+        ) : Array.isArray(message.content) && message.content.length > 0 ? (
           message.content.map((item, idx) => <MessageContent key={idx} item={item} />)
         ) : (
           <MessageContent item={{ type: 'text', text: JSON.stringify(message, null, 2) }} />
