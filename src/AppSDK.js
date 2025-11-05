@@ -118,22 +118,40 @@ function ChatInterface({ user }) {
   const [messages, setMessages] = useState([]);
   
   const pushRef = useRef(null);
+  const messagesRef = useRef([]);
 
-  // stable setter usable from window/chatDebug
+  // keep a stable "append one message" function
   useEffect(() => {
-    pushRef.current = (m) => setMessages(prev => [...prev, normalizeMessage(m)]);
-  }, [setMessages]);
-
-  // make debug API available in the browser console
-  useEffect(() => {
-    window.chatDebug = {
-      push(m) { pushRef.current?.(m); },
-      clear() { setMessages([]); },
-      len()   { console.log("len:", messages.length); },
-      log()   { console.log("messages:", messages); },
+    pushRef.current = (m) => {
+      const n = normalizeMessage(m);
+      if (!n) return;
+      setMessages(prev => [...prev, n]);
     };
-    console.log("[chatDebug] ready");
+  }, []);
+
+  // sync messages to ref for debug API access
+  useEffect(() => {
+    messagesRef.current = messages;
   }, [messages]);
+
+  // expose a single, durable window.chatDebug exactly once
+  useEffect(() => {
+    // create only if missing, and keep a stable object reference
+    if (!globalThis.chatDebug) {
+      const api = {
+        push(m) { pushRef.current?.(m); },
+        clear: () => setMessages([]),
+        len:   () => { console.log("len:", messagesRef.current.length); },
+        log:   () => { console.log("messages:", messagesRef.current); },
+      };
+      globalThis.chatDebug = api;
+      console.log("%c[chatDebug] ready", "color:#0a0");
+    }
+    // NOTE: we do not reassign window.chatDebug on subsequent renders
+    // so it's always defined for console use.
+    // We intentionally do NOT include `messages` in deps here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -214,9 +232,9 @@ function ChatInterface({ user }) {
     scrollToBottom();
   }, [messages, isSending, scrollToBottom]);
 
-  // optional: event path
+  // optional: fake event injector, once
   useEffect(() => {
-    const handler = (e) => pushRef.current?.(e.detail || { text: "👋 debug message" });
+    const handler = (e) => pushRef.current?.(e.detail || { role: "assistant", text: "👋 debug message" });
     window.addEventListener("fake-message", handler);
     return () => window.removeEventListener("fake-message", handler);
   }, []);
