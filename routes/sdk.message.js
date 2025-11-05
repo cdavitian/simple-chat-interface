@@ -2,7 +2,6 @@ const { openai } = require('../lib/openai');
 const { ThreadService } = require('../services/thread.service');
 const { AttachmentService } = require('../services/attachment.service');
 
-console.log("OpenAI SDK version =", require("openai/package.json").version);
 
 console.log("Has responses API? ", typeof openai.responses?.create === "function");
 
@@ -73,7 +72,6 @@ async function sdkMessage(req, res) {
     const OpenAI = require("openai");
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    console.log("OpenAI SDK version =", require("openai/package.json").version);
     console.log("Using Responses? ", typeof client.responses?.create === "function");
 
     module.exports.sdkMessage = async (req, res) => {
