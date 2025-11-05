@@ -69,68 +69,63 @@ async function sdkMessage(req, res) {
 
         // routes/sdk.message.js
 
-    const OpenAI = require("openai");
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    // routes/sdk.message.js
+const OpenAI = require("openai");
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    console.log("Using Responses? ", typeof client.responses?.create === "function");
+// safe sanity logs (no package.json import)
+console.log("Has Responses API? ", typeof client.responses?.create === "function");
 
-    module.exports.sdkMessage = async (req, res) => {
-      try {
-        const { text } = req.body || {};
-        const userId = req.session?.user?.id;
-        const vectorStoreId = req.session?.vectorStoreId;
+module.exports.sdkMessage = async (req, res) => {
+  try {
+    // 1) inputs
+    const { text } = req.body || {};
+    const userId = req.session?.user?.id;
+    const vectorStoreId = req.session?.vectorStoreId;
 
-        if (!text) return res.status(400).json({ error: "Missing text" });
+    if (!text || typeof text !== "string") {
+      return res.status(400).json({ error: "Missing text" });
+    }
 
-        const response = await client.responses.create({
-          model: process.env.OPENAI_MODEL || "gpt-5",
-          input: [{ role: "user", content: text }],
-          tools: [{ type: "file_search" }],
-          ...(vectorStoreId
-            ? { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } }
-            : {}),
-          metadata: { route: "sdk.message", userId },
-        });
+    // 2) call Responses API (use 'ai' to avoid shadowing Express 'res')
+    const ai = await client.responses.create({
+      model: process.env.OPENAI_MODEL || "gpt-5",
+      input: [{ role: "user", content: text }],
+      tools: [{ type: "file_search" }],
+      ...(vectorStoreId
+        ? { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } }
+        : {}),
+      metadata: { route: "sdk.message", userId },
+    });
 
-        const out =
-          response.output_text ??
-          response.output?.[0]?.content?.[0]?.text?.value ??
-          "";
-
-        res.json({ success: true, response_id: response.id, text: out });
-      } catch (err) {
-        console.error("sdk.message error:", err);
-        res.status(err.status || 500).json({ error: String(err) });
-      }
-    };
-
-
-
-    const responseId = response?.id || null;
-    const textOut = typeof response?.output_text === 'string' ? response.output_text : '';
+    // 3) normalize output
+    const out =
+      ai.output_text ??
+      ai.output?.[0]?.content?.[0]?.text?.value ??
+      "";
 
     return res.json({
       success: true,
-      conversationId: conversationId || null,
-      responseId,
-      // Keep raw text for backward compatibility
-      text: textOut,
-      // Provide a UI-friendly message wrapper
+      response_id: ai.id,
+      text: out,
       message: {
-        id: responseId,
-        role: 'assistant',
-        text: textOut,
+        id: ai.id,
+        role: "assistant",
+        text: out,
         createdAt: new Date().toISOString(),
       },
-      usage: response?.usage || null,
+      usage: ai?.usage || null,
     });
-  } catch (error) {
-    console.error('sdk.message error:', error);
-    return res.status(500).json({
-      error: error?.message || 'server_error',
+  } catch (err) {
+    console.error("[/api/sdk/message] ERROR:", err?.stack || err);
+    const status = err?.status || 500;
+    return res.status(status).json({
+      error: err?.error?.message || err?.message || String(err),
+      requestId: err?.request_id || err?.requestId,
     });
   }
-}
+};
+
 
 module.exports = {
   sdkMessage,
