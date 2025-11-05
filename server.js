@@ -1664,7 +1664,27 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
                 delete sessionConfig.chatkit_configuration;
             }
         }
-        
+        // ---- harden the payload & prove what's being sent ----
+if (sessionConfig.thread) {
+    console.warn("⚠️ Removing unexpected sessionConfig.thread before create()");
+    delete sessionConfig.thread;
+  }
+  
+  // Ensure workflow is an object with an id (defensive)
+  if (typeof sessionConfig.workflow === "string") {
+    sessionConfig.workflow = { id: sessionConfig.workflow };
+  }
+  
+  // Optional: clamp tool_resources shape
+  if (sessionConfig.tool_resources?.file_search?.vector_store_ids) {
+    const ids = sessionConfig.tool_resources.file_search.vector_store_ids;
+    sessionConfig.tool_resources.file_search.vector_store_ids = Array.isArray(ids) ? ids : [ids];
+  }
+  
+  // Log exactly what we send (keys + pretty JSON)
+  console.log("session.create payload keys:", Object.keys(sessionConfig));
+  console.log("session.create payload:", JSON.stringify(sessionConfig, null, 2));
+  
         const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
         console.log('Session created successfully:', {
