@@ -3152,6 +3152,15 @@ app.get('/', (req, res) => {
     res.redirect('/homepage');
 });
 
+// Serve static assets normally
+app.use(express.static(path.join(__dirname, "public")));
+
+// For SPA routes, always send a fresh index.html
+app.get("*", (req, res) => {
+	res.set("Cache-Control", "no-store");
+	res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 // Start the server
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Chat interface server running on port ${PORT}`);
