@@ -3,6 +3,7 @@ const { ThreadService } = require('../services/thread.service');
 const { AttachmentService } = require('../services/attachment.service');
 
 async function sdkMessage(req, res) {
+  console.log('🚀 SDK MESSAGE: Request received');
   const body = req.body || {};
   const userId = req.session?.user?.id || 'anonymous';
   const threadId = body.thread_id || `sdk:${userId}`;
@@ -10,6 +11,8 @@ async function sdkMessage(req, res) {
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   const stagedFileIds = Array.isArray(body.staged_file_ids) ? body.staged_file_ids : [];
   const stagedFiles = Array.isArray(body.staged_files) ? body.staged_files : [];
+  
+  console.log(`📝 SDK MESSAGE: text="${text.substring(0, 50)}", user=${userId}`);
 
   const allFileIds = new Set();
 

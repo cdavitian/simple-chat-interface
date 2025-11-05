@@ -361,6 +361,12 @@ const requireAuth = (req, res, next) => {
 // Helper function to get user type from database
 const getUserType = async (email) => {
     try {
+        // Check if PostgreSQL logger is available
+        if (!loggingConfig.logger || !loggingConfig.logger.pool) {
+            console.log('PostgreSQL not available, defaulting user type to New');
+            return 'New';
+        }
+        
         const sql = `
             SELECT user_type 
             FROM users 
@@ -377,19 +383,22 @@ const getUserType = async (email) => {
 // Middleware to check user type and redirect accordingly
 const checkUserPermissions = async (req, res, next) => {
     if (!req.session.user) {
+        console.log('❌ checkUserPermissions: No session user, redirecting to login');
         return res.redirect('/login');
     }
     
     try {
+        console.log(`✓ checkUserPermissions: Checking permissions for ${req.session.user.email}`);
         const userType = await getUserType(req.session.user.email);
         req.session.user.userType = userType;
         
         // Store user type in session for easy access
         req.session.userType = userType;
         
+        console.log(`✓ checkUserPermissions: User type set to ${userType}`);
         next();
     } catch (error) {
-        console.error('Error checking user permissions:', error);
+        console.error('❌ checkUserPermissions: Error checking user permissions:', error);
         req.session.user.userType = 'New';
         req.session.userType = 'New';
         next();
