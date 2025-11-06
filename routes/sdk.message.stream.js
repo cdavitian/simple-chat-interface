@@ -38,7 +38,7 @@ async function sdkMessageStream(req, res) {
     const vectorStoreId = thread.vector_store_id || process.env.VECTOR_STORE_ID || null;
     const tools = [];
     if (vectorStoreId) {
-      tools.push({ type: 'file_search', vector_store_ids: [vectorStoreId] });
+      tools.push({ type: 'file_search' });
     }
     if (stagedFileIds.length > 0) {
       tools.push({ type: 'code_interpreter' });
@@ -47,13 +47,16 @@ async function sdkMessageStream(req, res) {
     const baseRequest = {
       model: process.env.OPENAI_MODEL || 'gpt-5',
       input: [
-        {
-          role: 'user',
-          content: text || 'Please review the uploaded files.',
-        },
-      ],
-      tools,
-    };
+              {
+                role: 'user',
+                content: [{ type: 'input_text', text: text || 'Please review the uploaded files.' }],
+              },
+            ],
+            tools,
+            tool_resources: vectorStoreId
+              ? { file_search: { vector_store_ids: [vectorStoreId] } }
+              : undefined,
+          };
 
     if (thread.conversation_id) {
       baseRequest.conversation = thread.conversation_id;

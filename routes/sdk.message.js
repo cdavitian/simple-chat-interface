@@ -5,6 +5,16 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 module.exports.sdkMessage = async (req, res) => {
   try {
     const { text } = req.body || {};
+    const userId = req.session?.user?.id || 'anonymous';
+    const vectorStoreId = req.session?.boundVectorStoreId || req.session?.vectorStoreId || null;
+     // --- Initialize or update simple session memory ---
+    req.session.chatHistory ||= [];
+    // Add the new user message
+    req.session.chatHistory.push({
+      role: "user",
+      content: [{ type: "input_text", text }],
+    });
+    
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: 'Missing text' });
     }
@@ -31,9 +41,20 @@ module.exports.sdkMessage = async (req, res) => {
     // 3) Call Responses API with the full context window
     const ai = await client.responses.create({
       model: process.env.OPENAI_MODEL || 'gpt-5',
-      input: window, // full history
-      metadata: { route: 'sdk.message' }
+      tools: [{ type: 'file_search' }],
+      tool_resources: vectorStoreId
+             ? { file_search: { vector_store_ids: [vectorStoreId] } }
+             : undefined,
+             input: req.session.chatHistory,
+      metadata: { route: 'sdk.message', userId }
     });
+     // --- Capture assistant reply into session history ---
+    if (ai.output_text) {
+        req.session.chatHistory.push({
+          role: "assistant",
+          content: [{ type: "output_text", text: ai.output_text }],
+        });
+      }
 
     // 4) Normalize assistant text
     const messageText =
