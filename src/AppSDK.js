@@ -5,9 +5,6 @@ import { buildMessageContent } from './utils/fileTypeDetector';
 import { registerUploadedS3Object } from './api';
 import MenuBar from './components/MenuBar';
 
-// PROVE THIS FILE LOADED IN BROWSER
-console.log("[BOOT] AppSDK.js loaded");
-
 const fileStager = createFileStager();
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
@@ -119,93 +116,6 @@ function App() {
 
 function ChatInterface({ user }) {
   const [messages, setMessages] = useState([]);
-
-// PROVE THIS COMPONENT MOUNTED + create chatDebug
-
-useEffect(() => {
-
-  // 1) Big on-screen banner so you can't miss it
-
-  const tag = "STAGING BUILD " + new Date().toISOString();
-
-  const el = document.createElement("div");
-
-  el.id = "build-banner";
-
-  el.textContent = tag;
-
-  el.style.cssText = "position:fixed;z-index:99999;top:0;left:0;padding:6px 10px;background:#222;color:#0f0;font:12px/1.2 monospace";
-
-  document.body.appendChild(el);
-
-  // 2) Console markers
-
-  console.log("[MOUNT] ChatInterface render");
-
-  console.log("[BUILD TAG]", tag);
-
-  // 3) Minimal debug helper
-
-  window.chatDebug = {
-
-    push: (m) => {
-
-      const msg = { id: 'dbg-' + Date.now(), role: m?.role || 'assistant', text: m?.text || String(m) || '(empty)' };
-
-      setMessages(prev => [...prev, msg]);
-
-    },
-
-    clear: () => setMessages([]),
-
-  };
-
-  console.log("[chatDebug] ready");
-
-  return () => el.remove();
-
-}, []);
-
-  // Optional: show count each render (helps confirm state updates)
-  useEffect(() => {
-    console.log("[messages] count =", messages.length);
-  }, [messages]);
-  
-  const pushRef = useRef(null);
-  const messagesRef = useRef([]);
-
-  // keep a stable "append one message" function
-  useEffect(() => {
-    pushRef.current = (m) => {
-      const n = normalizeMessage(m);
-      if (!n) return;
-      setMessages(prev => [...prev, n]);
-    };
-  }, []);
-
-  // sync messages to ref for debug API access
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-
-  // expose a single, durable window.chatDebug exactly once
-  useEffect(() => {
-    // create only if missing, and keep a stable object reference
-    if (!globalThis.chatDebug) {
-      const api = {
-        push(m) { pushRef.current?.(m); },
-        clear: () => setMessages([]),
-        len:   () => { console.log("len:", messagesRef.current.length); },
-        log:   () => { console.log("messages:", messagesRef.current); },
-      };
-      globalThis.chatDebug = api;
-      console.log("%c[chatDebug] ready", "color:#0a0");
-    }
-    // NOTE: we do not reassign window.chatDebug on subsequent renders
-    // so it's always defined for console use.
-    // We intentionally do NOT include `messages` in deps here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -285,13 +195,6 @@ useEffect(() => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isSending, scrollToBottom]);
-
-  // optional: fake event injector, once
-  useEffect(() => {
-    const handler = (e) => pushRef.current?.(e.detail || { role: "assistant", text: "👋 debug message" });
-    window.addEventListener("fake-message", handler);
-    return () => window.removeEventListener("fake-message", handler);
-  }, []);
 
   const handleFileUpload = useCallback(
     async (file) => {
@@ -563,8 +466,6 @@ useEffect(() => {
 }
 
 function MessageList({ messages, currentUser }) {
-  console.log("[MessageList] messages length =", messages?.length);
-
   if (!messages.length) {
     return (
       <div className="empty-state">
