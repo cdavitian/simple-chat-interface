@@ -16,6 +16,9 @@ module.exports.sdkMessage = async (req, res) => {
       return res.status(400).json({ error: "Missing text" });
     }
 
+    console.log("Vector store bound:", vectorStoreId);
+    console.log("Using File Search tools:", !!vectorStoreId);
+
     // 2) call Responses API (use 'ai' to avoid shadowing Express 'res')
     const ai = await client.responses.create({
       model: process.env.OPENAI_MODEL || "gpt-5",
@@ -25,7 +28,9 @@ module.exports.sdkMessage = async (req, res) => {
         ? { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } }
         : {}),
       metadata: { route: "sdk.message", userId },
-    });
+    },
+    { headers: { "OpenAI-Version": "2023-12-01" } } // <-- per-call override
+  );
 
     // 3) normalize output
     const out =
