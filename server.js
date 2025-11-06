@@ -3467,6 +3467,21 @@ app.get('/chat', requireAuth, checkUserPermissions, (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
+// ChatKit alias route - same as /chat
+app.get('/chatkit', requireAuth, checkUserPermissions, (req, res) => {
+    const userType = req.session.user.userType || req.session.userType;
+    
+    // Block New users from accessing chat
+    if (userType === 'New') {
+        return res.redirect('/new-user-home');
+    }
+    
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 // Chat SDK interface route - serve React SDK app (restricted to Admin and Standard users)
 app.get('/chat-sdk', requireAuth, checkUserPermissions, (req, res) => {
     const userType = req.session.user.userType || req.session.userType;
