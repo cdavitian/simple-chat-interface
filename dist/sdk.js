@@ -1303,10 +1303,52 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     box-shadow: 0 12px 24px rgba(102, 126, 234, 0.25);
 }
 
+.send-button-compact {
+    padding: 12px 16px;
+    min-width: auto;
+}
+
 .send-button:disabled {
     cursor: not-allowed;
     opacity: 0.6;
     box-shadow: none;
+}
+
+.reset-button {
+    border: none;
+    border-radius: 16px;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e2e8f0;
+    color: #0f172a;
+    min-width: 48px;
+    height: 48px;
+}
+
+.reset-button:hover:not(:disabled) {
+    background: #cbd5e1;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.reset-button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.reset-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.reset-button svg {
+    width: 20px;
+    height: 20px;
 }
 
 .banner {
@@ -1427,10 +1469,12 @@ openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
     .composer-controls {
         flex-direction: column;
         align-items: stretch;
+        gap: 8px;
     }
 
     .icon-button,
-    .send-button {
+    .send-button,
+    .reset-button {
         width: 100%;
     }
 }
@@ -2137,20 +2181,20 @@ function onCustomToolS3UploadSuccess(_x) {
   return _onCustomToolS3UploadSuccess.apply(this, arguments);
 }
 function _onCustomToolS3UploadSuccess() {
-  _onCustomToolS3UploadSuccess = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee5(_ref) {
+  _onCustomToolS3UploadSuccess = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee6(_ref) {
     var key, filename, bucket, _yield$registerUpload, file_id, content_type, category;
-    return AppSDK_regenerator().w(function (_context5) {
-      while (1) switch (_context5.n) {
+    return AppSDK_regenerator().w(function (_context6) {
+      while (1) switch (_context6.n) {
         case 0:
           key = _ref.key, filename = _ref.filename, bucket = _ref.bucket;
-          _context5.n = 1;
+          _context6.n = 1;
           return registerUploadedS3Object({
             key: key,
             filename: filename,
             bucket: bucket
           });
         case 1:
-          _yield$registerUpload = _context5.v;
+          _yield$registerUpload = _context6.v;
           file_id = _yield$registerUpload.file_id;
           content_type = _yield$registerUpload.content_type;
           category = _yield$registerUpload.category;
@@ -2159,9 +2203,9 @@ function _onCustomToolS3UploadSuccess() {
             filename: filename,
             category: category
           });
-          return _context5.a(2, file_id);
+          return _context6.a(2, file_id);
       }
-    }, _callee5);
+    }, _callee6);
   }));
   return _onCustomToolS3UploadSuccess.apply(this, arguments);
 }
@@ -2611,6 +2655,70 @@ function ChatInterface(_ref3) {
       handleSend();
     }
   }, [handleSend]);
+  var handleReset = (0,react.useCallback)(/*#__PURE__*/AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee5() {
+    var response, errorText, data, _t5;
+    return AppSDK_regenerator().w(function (_context5) {
+      while (1) switch (_context5.p = _context5.n) {
+        case 0:
+          if (!isSending) {
+            _context5.n = 1;
+            break;
+          }
+          return _context5.a(2);
+        case 1:
+          _context5.p = 1;
+          setIsSending(true);
+          setSendError(null);
+
+          // Call the reset endpoint
+          _context5.n = 2;
+          return fetch('/api/sdk/conversation/reset', {
+            method: 'POST',
+            credentials: 'include'
+          });
+        case 2:
+          response = _context5.v;
+          if (response.ok) {
+            _context5.n = 4;
+            break;
+          }
+          _context5.n = 3;
+          return response.text();
+        case 3:
+          errorText = _context5.v;
+          throw new Error(errorText || "Failed to reset conversation (".concat(response.status, ")"));
+        case 4:
+          _context5.n = 5;
+          return response.json();
+        case 5:
+          data = _context5.v;
+          // Clear messages immediately
+          setMessages([]);
+
+          // Clear input and staged files
+          setInputValue('');
+          resetUploads();
+
+          // Reload the conversation (which should be empty now)
+          _context5.n = 6;
+          return loadConversation();
+        case 6:
+          _context5.n = 8;
+          break;
+        case 7:
+          _context5.p = 7;
+          _t5 = _context5.v;
+          console.error('Failed to reset conversation:', _t5);
+          setSendError(_t5.message || 'Failed to reset conversation');
+        case 8:
+          _context5.p = 8;
+          setIsSending(false);
+          return _context5.f(8);
+        case 9:
+          return _context5.a(2);
+      }
+    }, _callee5, null, [[1, 7, 8, 9]]);
+  })), [isSending, resetUploads, loadConversation]);
   return /*#__PURE__*/react.createElement("div", {
     className: "chat-sdk-container"
   }, /*#__PURE__*/react.createElement("div", {
@@ -2661,11 +2769,38 @@ function ChatInterface(_ref3) {
     rows: 1,
     disabled: isSending
   }), /*#__PURE__*/react.createElement("button", {
-    className: "send-button",
+    className: "send-button send-button-compact",
     type: "button",
     onClick: handleSend,
     disabled: isSending
-  }, isSending ? 'Sending…' : 'Send'))), /*#__PURE__*/react.createElement("input", {
+  }, isSending ? 'Sending…' : 'Send'), /*#__PURE__*/react.createElement("button", {
+    className: "reset-button",
+    type: "button",
+    onClick: handleReset,
+    disabled: isSending,
+    title: "Start new conversation"
+  }, /*#__PURE__*/react.createElement("svg", {
+    width: "20",
+    height: "20",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    xmlns: "http://www.w3.org/2000/svg"
+  }, /*#__PURE__*/react.createElement("rect", {
+    x: "3",
+    y: "3",
+    width: "18",
+    height: "18",
+    rx: "3",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    fill: "none"
+  }), /*#__PURE__*/react.createElement("path", {
+    d: "M8 14L14 8M14 8L11 8M14 8L14 11",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }))))), /*#__PURE__*/react.createElement("input", {
     ref: fileInputRef,
     type: "file",
     accept: ".pdf,.png,.jpg,.jpeg,.csv,.xls,.xlsx",
@@ -2675,9 +2810,9 @@ function ChatInterface(_ref3) {
     onChange: onFileSelect
   }));
 }
-function MessageList(_ref9) {
-  var messages = _ref9.messages,
-    currentUser = _ref9.currentUser;
+function MessageList(_ref0) {
+  var messages = _ref0.messages,
+    currentUser = _ref0.currentUser;
   if (!messages.length) {
     return /*#__PURE__*/react.createElement("div", {
       className: "empty-state"
@@ -2692,8 +2827,8 @@ function MessageList(_ref9) {
     });
   }));
 }
-function MessageBubble(_ref0) {
-  var message = _ref0.message;
+function MessageBubble(_ref1) {
+  var message = _ref1.message;
   var roleClass = getRoleClass(message.role);
   var timestamp = message.createdAt ? formatTimestamp(message.createdAt) : null;
   return /*#__PURE__*/react.createElement("li", {
@@ -2718,8 +2853,8 @@ function MessageBubble(_ref0) {
     }
   })));
 }
-function MessageContent(_ref1) {
-  var item = _ref1.item;
+function MessageContent(_ref10) {
+  var item = _ref10.item;
   if (!item) {
     return null;
   }
@@ -2750,9 +2885,9 @@ function MessageContent(_ref1) {
       }, JSON.stringify(item, null, 2));
   }
 }
-function StagedFileList(_ref10) {
-  var files = _ref10.files,
-    onRemove = _ref10.onRemove;
+function StagedFileList(_ref11) {
+  var files = _ref11.files,
+    onRemove = _ref11.onRemove;
   if (!files.length) {
     return null;
   }
@@ -2770,11 +2905,11 @@ function StagedFileList(_ref10) {
     }, "Remove"));
   }));
 }
-function Banner(_ref11) {
-  var _ref11$type = _ref11.type,
-    type = _ref11$type === void 0 ? 'info' : _ref11$type,
-    message = _ref11.message,
-    onDismiss = _ref11.onDismiss;
+function Banner(_ref12) {
+  var _ref12$type = _ref12.type,
+    type = _ref12$type === void 0 ? 'info' : _ref12$type,
+    message = _ref12.message,
+    onDismiss = _ref12.onDismiss;
   if (!message) {
     return null;
   }
