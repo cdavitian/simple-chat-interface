@@ -13,6 +13,9 @@ const mime = require('mime-types');
 const LoggingConfig = require('./logging-config');
 const pgSession = require('connect-pg-simple');
 const fs = require('fs').promises;
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 require('dotenv').config();
 
 const app = express();
@@ -2854,11 +2857,53 @@ app.post('/api/admin/version/increment', requireAuth, checkUserPermissions, requ
         // Write updated version to file
         await fs.writeFile(versionPath, JSON.stringify(versionData, null, 2));
         
+        // Get description from request body, default to empty string
+        let description = req.body.description || req.body.message || '';
+        
+        // Remove "chore: set version to" if present
+        description = description.replace(/^chore:\s*set\s+version\s+to\s*/i, '').trim();
+        
+        // If no description provided, use a default
+        if (!description) {
+            description = 'Version update';
+        }
+        
+        // Format commit message: v[version number]: [description]
+        const commitMessage = `v${newVersion}: ${description}`;
+        
+        // Commit and push to git
+        try {
+            // Add version.json to staging
+            await execAsync('git add version.json', { cwd: __dirname });
+            
+            // Commit with the formatted message (escape quotes and special characters)
+            const escapedMessage = commitMessage.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
+            await execAsync(`git commit -m "${escapedMessage}"`, { cwd: __dirname });
+            
+            // Push to remote
+            await execAsync('git push', { cwd: __dirname });
+            
+            console.log(`Version committed and pushed: ${commitMessage}`);
+        } catch (gitError) {
+            console.error('Git commit/push failed:', gitError);
+            // Continue even if git operations fail - version was still updated
+            // Return a warning in the response
+            return res.json({
+                success: true,
+                previousVersion: `v${currentVersion.toFixed(2)}`,
+                newVersion: `v${newVersion}`,
+                message: `Version incremented from v${currentVersion.toFixed(2)} to v${newVersion}`,
+                warning: 'Version updated but git commit/push failed',
+                gitError: gitError.message
+            });
+        }
+        
         res.json({
             success: true,
             previousVersion: `v${currentVersion.toFixed(2)}`,
             newVersion: `v${newVersion}`,
-            message: `Version incremented from v${currentVersion.toFixed(2)} to v${newVersion}`
+            message: `Version incremented from v${currentVersion.toFixed(2)} to v${newVersion}`,
+            commitMessage: commitMessage
         });
     } catch (error) {
         console.error('Failed to increment version:', error);

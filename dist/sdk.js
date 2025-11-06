@@ -2,6 +2,148 @@
 /******/ 	"use strict";
 /******/ 	var __webpack_modules__ = ({
 
+/***/ 56:
+/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+
+
+
+/* istanbul ignore next  */
+function setAttributesWithoutAttributes(styleElement) {
+  var nonce =  true ? __webpack_require__.nc : 0;
+  if (nonce) {
+    styleElement.setAttribute("nonce", nonce);
+  }
+}
+module.exports = setAttributesWithoutAttributes;
+
+/***/ }),
+
+/***/ 72:
+/***/ ((module) => {
+
+
+
+var stylesInDOM = [];
+function getIndexByIdentifier(identifier) {
+  var result = -1;
+  for (var i = 0; i < stylesInDOM.length; i++) {
+    if (stylesInDOM[i].identifier === identifier) {
+      result = i;
+      break;
+    }
+  }
+  return result;
+}
+function modulesToDom(list, options) {
+  var idCountMap = {};
+  var identifiers = [];
+  for (var i = 0; i < list.length; i++) {
+    var item = list[i];
+    var id = options.base ? item[0] + options.base : item[0];
+    var count = idCountMap[id] || 0;
+    var identifier = "".concat(id, " ").concat(count);
+    idCountMap[id] = count + 1;
+    var indexByIdentifier = getIndexByIdentifier(identifier);
+    var obj = {
+      css: item[1],
+      media: item[2],
+      sourceMap: item[3],
+      supports: item[4],
+      layer: item[5]
+    };
+    if (indexByIdentifier !== -1) {
+      stylesInDOM[indexByIdentifier].references++;
+      stylesInDOM[indexByIdentifier].updater(obj);
+    } else {
+      var updater = addElementStyle(obj, options);
+      options.byIndex = i;
+      stylesInDOM.splice(i, 0, {
+        identifier: identifier,
+        updater: updater,
+        references: 1
+      });
+    }
+    identifiers.push(identifier);
+  }
+  return identifiers;
+}
+function addElementStyle(obj, options) {
+  var api = options.domAPI(options);
+  api.update(obj);
+  var updater = function updater(newObj) {
+    if (newObj) {
+      if (newObj.css === obj.css && newObj.media === obj.media && newObj.sourceMap === obj.sourceMap && newObj.supports === obj.supports && newObj.layer === obj.layer) {
+        return;
+      }
+      api.update(obj = newObj);
+    } else {
+      api.remove();
+    }
+  };
+  return updater;
+}
+module.exports = function (list, options) {
+  options = options || {};
+  list = list || [];
+  var lastIdentifiers = modulesToDom(list, options);
+  return function update(newList) {
+    newList = newList || [];
+    for (var i = 0; i < lastIdentifiers.length; i++) {
+      var identifier = lastIdentifiers[i];
+      var index = getIndexByIdentifier(identifier);
+      stylesInDOM[index].references--;
+    }
+    var newLastIdentifiers = modulesToDom(newList, options);
+    for (var _i = 0; _i < lastIdentifiers.length; _i++) {
+      var _identifier = lastIdentifiers[_i];
+      var _index = getIndexByIdentifier(_identifier);
+      if (stylesInDOM[_index].references === 0) {
+        stylesInDOM[_index].updater();
+        stylesInDOM.splice(_index, 1);
+      }
+    }
+    lastIdentifiers = newLastIdentifiers;
+  };
+};
+
+/***/ }),
+
+/***/ 113:
+/***/ ((module) => {
+
+
+
+/* istanbul ignore next  */
+function styleTagTransform(css, styleElement) {
+  if (styleElement.styleSheet) {
+    styleElement.styleSheet.cssText = css;
+  } else {
+    while (styleElement.firstChild) {
+      styleElement.removeChild(styleElement.firstChild);
+    }
+    styleElement.appendChild(document.createTextNode(css));
+  }
+}
+module.exports = styleTagTransform;
+
+/***/ }),
+
+/***/ 159:
+/***/ ((module) => {
+
+
+
+/* istanbul ignore next  */
+function insertStyleElement(options) {
+  var element = document.createElement("style");
+  options.setAttributes(element, options.attributes);
+  options.insert(element, options.options);
+  return element;
+}
+module.exports = insertStyleElement;
+
+/***/ }),
+
 /***/ 287:
 /***/ ((__unused_webpack_module, exports) => {
 
@@ -35,6 +177,97 @@ exports.useMemo=function(a,b){return U.current.useMemo(a,b)};exports.useReducer=
 
 /***/ }),
 
+/***/ 314:
+/***/ ((module) => {
+
+
+
+/*
+  MIT License http://www.opensource.org/licenses/mit-license.php
+  Author Tobias Koppers @sokra
+*/
+module.exports = function (cssWithMappingToString) {
+  var list = [];
+
+  // return the list of modules as css string
+  list.toString = function toString() {
+    return this.map(function (item) {
+      var content = "";
+      var needLayer = typeof item[5] !== "undefined";
+      if (item[4]) {
+        content += "@supports (".concat(item[4], ") {");
+      }
+      if (item[2]) {
+        content += "@media ".concat(item[2], " {");
+      }
+      if (needLayer) {
+        content += "@layer".concat(item[5].length > 0 ? " ".concat(item[5]) : "", " {");
+      }
+      content += cssWithMappingToString(item);
+      if (needLayer) {
+        content += "}";
+      }
+      if (item[2]) {
+        content += "}";
+      }
+      if (item[4]) {
+        content += "}";
+      }
+      return content;
+    }).join("");
+  };
+
+  // import a list of modules into the list
+  list.i = function i(modules, media, dedupe, supports, layer) {
+    if (typeof modules === "string") {
+      modules = [[null, modules, undefined]];
+    }
+    var alreadyImportedModules = {};
+    if (dedupe) {
+      for (var k = 0; k < this.length; k++) {
+        var id = this[k][0];
+        if (id != null) {
+          alreadyImportedModules[id] = true;
+        }
+      }
+    }
+    for (var _k = 0; _k < modules.length; _k++) {
+      var item = [].concat(modules[_k]);
+      if (dedupe && alreadyImportedModules[item[0]]) {
+        continue;
+      }
+      if (typeof layer !== "undefined") {
+        if (typeof item[5] === "undefined") {
+          item[5] = layer;
+        } else {
+          item[1] = "@layer".concat(item[5].length > 0 ? " ".concat(item[5]) : "", " {").concat(item[1], "}");
+          item[5] = layer;
+        }
+      }
+      if (media) {
+        if (!item[2]) {
+          item[2] = media;
+        } else {
+          item[1] = "@media ".concat(item[2], " {").concat(item[1], "}");
+          item[2] = media;
+        }
+      }
+      if (supports) {
+        if (!item[4]) {
+          item[4] = "".concat(supports);
+        } else {
+          item[1] = "@supports (".concat(item[4], ") {").concat(item[1], "}");
+          item[4] = supports;
+        }
+      }
+      list.push(item);
+    }
+  };
+  return list;
+};
+
+/***/ }),
+
 /***/ 338:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
@@ -46,6 +279,167 @@ if (true) {
   exports.hydrateRoot = m.hydrateRoot;
 } else // removed by dead control flow
 { var i; }
+
+
+/***/ }),
+
+/***/ 462:
+/***/ ((module, __webpack_exports__, __webpack_require__) => {
+
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   A: () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(601);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(314);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__);
+// Imports
+
+
+var ___CSS_LOADER_EXPORT___ = _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default()((_node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default()));
+// Module
+___CSS_LOADER_EXPORT___.push([module.id, `.menu-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10000;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    height: 72px; /* Fixed height for larger logo */
+}
+
+.menu-bar-logo {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+}
+
+.menu-bar-logo:hover {
+    opacity: 0.8;
+}
+
+.menu-bar-logo svg {
+    height: 48px;
+    width: auto;
+}
+
+.menu-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.menu-bar .user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 12px;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+}
+
+.menu-bar .user-photo {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.menu-bar .user-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: white;
+}
+
+.menu-bar .admin-btn,
+.menu-bar .logout-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.menu-bar .admin-btn:hover,
+.menu-bar .logout-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.menu-bar .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.menu-bar .status-dot {
+    width: 8px;
+    height: 8px;
+    background: #4ade80;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.menu-bar .status-text {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Add padding to body content to account for fixed menu bar */
+body.has-menu-bar {
+    padding-top: 56px;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .menu-bar {
+        padding: 10px 16px;
+    }
+    
+    .menu-bar-logo svg {
+        height: 24px;
+    }
+    
+    .menu-bar-right {
+        gap: 12px;
+    }
+    
+    .menu-bar .user-info {
+        padding: 6px 10px;
+    }
+    
+    .menu-bar .user-name {
+        font-size: 12px;
+    }
+    
+    .menu-bar .admin-btn,
+    .menu-bar .logout-btn {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+}
+
+`, ""]);
+// Exports
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
 
 
 /***/ }),
@@ -418,6 +812,787 @@ exports.unstable_renderSubtreeIntoContainer=function(a,b,c,d){if(!ol(c))throw Er
 
 /***/ }),
 
+/***/ 601:
+/***/ ((module) => {
+
+
+
+module.exports = function (i) {
+  return i[1];
+};
+
+/***/ }),
+
+/***/ 626:
+/***/ ((module, __webpack_exports__, __webpack_require__) => {
+
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   A: () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(601);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(314);
+/* harmony import */ var _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__);
+// Imports
+
+
+var ___CSS_LOADER_EXPORT___ = _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default()((_node_modules_css_loader_dist_runtime_noSourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default()));
+// Module
+___CSS_LOADER_EXPORT___.push([module.id, `* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Ensure ChatKit elements are not hidden by global styles */
+openai-chatkit {
+    display: block !important;
+    width: 100% !important;
+    height: 600px !important;
+    min-height: 600px !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.app-container {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 800px;
+    height: 700px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-top: 72px; /* Ensure content starts below fixed menu bar */
+}
+
+.app-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 12px;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+}
+
+.user-photo {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.user-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: white;
+}
+
+.admin-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.admin-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.logout-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.logout-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.app-header h1 {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    background: #4ade80;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-text {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.chatkit-container {
+    flex: 1;
+    display: block;
+    overflow: visible;
+    min-height: 600px;
+    height: 600px;
+    width: 100%;
+    position: relative;
+}
+
+/* Loading styles */
+.loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 16px;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading p {
+    color: #666;
+    font-size: 16px;
+}
+
+/* Error message styling */
+.error-message {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #ff4444;
+    color: white;
+    padding: 20px;
+    border-radius: 8px;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* ChatKit theming and customization */
+openai-chatkit {
+    --chatkit-primary-color: #667eea;
+    --chatkit-background-color: #ffffff;
+    --chatkit-text-color: #333333;
+    --chatkit-border-color: #e2e8f0;
+    --chatkit-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Custom styling for ChatKit messages */
+openai-chatkit::part(message) {
+    border-radius: 18px;
+    margin: 8px 0;
+}
+
+openai-chatkit::part(user-message) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+openai-chatkit::part(assistant-message) {
+    background: #f1f5f9;
+    color: #333333;
+}
+
+/* Hide composer - place in your app's CSS loaded after the component */
+openai-chatkit::part(composer) { 
+    display: none !important; 
+}
+
+/* Hide composer input and send button */
+openai-chatkit::part(input),
+openai-chatkit::part(send-button) {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Scrollbar styling for ChatKit */
+openai-chatkit::part(messages-container) {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+openai-chatkit::part(messages-container)::-webkit-scrollbar {
+    width: 6px;
+}
+
+openai-chatkit::part(messages-container)::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+}
+
+openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+openai-chatkit::part(messages-container)::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+.chat-sdk-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+    background: #f8fafc;
+    overflow: hidden;
+}
+
+.message-pane {
+    /* Make this a true flex scroll area */
+    flex: 1 1 0;
+    height: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 24px;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+    /* Custom scrollbar styling */
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.message-pane::-webkit-scrollbar {
+    width: 8px;
+    display: block;
+}
+
+.message-pane::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+.message-pane::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.message-pane::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+.message-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.message-bubble {
+    max-width: 70%;
+    border-radius: 18px;
+    padding: 16px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.message-bubble.from-user {
+    margin-left: auto;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #ffffff;
+}
+
+.message-bubble.from-assistant {
+    margin-right: auto;
+    background: #f8fafc;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    color: #0f172a;
+}
+
+.message-bubble.from-tool,
+.message-bubble.from-system {
+    margin-right: auto;
+    background: #e2e8f0;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    color: #0f172a;
+}
+
+.message-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.message-role {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.message-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.message-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.message-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(148, 163, 184, 0.15);
+    font-size: 13px;
+}
+
+.message-tool,
+.message-raw {
+    background: rgba(15, 23, 42, 0.08);
+    padding: 12px;
+    border-radius: 12px;
+    font-family: monospace;
+    font-size: 12px;
+    overflow-x: auto;
+}
+
+.composer-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.composer-controls {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.composer-input {
+    flex: 1;
+    min-height: 48px;
+    max-height: 160px;
+    resize: vertical;
+    padding: 12px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    font-size: 15px;
+    line-height: 1.4;
+    color: #0f172a;
+    background: #ffffff;
+    box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.04);
+}
+
+.composer-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.icon-button,
+.send-button {
+    border: none;
+    border-radius: 16px;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.icon-button {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.icon-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.send-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #ffffff;
+    box-shadow: 0 12px 24px rgba(102, 126, 234, 0.25);
+}
+
+.send-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    box-shadow: none;
+}
+
+.banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 13px;
+}
+
+.banner button {
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.banner-error {
+    background: rgba(248, 113, 113, 0.15);
+    color: #b91c1c;
+    border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+.upload-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.upload-status {
+    font-size: 13px;
+    color: #0f172a;
+    background: rgba(102, 126, 234, 0.1);
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+
+.staged-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.staged-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: rgba(148, 163, 184, 0.2);
+    font-size: 13px;
+}
+
+.staged-file button {
+    border: none;
+    background: transparent;
+    color: #1d4ed8;
+    cursor: pointer;
+    font-size: 12px;
+    text-decoration: underline;
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    height: 100%;
+    color: #64748b;
+    text-align: center;
+}
+
+.empty-state h3 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.empty-state p {
+    font-size: 14px;
+    max-width: 320px;
+}
+
+/* Responsive design */
+@media (max-width: 900px) {
+    .app-container {
+        height: 100vh;
+        border-radius: 0;
+        max-width: none;
+        margin: 0;
+    }
+    
+    .app-header {
+        padding: 16px;
+    }
+    
+    .app-header h1 {
+        font-size: 20px;
+    }
+
+    .chat-sdk-container {
+        padding: 16px;
+        gap: 12px;
+    }
+
+    .message-pane {
+        padding: 16px;
+    }
+
+    .message-bubble {
+        max-width: 85%;
+    }
+
+    .composer-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .icon-button,
+    .send-button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 600px) {
+    body {
+        padding: 0;
+    }
+    
+    .app-container {
+        border-radius: 0;
+        box-shadow: none;
+    }
+    
+    .header-right {
+        gap: 12px;
+    }
+    
+    .user-info {
+        padding: 6px 10px;
+    }
+    
+    .user-name {
+        font-size: 12px;
+    }
+    
+    .admin-btn {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+    
+    .logout-btn {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
+    .message-pane {
+        padding: 12px;
+    }
+
+    .chat-sdk-container {
+        padding: 12px;
+    }
+
+    .message-bubble {
+        max-width: 100%;
+    }
+}
+`, ""]);
+// Exports
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
+
+
+/***/ }),
+
+/***/ 659:
+/***/ ((module) => {
+
+
+
+var memo = {};
+
+/* istanbul ignore next  */
+function getTarget(target) {
+  if (typeof memo[target] === "undefined") {
+    var styleTarget = document.querySelector(target);
+
+    // Special case to return head of iframe instead of iframe itself
+    if (window.HTMLIFrameElement && styleTarget instanceof window.HTMLIFrameElement) {
+      try {
+        // This will throw an exception if access to iframe is blocked
+        // due to cross-origin restrictions
+        styleTarget = styleTarget.contentDocument.head;
+      } catch (e) {
+        // istanbul ignore next
+        styleTarget = null;
+      }
+    }
+    memo[target] = styleTarget;
+  }
+  return memo[target];
+}
+
+/* istanbul ignore next  */
+function insertBySelector(insert, style) {
+  var target = getTarget(insert);
+  if (!target) {
+    throw new Error("Couldn't find a style target. This probably means that the value for the 'insert' parameter is invalid.");
+  }
+  target.appendChild(style);
+}
+module.exports = insertBySelector;
+
+/***/ }),
+
+/***/ 825:
+/***/ ((module) => {
+
+
+
+/* istanbul ignore next  */
+function apply(styleElement, options, obj) {
+  var css = "";
+  if (obj.supports) {
+    css += "@supports (".concat(obj.supports, ") {");
+  }
+  if (obj.media) {
+    css += "@media ".concat(obj.media, " {");
+  }
+  var needLayer = typeof obj.layer !== "undefined";
+  if (needLayer) {
+    css += "@layer".concat(obj.layer.length > 0 ? " ".concat(obj.layer) : "", " {");
+  }
+  css += obj.css;
+  if (needLayer) {
+    css += "}";
+  }
+  if (obj.media) {
+    css += "}";
+  }
+  if (obj.supports) {
+    css += "}";
+  }
+  var sourceMap = obj.sourceMap;
+  if (sourceMap && typeof btoa !== "undefined") {
+    css += "\n/*# sourceMappingURL=data:application/json;base64,".concat(btoa(unescape(encodeURIComponent(JSON.stringify(sourceMap)))), " */");
+  }
+
+  // For old IE
+  /* istanbul ignore if  */
+  options.styleTagTransform(css, styleElement, options.options);
+}
+function removeStyleElement(styleElement) {
+  // istanbul ignore if
+  if (styleElement.parentNode === null) {
+    return false;
+  }
+  styleElement.parentNode.removeChild(styleElement);
+}
+
+/* istanbul ignore next  */
+function domAPI(options) {
+  if (typeof document === "undefined") {
+    return {
+      update: function update() {},
+      remove: function remove() {}
+    };
+  }
+  var styleElement = options.insertStyleElement(options);
+  return {
+    update: function update(obj) {
+      apply(styleElement, options, obj);
+    },
+    remove: function remove() {
+      removeStyleElement(styleElement);
+    }
+  };
+}
+module.exports = domAPI;
+
+/***/ }),
+
 /***/ 961:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
@@ -481,7 +1656,7 @@ if (true) {
 /******/ 		}
 /******/ 		// Create a new module (and put it into the cache)
 /******/ 		var module = __webpack_module_cache__[moduleId] = {
-/******/ 			// no module.id needed
+/******/ 			id: moduleId,
 /******/ 			// no module.loaded needed
 /******/ 			exports: {}
 /******/ 		};
@@ -494,24 +1669,202 @@ if (true) {
 /******/ 	}
 /******/ 	
 /************************************************************************/
+/******/ 	/* webpack/runtime/compat get default export */
+/******/ 	(() => {
+/******/ 		// getDefaultExport function for compatibility with non-harmony modules
+/******/ 		__webpack_require__.n = (module) => {
+/******/ 			var getter = module && module.__esModule ?
+/******/ 				() => (module['default']) :
+/******/ 				() => (module);
+/******/ 			__webpack_require__.d(getter, { a: getter });
+/******/ 			return getter;
+/******/ 		};
+/******/ 	})();
+/******/ 	
+/******/ 	/* webpack/runtime/define property getters */
+/******/ 	(() => {
+/******/ 		// define getter functions for harmony exports
+/******/ 		__webpack_require__.d = (exports, definition) => {
+/******/ 			for(var key in definition) {
+/******/ 				if(__webpack_require__.o(definition, key) && !__webpack_require__.o(exports, key)) {
+/******/ 					Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
+/******/ 				}
+/******/ 			}
+/******/ 		};
+/******/ 	})();
+/******/ 	
+/******/ 	/* webpack/runtime/hasOwnProperty shorthand */
+/******/ 	(() => {
+/******/ 		__webpack_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
+/******/ 	})();
+/******/ 	
+/******/ 	/* webpack/runtime/nonce */
+/******/ 	(() => {
+/******/ 		__webpack_require__.nc = undefined;
+/******/ 	})();
+/******/ 	
+/************************************************************************/
 var __webpack_exports__ = {};
 
 // EXTERNAL MODULE: ./node_modules/react/index.js
 var react = __webpack_require__(540);
 // EXTERNAL MODULE: ./node_modules/react-dom/client.js
 var client = __webpack_require__(338);
-;// ./src/ChatSDKClient.jsx
+// EXTERNAL MODULE: ./node_modules/style-loader/dist/runtime/injectStylesIntoStyleTag.js
+var injectStylesIntoStyleTag = __webpack_require__(72);
+var injectStylesIntoStyleTag_default = /*#__PURE__*/__webpack_require__.n(injectStylesIntoStyleTag);
+// EXTERNAL MODULE: ./node_modules/style-loader/dist/runtime/styleDomAPI.js
+var styleDomAPI = __webpack_require__(825);
+var styleDomAPI_default = /*#__PURE__*/__webpack_require__.n(styleDomAPI);
+// EXTERNAL MODULE: ./node_modules/style-loader/dist/runtime/insertBySelector.js
+var insertBySelector = __webpack_require__(659);
+var insertBySelector_default = /*#__PURE__*/__webpack_require__.n(insertBySelector);
+// EXTERNAL MODULE: ./node_modules/style-loader/dist/runtime/setAttributesWithoutAttributes.js
+var setAttributesWithoutAttributes = __webpack_require__(56);
+var setAttributesWithoutAttributes_default = /*#__PURE__*/__webpack_require__.n(setAttributesWithoutAttributes);
+// EXTERNAL MODULE: ./node_modules/style-loader/dist/runtime/insertStyleElement.js
+var insertStyleElement = __webpack_require__(159);
+var insertStyleElement_default = /*#__PURE__*/__webpack_require__.n(insertStyleElement);
+// EXTERNAL MODULE: ./node_modules/style-loader/dist/runtime/styleTagTransform.js
+var styleTagTransform = __webpack_require__(113);
+var styleTagTransform_default = /*#__PURE__*/__webpack_require__.n(styleTagTransform);
+// EXTERNAL MODULE: ./node_modules/css-loader/dist/cjs.js!./src/App.css
+var App = __webpack_require__(626);
+;// ./src/App.css
+
+      
+      
+      
+      
+      
+      
+      
+      
+      
+
+var options = {};
+
+options.styleTagTransform = (styleTagTransform_default());
+options.setAttributes = (setAttributesWithoutAttributes_default());
+
+      options.insert = insertBySelector_default().bind(null, "head");
+    
+options.domAPI = (styleDomAPI_default());
+options.insertStyleElement = (insertStyleElement_default());
+
+var update = injectStylesIntoStyleTag_default()(App/* default */.A, options);
+
+
+
+
+       /* harmony default export */ const src_App = (App/* default */.A && App/* default */.A.locals ? App/* default */.A.locals : undefined);
+
+;// ./file-type-rules.json
+const file_type_rules_namespaceObject = /*#__PURE__*/JSON.parse('{"context":{"extensions":["pdf"],"mimeTypes":["application/pdf"]},"codeInterpreter":{"extensions":["csv","tsv","xls","xlsx","xlsm","xlsb","xltx","xltm","json","ndjson"],"mimeTypes":["text/csv","application/csv","text/tab-separated-values","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel.sheet.macroenabled.12","application/vnd.ms-excel.sheet.binary.macroenabled.12","application/json","text/json","application/x-ndjson"]}}');
+;// ./src/utils/fileTypeDetector.js
+var _fileTypeRules$contex, _fileTypeRules$contex2, _fileTypeRules$codeIn, _fileTypeRules$codeIn2;
+
+var toLower = function toLower(value) {
+  return typeof value === 'string' ? value.toLowerCase() : '';
+};
+var normalizeCategoryLabel = function normalizeCategoryLabel(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  var normalized = toLower(value).replace(/[^a-z0-9]+/g, '_');
+  if (normalized === 'code_interpreter' || normalized === 'codeinterpreter') {
+    return 'code_interpreter';
+  }
+  if (normalized === 'context' || normalized === 'context_file') {
+    return 'context';
+  }
+  return normalized;
+};
+var CONTEXT_EXTENSIONS = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$contex = file_type_rules_namespaceObject.context) === null || _fileTypeRules$contex === void 0 ? void 0 : _fileTypeRules$contex.extensions) || []).map(toLower));
+var CONTEXT_MIME_TYPES = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$contex2 = file_type_rules_namespaceObject.context) === null || _fileTypeRules$contex2 === void 0 ? void 0 : _fileTypeRules$contex2.mimeTypes) || []).map(toLower));
+var CODE_INTERPRETER_EXTENSIONS = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$codeIn = file_type_rules_namespaceObject.codeInterpreter) === null || _fileTypeRules$codeIn === void 0 ? void 0 : _fileTypeRules$codeIn.extensions) || []).map(toLower));
+var CODE_INTERPRETER_MIME_TYPES = new Set(((file_type_rules_namespaceObject === null || file_type_rules_namespaceObject === void 0 || (_fileTypeRules$codeIn2 = file_type_rules_namespaceObject.codeInterpreter) === null || _fileTypeRules$codeIn2 === void 0 ? void 0 : _fileTypeRules$codeIn2.mimeTypes) || []).map(toLower));
+var deriveExtension = function deriveExtension() {
+  var filename = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+  if (typeof filename !== 'string') {
+    return '';
+  }
+  var trimmed = filename.trim();
+  if (!trimmed || !trimmed.includes('.')) {
+    return '';
+  }
+  return toLower(trimmed.split('.').pop());
+};
+var normalizeFileMetadata = function normalizeFileMetadata() {
+  var file = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  var filename = typeof file.filename === 'string' ? file.filename : typeof file.originalname === 'string' ? file.originalname : typeof file.name === 'string' ? file.name : typeof file.display_name === 'string' ? file.display_name : '';
+  var contentType = toLower(file.content_type || file.contentType || file.mimetype || file.mime || '');
+  var extension = toLower(file.extension || '');
+  if (!extension) {
+    extension = deriveExtension(filename);
+  }
+  var category = normalizeCategoryLabel(file.category || file.file_category || '');
+  return {
+    filename: filename,
+    contentType: contentType,
+    extension: extension,
+    category: category
+  };
+};
+var isContextCategory = function isContextCategory() {
+  var metadata = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  var extension = metadata.extension,
+    contentType = metadata.contentType;
+  return extension && CONTEXT_EXTENSIONS.has(extension) || contentType && CONTEXT_MIME_TYPES.has(contentType);
+};
+var isCodeInterpreterCategory = function isCodeInterpreterCategory() {
+  var metadata = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  var extension = metadata.extension,
+    contentType = metadata.contentType;
+  if (extension && CODE_INTERPRETER_EXTENSIONS.has(extension)) {
+    return true;
+  }
+  if (contentType && CODE_INTERPRETER_MIME_TYPES.has(contentType)) {
+    return true;
+  }
+  return false;
+};
+var determineCategory = function determineCategory() {
+  var metadata = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+  var explicitCategory = normalizeCategoryLabel(metadata.category || '');
+  if (explicitCategory === 'code_interpreter') {
+    return 'code_interpreter';
+  }
+  if (explicitCategory === 'context') {
+    return 'context';
+  }
+  if (isContextCategory(metadata)) {
+    return 'context';
+  }
+  if (isCodeInterpreterCategory(metadata)) {
+    return 'code_interpreter';
+  }
+  return 'default';
+};
+var buildMessageContent = function buildMessageContent(fileId) {
+  var metadata = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+  var normalized = normalizeFileMetadata(metadata);
+  var category = determineCategory(normalized);
+  var displayName = normalized.filename || metadata.display_name || fileId;
+  return {
+    type: category === 'context' ? 'context_file' : 'input_file',
+    file_id: fileId,
+    display_name: displayName,
+    category: category
+  };
+};
+var FILE_TYPE_RULES = (/* unused pure expression or super */ null && (fileTypeRules));
+;// ./src/chatkitFiles.js
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
-function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i["return"]) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
-function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
-function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
-function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
-function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
-function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
-function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
 function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
 function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
@@ -519,473 +1872,966 @@ function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t =
 function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
 function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, r) { if ("object" != _typeof(t) || !t) return t; var e = t[Symbol.toPrimitive]; if (void 0 !== e) { var i = e.call(t, r || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === r ? String : Number)(t); }
-function _createForOfIteratorHelper(r, e) { var t = "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (!t) { if (Array.isArray(r) || (t = _unsupportedIterableToArray(r)) || e && r && "number" == typeof r.length) { t && (r = t); var _n = 0, F = function F() {}; return { s: F, n: function n() { return _n >= r.length ? { done: !0 } : { done: !1, value: r[_n++] }; }, e: function e(r) { throw r; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var o, a = !0, u = !1; return { s: function s() { t = t.call(r); }, n: function n() { var r = t.next(); return a = r.done, r; }, e: function e(r) { u = !0, o = r; }, f: function f() { try { a || null == t["return"] || t["return"](); } finally { if (u) throw o; } } }; }
-function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
-function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+// File stager for quietly managing file metadata until they're sent with a prompt
+// Tracks content_type + filename so the server can route files correctly
 
 
-/** ============ helpers ============ */
+function createFileStager() {
+  var staged = new Map(); // Map<file_id, { content_type, filename }>
 
-function normalizeMessage(m) {
-  var _ref, _ref2, _ref3, _m$text, _m$content$find, _m$content, _m$id, _globalThis$crypto$ra, _globalThis$crypto, _globalThis$crypto$ra2, _m$createdAt;
-  if (!m) return null;
-  var text = (_ref = (_ref2 = (_ref3 = (_m$text = m.text) !== null && _m$text !== void 0 ? _m$text : Array.isArray(m.content) && ((_m$content$find = m.content.find(function (x) {
-    return (x === null || x === void 0 ? void 0 : x.type) === "text";
-  })) === null || _m$content$find === void 0 ? void 0 : _m$content$find.text)) !== null && _ref3 !== void 0 ? _ref3 : typeof m.content === "string" ? m.content : "") !== null && _ref2 !== void 0 ? _ref2 : (_m$content = m.content) === null || _m$content === void 0 || (_m$content = _m$content[0]) === null || _m$content === void 0 ? void 0 : _m$content.text) !== null && _ref !== void 0 ? _ref : "";
+  var add = function add(fileId) {
+    var metadata = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+    if (!fileId) return;
+    var normalizedMetadata = {
+      content_type: metadata.content_type || metadata.contentType || '',
+      filename: metadata.filename || metadata.name || '',
+      category: metadata.category || metadata.file_category || ''
+    };
+    var category = determineCategory(normalizeFileMetadata(normalizedMetadata));
+    staged.set(fileId, _objectSpread(_objectSpread({}, normalizedMetadata), {}, {
+      category: category
+    }));
+  };
+  var remove = function remove(fileId) {
+    if (!fileId) return;
+    staged["delete"](fileId);
+  };
+  var list = function list() {
+    return Array.from(staged.keys());
+  };
+  var listWithMetadata = function listWithMetadata() {
+    return Array.from(staged.entries()).map(function (_ref) {
+      var _ref2 = _slicedToArray(_ref, 2),
+        file_id = _ref2[0],
+        metadata = _ref2[1];
+      return _objectSpread({
+        file_id: file_id
+      }, metadata);
+    });
+  };
+  var clear = function clear() {
+    return staged.clear();
+  };
+  var classifyFile = function classifyFile(fileId) {
+    var metadata = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+    var messageContent = buildMessageContent(fileId, metadata);
+    return {
+      type: messageContent.type,
+      file_id: messageContent.file_id,
+      display_name: messageContent.display_name
+    };
+  };
+  var toMessageContent = function toMessageContent(text) {
+    var content = [];
+    if (text) {
+      content.push({
+        type: 'input_text',
+        text: text
+      });
+    }
+    staged.forEach(function (metadata, fileId) {
+      // For code_interpreter files (e.g., CSV), don't place them in content.
+      // They'll be sent via staged_file_ids/metadata and attached server-side.
+      var category = metadata === null || metadata === void 0 ? void 0 : metadata.category;
+      if (category === 'code_interpreter') {
+        return; // skip adding to content to avoid confusing UI/context stuffing
+      }
+      var messageContent = classifyFile(fileId, metadata);
+      content.push({
+        type: messageContent.type,
+        file_id: messageContent.file_id,
+        display_name: messageContent.display_name
+      });
+    });
+    return content;
+  };
   return {
-    id: (_m$id = m.id) !== null && _m$id !== void 0 ? _m$id : "msg-".concat((_globalThis$crypto$ra = (_globalThis$crypto = globalThis.crypto) === null || _globalThis$crypto === void 0 || (_globalThis$crypto$ra2 = _globalThis$crypto.randomUUID) === null || _globalThis$crypto$ra2 === void 0 ? void 0 : _globalThis$crypto$ra2.call(_globalThis$crypto)) !== null && _globalThis$crypto$ra !== void 0 ? _globalThis$crypto$ra : Date.now()),
-    role: m.role || "assistant",
-    text: text,
-    content: [{
-      type: "text",
-      text: text
-    }],
-    createdAt: (_m$createdAt = m.createdAt) !== null && _m$createdAt !== void 0 ? _m$createdAt : new Date().toISOString()
+    add: add,
+    remove: remove,
+    list: list,
+    listWithMetadata: listWithMetadata,
+    clear: clear,
+    toMessageContent: toMessageContent,
+    getMetadata: function getMetadata(fileId) {
+      return staged.get(fileId);
+    }
   };
 }
-function mergeMessages(prev, incoming) {
-  var map = new Map(prev.map(function (x) {
-    return [x.id, x];
-  }));
-  var _iterator = _createForOfIteratorHelper(incoming || []),
-    _step;
-  try {
-    for (_iterator.s(); !(_step = _iterator.n()).done;) {
-      var raw = _step.value;
-      var nm = normalizeMessage(raw);
-      if (!nm) continue;
-      map.set(nm.id, _objectSpread(_objectSpread({}, map.get(nm.id) || {}), nm));
-    }
-  } catch (err) {
-    _iterator.e(err);
-  } finally {
-    _iterator.f();
-  }
-  return Array.from(map.values());
+;// ./src/api.js
+function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i["return"]) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
+function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
+function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
+function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
+// API helper functions for file upload and registration
+
+/**
+ * Register an uploaded S3 object with OpenAI Files API
+ * Called by the custom upload tool after a successful presigned PUT to S3
+ */
+function registerUploadedS3Object(_x) {
+  return _registerUploadedS3Object.apply(this, arguments);
 }
-function formatRoleLabel(role) {
-  var _role$toString, _role$toString2;
-  if (role === "user") return "You";
-  if (role === "assistant") return "Assistant";
-  return (_role$toString = role === null || role === void 0 || (_role$toString2 = role.toString) === null || _role$toString2 === void 0 ? void 0 : _role$toString2.call(role)) !== null && _role$toString !== void 0 ? _role$toString : "system";
-}
-function formatTimestamp(ts) {
-  try {
-    var d = new Date(ts);
-    return d.toLocaleString();
-  } catch (_unused) {
-    return "";
-  }
-}
-
-/** ============ main component ============ */
-
-function ChatSDKClient() {
-  var _useState = (0,react.useState)([]),
-    _useState2 = _slicedToArray(_useState, 2),
-    messages = _useState2[0],
-    setMessages = _useState2[1];
-  var _useState3 = (0,react.useState)(""),
-    _useState4 = _slicedToArray(_useState3, 2),
-    inputValue = _useState4[0],
-    setInputValue = _useState4[1];
-  var _useState5 = (0,react.useState)(false),
-    _useState6 = _slicedToArray(_useState5, 2),
-    isSending = _useState6[0],
-    setIsSending = _useState6[1];
-  var _useState7 = (0,react.useState)(null),
-    _useState8 = _slicedToArray(_useState7, 2),
-    bootError = _useState8[0],
-    setBootError = _useState8[1];
-  var _useState9 = (0,react.useState)(null),
-    _useState0 = _slicedToArray(_useState9, 2),
-    sendError = _useState0[0],
-    setSendError = _useState0[1];
-  var _useState1 = (0,react.useState)(false),
-    _useState10 = _slicedToArray(_useState1, 2),
-    sessionReady = _useState10[0],
-    setSessionReady = _useState10[1];
-  var messagesRef = (0,react.useRef)([]);
-  (0,react.useEffect)(function () {
-    messagesRef.current = messages;
-  }, [messages]);
-  var messagesEndRef = (0,react.useRef)(null);
-  (0,react.useEffect)(function () {
-    var pushOne = function pushOne(m) {
-      return setMessages(function (prev) {
-        return [].concat(_toConsumableArray(prev), [normalizeMessage(m)]);
-      });
-    };
-    globalThis.chatDebug = {
-      push: function push(m) {
-        return pushOne(m);
-      },
-      clear: function clear() {
-        return setMessages([]);
-      },
-      log: function log() {
-        return console.log("messages:", messagesRef.current);
-      },
-      len: function len() {
-        return console.log("len:", messagesRef.current.length);
-      }
-    };
-    if (!document.getElementById("build-banner")) {
-      var el = document.createElement("div");
-      el.id = "build-banner";
-      el.textContent = "LOCAL SDK CHAT • " + new Date().toISOString();
-      el.style.cssText = "position:fixed;z-index:99999;top:0;left:0;padding:6px 10px;background:#222;color:#0f0;font:12px/1.2 monospace";
-      document.body.appendChild(el);
-      setTimeout(function () {
-        return el.remove();
-      }, 3000);
-    }
-    console.log("[chatDebug] ready");
-  }, []); // register once, not per-message render
-
-  // ===== autoscroll
-  (0,react.useEffect)(function () {
-    var _messagesEndRef$curre;
-    (_messagesEndRef$curre = messagesEndRef.current) === null || _messagesEndRef$curre === void 0 || _messagesEndRef$curre.scrollIntoView({
-      behavior: "smooth"
-    });
-  }, [messages]);
-
-  // ===== initial session bootstrap
-  (0,react.useEffect)(function () {
-    var canceled = false;
-    _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
-      var _data$session, r, errText, data, sid, initial, _t;
-      return _regenerator().w(function (_context) {
-        while (1) switch (_context.p = _context.n) {
-          case 0:
-            _context.p = 0;
-            _context.n = 1;
-            return fetch("/api/chatkit/session", {
-              method: "GET",
-              credentials: "include"
-            });
-          case 1:
-            r = _context.v;
-            if (r.ok) {
-              _context.n = 3;
-              break;
-            }
-            _context.n = 2;
-            return r.text();
-          case 2:
-            errText = _context.v;
-            throw new Error("Session bootstrap failed (".concat(r.status, "): ").concat(errText));
-          case 3:
-            _context.n = 4;
-            return r.json();
-          case 4:
-            data = _context.v;
-            // capture session id for console checks & later calls
-            sid = (data === null || data === void 0 || (_data$session = data.session) === null || _data$session === void 0 ? void 0 : _data$session.id) || (data === null || data === void 0 ? void 0 : data.sessionId) || (data === null || data === void 0 ? void 0 : data.id);
-            if (sid) {
-              globalThis.currentSessionId = sid; // visible in console as window.currentSessionId
-            }
-            // If your API returns any prior messages, normalize + replace.
-            initial = Array.isArray(data === null || data === void 0 ? void 0 : data.messages) ? data.messages : [];
-            if (!canceled) {
-              setMessages(initial.map(normalizeMessage));
-              setSessionReady(!!sid); // or just: setSessionReady(true)
-            }
-            _context.n = 6;
-            break;
-          case 5:
-            _context.p = 5;
-            _t = _context.v;
-            console.error("bootstrap error:", _t);
-            if (!canceled) {
-              setBootError(_t.message || "Failed to init session");
-            }
-          case 6:
-            return _context.a(2);
-        }
-      }, _callee, null, [[0, 5]]);
-    }))();
-    return function () {
-      canceled = true;
-    };
-  }, []);
-  var handleSend = (0,react.useCallback)(/*#__PURE__*/_asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
-    var text, optimistic, _ref6, _data$message$id, _data$message, _ref7, _data$message$text, _data$message2, _data$message3, res, t, data, assistant, _t2;
-    return _regenerator().w(function (_context2) {
-      while (1) switch (_context2.p = _context2.n) {
+function _registerUploadedS3Object() {
+  _registerUploadedS3Object = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(params) {
+    var key, filename, bucket, r, errorText;
+    return _regenerator().w(function (_context) {
+      while (1) switch (_context.n) {
         case 0:
-          if (!isSending) {
-            _context2.n = 1;
+          key = params.key, filename = params.filename, bucket = params.bucket;
+          _context.n = 1;
+          return fetch('/api/files/ingest-s3', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              key: key,
+              filename: filename,
+              bucket: bucket
+            })
+          });
+        case 1:
+          r = _context.v;
+          if (r.ok) {
+            _context.n = 3;
             break;
           }
-          return _context2.a(2);
+          _context.n = 2;
+          return r.text();
+        case 2:
+          errorText = _context.v;
+          throw new Error("Failed to register S3 object: ".concat(r.status, " ").concat(errorText));
+        case 3:
+          return _context.a(2, r.json());
+      }
+    }, _callee);
+  }));
+  return _registerUploadedS3Object.apply(this, arguments);
+}
+// EXTERNAL MODULE: ./node_modules/css-loader/dist/cjs.js!./src/components/MenuBar.css
+var MenuBar = __webpack_require__(462);
+;// ./src/components/MenuBar.css
+
+      
+      
+      
+      
+      
+      
+      
+      
+      
+
+var MenuBar_options = {};
+
+MenuBar_options.styleTagTransform = (styleTagTransform_default());
+MenuBar_options.setAttributes = (setAttributesWithoutAttributes_default());
+
+      MenuBar_options.insert = insertBySelector_default().bind(null, "head");
+    
+MenuBar_options.domAPI = (styleDomAPI_default());
+MenuBar_options.insertStyleElement = (insertStyleElement_default());
+
+var MenuBar_update = injectStylesIntoStyleTag_default()(MenuBar/* default */.A, MenuBar_options);
+
+
+
+
+       /* harmony default export */ const components_MenuBar = (MenuBar/* default */.A && MenuBar/* default */.A.locals ? MenuBar/* default */.A.locals : undefined);
+
+;// ./src/components/MenuBar.js
+
+
+var MenuBar_MenuBar = function MenuBar(_ref) {
+  var user = _ref.user;
+  return /*#__PURE__*/react.createElement("div", {
+    className: "menu-bar"
+  }, /*#__PURE__*/react.createElement("a", {
+    href: "https://simple-chat-interface-staging.up.railway.app/homepage",
+    className: "menu-bar-logo"
+  }, /*#__PURE__*/react.createElement("svg", {
+    width: "180",
+    height: "60",
+    viewBox: "0 0 120 40",
+    xmlns: "http://www.w3.org/2000/svg"
+  }, /*#__PURE__*/react.createElement("text", {
+    x: "5",
+    y: "28",
+    fontFamily: "serif",
+    fontSize: "24",
+    fontWeight: "600",
+    fill: "#0F4C5C"
+  }, "Kyo"), /*#__PURE__*/react.createElement("g", {
+    transform: "translate(50, 8)"
+  }, /*#__PURE__*/react.createElement("polygon", {
+    points: "0,12 6,0 12,12",
+    fill: "#0F4C5C",
+    opacity: "0.8"
+  }), /*#__PURE__*/react.createElement("polygon", {
+    points: "2,14 8,2 14,14",
+    fill: "#00A8E8",
+    opacity: "0.7"
+  }), /*#__PURE__*/react.createElement("polygon", {
+    points: "4,16 10,4 16,16",
+    fill: "#4ECDC4",
+    opacity: "0.6"
+  })))), /*#__PURE__*/react.createElement("div", {
+    className: "menu-bar-right"
+  }, /*#__PURE__*/react.createElement("div", {
+    className: "user-info"
+  }, /*#__PURE__*/react.createElement("img", {
+    src: (user === null || user === void 0 ? void 0 : user.picture) || (user === null || user === void 0 ? void 0 : user.avatar) || '/default-avatar.png',
+    alt: "User",
+    className: "user-photo"
+  }), /*#__PURE__*/react.createElement("span", {
+    className: "user-name"
+  }, (user === null || user === void 0 ? void 0 : user.name) || 'User'), (user === null || user === void 0 ? void 0 : user.userType) === 'Admin' && /*#__PURE__*/react.createElement("button", {
+    className: "admin-btn",
+    onClick: function onClick() {
+      return window.location.href = '/admin';
+    }
+  }, "Admin"), /*#__PURE__*/react.createElement("button", {
+    className: "logout-btn",
+    onClick: function onClick() {
+      return window.location.href = '/logout';
+    }
+  }, "Logout")), /*#__PURE__*/react.createElement("div", {
+    className: "status-indicator"
+  }, /*#__PURE__*/react.createElement("span", {
+    className: "status-dot"
+  }), /*#__PURE__*/react.createElement("span", {
+    className: "status-text"
+  }, "Online"))));
+};
+/* harmony default export */ const src_components_MenuBar = (MenuBar_MenuBar);
+;// ./src/AppSDK.js
+var _excluded = ["file_id"],
+  _excluded2 = ["file_id"];
+function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
+function _objectWithoutPropertiesLoose(r, e) { if (null == r) return {}; var t = {}; for (var n in r) if ({}.hasOwnProperty.call(r, n)) { if (-1 !== e.indexOf(n)) continue; t[n] = r[n]; } return t; }
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || AppSDK_unsupportedIterableToArray(r) || _nonIterableSpread(); }
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return AppSDK_arrayLikeToArray(r); }
+function AppSDK_regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return AppSDK_regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i["return"]) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (AppSDK_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, AppSDK_regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, AppSDK_regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), AppSDK_regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", AppSDK_regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), AppSDK_regeneratorDefine2(u), AppSDK_regeneratorDefine2(u, o, "Generator"), AppSDK_regeneratorDefine2(u, n, function () { return this; }), AppSDK_regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (AppSDK_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
+function AppSDK_regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } AppSDK_regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { AppSDK_regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, AppSDK_regeneratorDefine2(e, r, n, t); }
+function AppSDK_slicedToArray(r, e) { return AppSDK_arrayWithHoles(r) || AppSDK_iterableToArrayLimit(r, e) || AppSDK_unsupportedIterableToArray(r, e) || AppSDK_nonIterableRest(); }
+function AppSDK_nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function AppSDK_unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return AppSDK_arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? AppSDK_arrayLikeToArray(r, a) : void 0; } }
+function AppSDK_arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+function AppSDK_iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function AppSDK_arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function AppSDK_asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
+function AppSDK_asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { AppSDK_asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { AppSDK_asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
+
+
+
+
+
+
+var fileStager = createFileStager();
+var MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
+
+function onCustomToolS3UploadSuccess(_x) {
+  return _onCustomToolS3UploadSuccess.apply(this, arguments);
+}
+function _onCustomToolS3UploadSuccess() {
+  _onCustomToolS3UploadSuccess = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee5(_ref) {
+    var key, filename, bucket, _yield$registerUpload, file_id, content_type, category;
+    return AppSDK_regenerator().w(function (_context5) {
+      while (1) switch (_context5.n) {
+        case 0:
+          key = _ref.key, filename = _ref.filename, bucket = _ref.bucket;
+          _context5.n = 1;
+          return registerUploadedS3Object({
+            key: key,
+            filename: filename,
+            bucket: bucket
+          });
         case 1:
-          text = (inputValue || "").trim();
-          if (text) {
+          _yield$registerUpload = _context5.v;
+          file_id = _yield$registerUpload.file_id;
+          content_type = _yield$registerUpload.content_type;
+          category = _yield$registerUpload.category;
+          fileStager.add(file_id, {
+            content_type: content_type,
+            filename: filename,
+            category: category
+          });
+          return _context5.a(2, file_id);
+      }
+    }, _callee5);
+  }));
+  return _onCustomToolS3UploadSuccess.apply(this, arguments);
+}
+function getStagedFileIds() {
+  return fileStager.list();
+}
+function AppSDK_App() {
+  var _useState = (0,react.useState)(true),
+    _useState2 = AppSDK_slicedToArray(_useState, 2),
+    loading = _useState2[0],
+    setLoading = _useState2[1];
+  var _useState3 = (0,react.useState)(null),
+    _useState4 = AppSDK_slicedToArray(_useState3, 2),
+    user = _useState4[0],
+    setUser = _useState4[1];
+  var _useState5 = (0,react.useState)(null),
+    _useState6 = AppSDK_slicedToArray(_useState5, 2),
+    error = _useState6[0],
+    setError = _useState6[1];
+  (0,react.useEffect)(function () {
+    var checkAuth = /*#__PURE__*/function () {
+      var _ref2 = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee() {
+        var response, userData, _t;
+        return AppSDK_regenerator().w(function (_context) {
+          while (1) switch (_context.p = _context.n) {
+            case 0:
+              _context.p = 0;
+              _context.n = 1;
+              return fetch('/api/user');
+            case 1:
+              response = _context.v;
+              if (response.ok) {
+                _context.n = 2;
+                break;
+              }
+              window.location.href = '/login';
+              return _context.a(2);
+            case 2:
+              _context.n = 3;
+              return response.json();
+            case 3:
+              userData = _context.v;
+              setUser(userData);
+              if (!(userData.userType === 'New')) {
+                _context.n = 4;
+                break;
+              }
+              window.location.href = '/new-user-home';
+              return _context.a(2);
+            case 4:
+              _context.n = 6;
+              break;
+            case 5:
+              _context.p = 5;
+              _t = _context.v;
+              console.error('Auth check failed:', _t);
+              setError('Authentication failed');
+            case 6:
+              _context.p = 6;
+              setLoading(false);
+              return _context.f(6);
+            case 7:
+              return _context.a(2);
+          }
+        }, _callee, null, [[0, 5, 6, 7]]);
+      }));
+      return function checkAuth() {
+        return _ref2.apply(this, arguments);
+      };
+    }();
+    checkAuth();
+  }, []);
+  if (loading) {
+    return /*#__PURE__*/react.createElement("div", {
+      className: "app-container"
+    }, /*#__PURE__*/react.createElement("div", {
+      className: "loading"
+    }, /*#__PURE__*/react.createElement("div", {
+      className: "loading-spinner"
+    }), /*#__PURE__*/react.createElement("p", null, "Loading assistant\u2026")));
+  }
+  if (error) {
+    return /*#__PURE__*/react.createElement("div", {
+      className: "app-container"
+    }, /*#__PURE__*/react.createElement("div", {
+      className: "error"
+    }, /*#__PURE__*/react.createElement("h2", null, "Error"), /*#__PURE__*/react.createElement("p", null, error), /*#__PURE__*/react.createElement("button", {
+      onClick: function onClick() {
+        return window.location.href = '/login';
+      }
+    }, "Go to Login")));
+  }
+  return /*#__PURE__*/react.createElement("div", {
+    className: "app-container"
+  }, /*#__PURE__*/react.createElement(src_components_MenuBar, {
+    user: user
+  }), /*#__PURE__*/react.createElement(ChatInterface, {
+    user: user
+  }));
+}
+function ChatInterface(_ref3) {
+  var user = _ref3.user;
+  var _useState7 = (0,react.useState)([]),
+    _useState8 = AppSDK_slicedToArray(_useState7, 2),
+    messages = _useState8[0],
+    setMessages = _useState8[1];
+  var _useState9 = (0,react.useState)(''),
+    _useState0 = AppSDK_slicedToArray(_useState9, 2),
+    inputValue = _useState0[0],
+    setInputValue = _useState0[1];
+  var _useState1 = (0,react.useState)(false),
+    _useState10 = AppSDK_slicedToArray(_useState1, 2),
+    isSending = _useState10[0],
+    setIsSending = _useState10[1];
+  var _useState11 = (0,react.useState)(null),
+    _useState12 = AppSDK_slicedToArray(_useState11, 2),
+    sendError = _useState12[0],
+    setSendError = _useState12[1];
+  var _useState13 = (0,react.useState)(''),
+    _useState14 = AppSDK_slicedToArray(_useState13, 2),
+    uploadStatus = _useState14[0],
+    setUploadStatus = _useState14[1];
+  var _useState15 = (0,react.useState)(''),
+    _useState16 = AppSDK_slicedToArray(_useState15, 2),
+    uploadingFileName = _useState16[0],
+    setUploadingFileName = _useState16[1];
+  var _useState17 = (0,react.useState)([]),
+    _useState18 = AppSDK_slicedToArray(_useState17, 2),
+    stagedFiles = _useState18[0],
+    setStagedFiles = _useState18[1];
+  var _useState19 = (0,react.useState)(true),
+    _useState20 = AppSDK_slicedToArray(_useState19, 2),
+    initializing = _useState20[0],
+    setInitializing = _useState20[1];
+  var messagesEndRef = (0,react.useRef)(null);
+  var fileInputRef = (0,react.useRef)(null);
+  var scrollToBottom = (0,react.useCallback)(function () {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
+        behavior: 'smooth'
+      });
+    }
+  }, []);
+  var resetUploads = (0,react.useCallback)(function () {
+    fileStager.clear();
+    setStagedFiles([]);
+    setUploadingFileName('');
+    setUploadStatus('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+  var loadConversation = (0,react.useCallback)(/*#__PURE__*/AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee2() {
+    var response, data, _t2;
+    return AppSDK_regenerator().w(function (_context2) {
+      while (1) switch (_context2.p = _context2.n) {
+        case 0:
+          _context2.p = 0;
+          _context2.n = 1;
+          return fetch('/api/sdk/conversation', {
+            method: 'GET',
+            credentials: 'include'
+          });
+        case 1:
+          response = _context2.v;
+          if (response.ok) {
             _context2.n = 2;
             break;
           }
-          return _context2.a(2);
+          throw new Error("Failed to load conversation (".concat(response.status, ")"));
         case 2:
-          optimistic = normalizeMessage({
-            id: "local-".concat(Date.now()),
-            role: "user",
-            text: text
+          _context2.n = 3;
+          return response.json();
+        case 3:
+          data = _context2.v;
+          setMessages(Array.isArray(data.conversation) ? data.conversation : []);
+          _context2.n = 5;
+          break;
+        case 4:
+          _context2.p = 4;
+          _t2 = _context2.v;
+          console.error('Failed to load SDK conversation:', _t2);
+          setSendError('Unable to load previous conversation. You can still start a new one.');
+        case 5:
+          _context2.p = 5;
+          setInitializing(false);
+          scrollToBottom();
+          return _context2.f(5);
+        case 6:
+          return _context2.a(2);
+      }
+    }, _callee2, null, [[0, 4, 5, 6]]);
+  })), [scrollToBottom]);
+  (0,react.useEffect)(function () {
+    loadConversation();
+  }, [loadConversation]);
+  (0,react.useEffect)(function () {
+    scrollToBottom();
+  }, [messages, isSending, scrollToBottom]);
+  var handleFileUpload = (0,react.useCallback)(/*#__PURE__*/function () {
+    var _ref5 = AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee3(file) {
+      var presignResp, errorText, _yield$presignResp$js, uploadUrl, objectKey, contentType, uploadResp, fileId, _t3;
+      return AppSDK_regenerator().w(function (_context3) {
+        while (1) switch (_context3.p = _context3.n) {
+          case 0:
+            if (file) {
+              _context3.n = 1;
+              break;
+            }
+            return _context3.a(2);
+          case 1:
+            if (!(file.size > MAX_UPLOAD_BYTES)) {
+              _context3.n = 2;
+              break;
+            }
+            setUploadStatus("\u2717 ".concat(file.name, " is larger than 20 MB"));
+            return _context3.a(2);
+          case 2:
+            _context3.p = 2;
+            setUploadingFileName(file.name);
+            setUploadStatus('Requesting upload URL…');
+            _context3.n = 3;
+            return fetch('/api/uploads/presign', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              credentials: 'include',
+              body: JSON.stringify({
+                filename: file.name,
+                mime: file.type,
+                size: file.size
+              })
+            });
+          case 3:
+            presignResp = _context3.v;
+            if (presignResp.ok) {
+              _context3.n = 5;
+              break;
+            }
+            _context3.n = 4;
+            return presignResp.text();
+          case 4:
+            errorText = _context3.v;
+            throw new Error(errorText || 'Failed to create upload URL');
+          case 5:
+            _context3.n = 6;
+            return presignResp.json();
+          case 6:
+            _yield$presignResp$js = _context3.v;
+            uploadUrl = _yield$presignResp$js.uploadUrl;
+            objectKey = _yield$presignResp$js.objectKey;
+            contentType = _yield$presignResp$js.contentType;
+            setUploadStatus('Uploading to S3…');
+
+            // Use the exact Content-Type from presign response to match what S3 expects
+            // Content-Length is automatically set by browser when using File object (no chunked encoding)
+            _context3.n = 7;
+            return fetch(uploadUrl, {
+              method: 'PUT',
+              body: file,
+              // File object ensures Content-Length is set automatically (no chunked)
+              headers: {
+                'Content-Type': contentType || file.type || 'application/octet-stream',
+                'x-amz-server-side-encryption': 'AES256' // SSE-S3 encryption
+              }
+            });
+          case 7:
+            uploadResp = _context3.v;
+            if (uploadResp.ok) {
+              _context3.n = 8;
+              break;
+            }
+            throw new Error("Upload failed (".concat(uploadResp.status, ")"));
+          case 8:
+            setUploadStatus('Registering file with OpenAI…');
+            _context3.n = 9;
+            return onCustomToolS3UploadSuccess({
+              key: objectKey,
+              filename: file.name
+            });
+          case 9:
+            fileId = _context3.v;
+            setStagedFiles(function (prev) {
+              return [].concat(_toConsumableArray(prev), [{
+                file_id: fileId,
+                name: file.name,
+                content_type: contentType || file.type || 'application/octet-stream'
+              }]);
+            });
+            setUploadStatus("\u2713 ".concat(file.name, " ready for the next message"));
+            _context3.n = 11;
+            break;
+          case 10:
+            _context3.p = 10;
+            _t3 = _context3.v;
+            console.error('Upload error:', _t3);
+            setUploadStatus("\u2717 ".concat(_t3.message || 'Upload failed'));
+          case 11:
+            _context3.p = 11;
+            setUploadingFileName('');
+            setTimeout(function () {
+              return setUploadStatus('');
+            }, 5000);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+            return _context3.f(11);
+          case 12:
+            return _context3.a(2);
+        }
+      }, _callee3, null, [[2, 10, 11, 12]]);
+    }));
+    return function (_x2) {
+      return _ref5.apply(this, arguments);
+    };
+  }(), []);
+  var onFileSelect = (0,react.useCallback)(function (event) {
+    var _event$target$files;
+    var file = (_event$target$files = event.target.files) === null || _event$target$files === void 0 ? void 0 : _event$target$files[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  }, [handleFileUpload]);
+  var removeStagedFile = (0,react.useCallback)(function (fileId) {
+    var remainingFiles = fileStager.listWithMetadata().filter(function (file) {
+      return file.file_id !== fileId;
+    });
+    fileStager.clear();
+    remainingFiles.forEach(function (_ref6) {
+      var file_id = _ref6.file_id,
+        metadata = _objectWithoutProperties(_ref6, _excluded);
+      return fileStager.add(file_id, metadata);
+    });
+    setStagedFiles(function (prev) {
+      return prev.filter(function (file) {
+        return file.file_id !== fileId;
+      });
+    });
+  }, []);
+  var handleSend = (0,react.useCallback)(/*#__PURE__*/AppSDK_asyncToGenerator(/*#__PURE__*/AppSDK_regenerator().m(function _callee4() {
+    var text, fileIds, content, optimisticId, optimisticMessage, response, errorText, data, _t4;
+    return AppSDK_regenerator().w(function (_context4) {
+      while (1) switch (_context4.p = _context4.n) {
+        case 0:
+          if (!isSending) {
+            _context4.n = 1;
+            break;
+          }
+          return _context4.a(2);
+        case 1:
+          text = inputValue.trim();
+          fileIds = fileStager.list();
+          if (!(!text && fileIds.length === 0)) {
+            _context4.n = 2;
+            break;
+          }
+          return _context4.a(2);
+        case 2:
+          content = [];
+          if (text) {
+            content.push({
+              type: 'input_text',
+              text: text
+            });
+          }
+          fileStager.listWithMetadata().forEach(function (_ref8) {
+            var file_id = _ref8.file_id,
+              metadata = _objectWithoutProperties(_ref8, _excluded2);
+            var messageContent = buildMessageContent(file_id, metadata);
+            content.push({
+              type: messageContent.type,
+              file_id: messageContent.file_id,
+              display_name: messageContent.display_name
+            });
           });
+          optimisticId = "local-".concat(Date.now());
+          optimisticMessage = {
+            id: optimisticId,
+            role: 'user',
+            content: content,
+            createdAt: new Date().toISOString(),
+            optimistic: true
+          };
           setMessages(function (prev) {
-            return mergeMessages(prev, [optimistic]);
+            return [].concat(_toConsumableArray(prev), [optimisticMessage]);
           });
           setIsSending(true);
           setSendError(null);
-          _context2.p = 3;
-          console.log("🚀 CLIENT: Sending message to /api/sdk/message");
-          _context2.n = 4;
-          return fetch("/api/sdk/message", {
-            method: "POST",
+          _context4.p = 3;
+          _context4.n = 4;
+          return fetch('/api/sdk/message', {
+            method: 'POST',
             headers: {
-              "Content-Type": "application/json"
+              'Content-Type': 'application/json'
             },
-            credentials: "include",
+            credentials: 'include',
             body: JSON.stringify({
-              text: text
+              text: text,
+              staged_file_ids: fileIds,
+              staged_files: fileStager.listWithMetadata()
             })
           });
         case 4:
-          res = _context2.v;
-          console.log("📡 CLIENT: Response received", {
-            status: res.status,
-            ok: res.ok
-          });
-          if (res.ok) {
-            _context2.n = 6;
+          response = _context4.v;
+          if (response.ok) {
+            _context4.n = 6;
             break;
           }
-          _context2.n = 5;
-          return res.text();
+          _context4.n = 5;
+          return response.text();
         case 5:
-          t = _context2.v;
-          throw new Error(t || "Assistant request failed (".concat(res.status, ")"));
+          errorText = _context4.v;
+          throw new Error(errorText || "Assistant request failed (".concat(response.status, ")"));
         case 6:
-          _context2.n = 7;
-          return res.json();
+          _context4.n = 7;
+          return response.json();
         case 7:
-          data = _context2.v;
-          console.log("📦 CLIENT: Response data:", data);
-          assistant = normalizeMessage({
-            id: (_ref6 = (_data$message$id = data === null || data === void 0 || (_data$message = data.message) === null || _data$message === void 0 ? void 0 : _data$message.id) !== null && _data$message$id !== void 0 ? _data$message$id : data === null || data === void 0 ? void 0 : data.responseId) !== null && _ref6 !== void 0 ? _ref6 : "resp-".concat(Date.now()),
-            role: "assistant",
-            text: (_ref7 = (_data$message$text = data === null || data === void 0 || (_data$message2 = data.message) === null || _data$message2 === void 0 ? void 0 : _data$message2.text) !== null && _data$message$text !== void 0 ? _data$message$text : data === null || data === void 0 ? void 0 : data.text) !== null && _ref7 !== void 0 ? _ref7 : "",
-            createdAt: data === null || data === void 0 || (_data$message3 = data.message) === null || _data$message3 === void 0 ? void 0 : _data$message3.createdAt
-          });
-          console.log("💬 CLIENT: Normalized assistant message:", assistant);
-          console.log("📝 CLIENT: Current messages count:", messages.length);
-          setMessages(function (prev) {
-            var updated = mergeMessages(prev, [assistant]);
-            console.log("✅ CLIENT: Messages updated, new count:", updated.length);
-            return updated;
-          });
-          setInputValue("");
-          _context2.n = 9;
+          data = _context4.v;
+          setMessages(Array.isArray(data.conversation) ? data.conversation : []);
+          setInputValue('');
+          resetUploads();
+          _context4.n = 9;
           break;
         case 8:
-          _context2.p = 8;
-          _t2 = _context2.v;
-          console.error("❌ CLIENT: send error:", _t2);
-          setSendError(_t2.message || "Failed to send message");
-          // roll back optimistic
+          _context4.p = 8;
+          _t4 = _context4.v;
+          console.error('Failed to send message:', _t4);
+          setSendError(_t4.message || 'Failed to send message');
           setMessages(function (prev) {
-            return prev.filter(function (m) {
-              return m.id !== optimistic.id;
+            return prev.filter(function (message) {
+              return message.id !== optimisticId;
             });
           });
         case 9:
-          _context2.p = 9;
+          _context4.p = 9;
           setIsSending(false);
-          return _context2.f(9);
+          return _context4.f(9);
         case 10:
-          return _context2.a(2);
+          return _context4.a(2);
       }
-    }, _callee2, null, [[3, 8, 9, 10]]);
-  })), [inputValue, isSending]);
-
-  // ENTER to send
-  var onKeyDown = function onKeyDown(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
+    }, _callee4, null, [[3, 8, 9, 10]]);
+  })), [inputValue, isSending, resetUploads]);
+  var handleKeyDown = (0,react.useCallback)(function (event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
       handleSend();
     }
-  };
-  // ===== sort messages chronologically before render
-  var orderedMessages = react.useMemo(function () {
-    return _toConsumableArray(messages).sort(function (a, b) {
-      return new Date(a.createdAt) - new Date(b.createdAt);
-    });
-  }, [messages]);
+  }, [handleSend]);
   return /*#__PURE__*/react.createElement("div", {
-    className: "sdk-chat-root",
-    style: styles.root
-  }, /*#__PURE__*/react.createElement("header", {
-    style: styles.header
+    className: "chat-sdk-container"
   }, /*#__PURE__*/react.createElement("div", {
-    style: styles.title
-  }, "Assistant"), /*#__PURE__*/react.createElement("div", {
-    style: styles.status
-  }, bootError ? /*#__PURE__*/react.createElement("span", {
-    style: styles.bad
-  }, "Init error") : sessionReady ? /*#__PURE__*/react.createElement("span", {
-    style: styles.good
-  }, "Ready") : /*#__PURE__*/react.createElement("span", null, "Initializing\u2026"))), /*#__PURE__*/react.createElement("ul", {
-    style: styles.list
-  }, messages.map(function (m) {
-    return /*#__PURE__*/react.createElement(MessageBubble, {
-      key: m.id,
-      message: m
-    });
+    className: "message-pane"
+  }, initializing ? /*#__PURE__*/react.createElement("div", {
+    className: "loading"
+  }, /*#__PURE__*/react.createElement("div", {
+    className: "loading-spinner"
+  }), /*#__PURE__*/react.createElement("p", null, "Loading conversation\u2026")) : /*#__PURE__*/react.createElement(MessageList, {
+    messages: messages,
+    currentUser: user
   }), /*#__PURE__*/react.createElement("div", {
     ref: messagesEndRef
-  })), sendError && /*#__PURE__*/react.createElement("div", {
-    style: styles.error
-  }, "\u26A0\uFE0F ", sendError), /*#__PURE__*/react.createElement("div", {
-    style: styles.composer
-  }, /*#__PURE__*/react.createElement("textarea", {
-    style: styles.textarea,
-    value: inputValue,
-    onChange: function onChange(e) {
-      return setInputValue(e.target.value);
+  })), /*#__PURE__*/react.createElement("div", {
+    className: "composer-panel"
+  }, sendError && /*#__PURE__*/react.createElement(Banner, {
+    type: "error",
+    message: sendError,
+    onDismiss: function onDismiss() {
+      return setSendError(null);
+    }
+  }), (uploadStatus || stagedFiles.length > 0) && /*#__PURE__*/react.createElement("div", {
+    className: "upload-panel"
+  }, uploadStatus && /*#__PURE__*/react.createElement("div", {
+    className: "upload-status"
+  }, uploadStatus), /*#__PURE__*/react.createElement(StagedFileList, {
+    files: stagedFiles,
+    onRemove: removeStagedFile
+  })), /*#__PURE__*/react.createElement("div", {
+    className: "composer-controls"
+  }, /*#__PURE__*/react.createElement("button", {
+    className: "icon-button",
+    type: "button",
+    onClick: function onClick() {
+      var _fileInputRef$current;
+      return (_fileInputRef$current = fileInputRef.current) === null || _fileInputRef$current === void 0 ? void 0 : _fileInputRef$current.click();
     },
-    onKeyDown: onKeyDown,
-    placeholder: "Type a message",
-    rows: 1
+    disabled: !!uploadingFileName || isSending,
+    title: "Attach a file"
+  }, "\uD83D\uDCCE"), /*#__PURE__*/react.createElement("textarea", {
+    className: "composer-input",
+    placeholder: "Ask the MCP assistant\u2026",
+    value: inputValue,
+    onChange: function onChange(event) {
+      return setInputValue(event.target.value);
+    },
+    onKeyDown: handleKeyDown,
+    rows: 1,
+    disabled: isSending
   }), /*#__PURE__*/react.createElement("button", {
+    className: "send-button",
+    type: "button",
     onClick: handleSend,
-    disabled: isSending || !inputValue.trim(),
-    style: styles.send
-  }, isSending ? "Sending…" : "Send")));
+    disabled: isSending
+  }, isSending ? 'Sending…' : 'Send'))), /*#__PURE__*/react.createElement("input", {
+    ref: fileInputRef,
+    type: "file",
+    accept: ".pdf,.png,.jpg,.jpeg,.csv,.xls,.xlsx",
+    style: {
+      display: 'none'
+    },
+    onChange: onFileSelect
+  }));
 }
-
-/** ============ presentational bits ============ */
-
-function MessageBubble(_ref8) {
-  var message = _ref8.message;
-  var mine = message.role === "user";
+function MessageList(_ref9) {
+  var messages = _ref9.messages,
+    currentUser = _ref9.currentUser;
+  if (!messages.length) {
+    return /*#__PURE__*/react.createElement("div", {
+      className: "empty-state"
+    }, /*#__PURE__*/react.createElement("h3", null, "Welcome", currentUser !== null && currentUser !== void 0 && currentUser.name ? ", ".concat(currentUser.name) : '', "!"), /*#__PURE__*/react.createElement("p", null, "Upload a document or start typing to begin your conversation."));
+  }
+  return /*#__PURE__*/react.createElement("ul", {
+    className: "message-list"
+  }, messages.map(function (message, index) {
+    return /*#__PURE__*/react.createElement(MessageBubble, {
+      key: message.id || "".concat(message.role, "-").concat(index),
+      message: message
+    });
+  }));
+}
+function MessageBubble(_ref0) {
+  var message = _ref0.message;
+  var roleClass = getRoleClass(message.role);
+  var timestamp = message.createdAt ? formatTimestamp(message.createdAt) : null;
   return /*#__PURE__*/react.createElement("li", {
-    style: _objectSpread(_objectSpread({}, styles.bubble), mine ? styles.bubbleUser : styles.bubbleAssistant)
+    className: "message-bubble ".concat(roleClass)
   }, /*#__PURE__*/react.createElement("div", {
-    style: styles.meta
+    className: "message-meta"
   }, /*#__PURE__*/react.createElement("span", {
-    style: styles.role
-  }, formatRoleLabel(message.role)), /*#__PURE__*/react.createElement("time", {
-    style: styles.time
-  }, formatTimestamp(message.createdAt))), /*#__PURE__*/react.createElement("div", {
-    style: styles.text
-  }, String(message.text || "").split("\n").map(function (line, i) {
-    return /*#__PURE__*/react.createElement("p", {
-      key: i,
-      style: {
-        margin: 0
-      }
-    }, line);
+    className: "message-role"
+  }, formatRoleLabel(message.role)), timestamp && /*#__PURE__*/react.createElement("time", {
+    className: "message-timestamp"
+  }, timestamp)), /*#__PURE__*/react.createElement("div", {
+    className: "message-content"
+  }, Array.isArray(message.content) && message.content.length > 0 ? message.content.map(function (item, idx) {
+    return /*#__PURE__*/react.createElement(MessageContent, {
+      key: idx,
+      item: item
+    });
+  }) : /*#__PURE__*/react.createElement(MessageContent, {
+    item: {
+      type: 'text',
+      text: JSON.stringify(message, null, 2)
+    }
   })));
 }
-var styles = {
-  root: {
-    display: "grid",
-    gridTemplateRows: "auto 1fr auto",
-    height: "100vh",
-    background: "#0b0c10"
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "12px 16px",
-    color: "#e9ecef",
-    borderBottom: "1px solid #20232b"
-  },
-  title: {
-    fontWeight: 600
-  },
-  status: {
-    fontSize: 12,
-    opacity: 0.8
-  },
-  good: {
-    color: "#5ee27a"
-  },
-  bad: {
-    color: "#ff6666"
-  },
-  list: {
-    listStyle: "none",
-    margin: 0,
-    padding: "16px",
-    overflowY: "auto",
-    display: "grid",
-    gap: 12
-  },
-  bubble: {
-    maxWidth: 720,
-    padding: "10px 12px",
-    borderRadius: 12,
-    color: "#e9ecef",
-    background: "#151823"
-  },
-  bubbleUser: {
-    justifySelf: "end",
-    background: "#1f2433"
-  },
-  bubbleAssistant: {
-    justifySelf: "start",
-    background: "#151823"
-  },
-  meta: {
-    display: "flex",
-    gap: 8,
-    fontSize: 11,
-    opacity: 0.75,
-    marginBottom: 4
-  },
-  role: {
-    fontWeight: 600
-  },
-  time: {
-    opacity: 0.7
-  },
-  text: {
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-word"
-  },
-  composer: {
-    display: "grid",
-    gridTemplateColumns: "1fr auto",
-    gap: 8,
-    padding: 12,
-    borderTop: "1px solid #20232b",
-    background: "#0b0c10"
-  },
-  textarea: {
-    resize: "none",
-    outline: "none",
-    borderRadius: 10,
-    border: "1px solid #232838",
-    padding: "10px 12px",
-    background: "#121520",
-    color: "#e9ecef"
-  },
-  send: {
-    border: "1px solid #2b3147",
-    background: "#1c2030",
-    color: "#e9ecef",
-    borderRadius: 10,
-    padding: "8px 14px",
-    cursor: "pointer"
+function MessageContent(_ref1) {
+  var item = _ref1.item;
+  if (!item) {
+    return null;
   }
-};
+  switch (item.type) {
+    case 'input_text':
+    case 'output_text':
+    case 'text':
+      return /*#__PURE__*/react.createElement("p", {
+        className: "message-text"
+      }, item.text);
+    case 'input_file':
+    case 'output_file':
+      return /*#__PURE__*/react.createElement("div", {
+        className: "message-file"
+      }, /*#__PURE__*/react.createElement("span", {
+        role: "img",
+        "aria-label": "attachment"
+      }, "\uD83D\uDCCE"), /*#__PURE__*/react.createElement("span", null, item.filename || item.file_id));
+    case 'tool_call':
+    case 'tool_result':
+    case 'tool_message':
+      return /*#__PURE__*/react.createElement("pre", {
+        className: "message-tool"
+      }, JSON.stringify(item, null, 2));
+    default:
+      return /*#__PURE__*/react.createElement("pre", {
+        className: "message-raw"
+      }, JSON.stringify(item, null, 2));
+  }
+}
+function StagedFileList(_ref10) {
+  var files = _ref10.files,
+    onRemove = _ref10.onRemove;
+  if (!files.length) {
+    return null;
+  }
+  return /*#__PURE__*/react.createElement("div", {
+    className: "staged-files"
+  }, files.map(function (file) {
+    return /*#__PURE__*/react.createElement("div", {
+      key: file.file_id,
+      className: "staged-file"
+    }, /*#__PURE__*/react.createElement("span", null, "\uD83D\uDCCE ", file.name || file.file_id), /*#__PURE__*/react.createElement("button", {
+      type: "button",
+      onClick: function onClick() {
+        return onRemove(file.file_id);
+      }
+    }, "Remove"));
+  }));
+}
+function Banner(_ref11) {
+  var _ref11$type = _ref11.type,
+    type = _ref11$type === void 0 ? 'info' : _ref11$type,
+    message = _ref11.message,
+    onDismiss = _ref11.onDismiss;
+  if (!message) {
+    return null;
+  }
+  return /*#__PURE__*/react.createElement("div", {
+    className: "banner banner-".concat(type)
+  }, /*#__PURE__*/react.createElement("span", null, message), onDismiss && /*#__PURE__*/react.createElement("button", {
+    type: "button",
+    onClick: onDismiss,
+    "aria-label": "Dismiss"
+  }, "\u2715"));
+}
+function formatRoleLabel(role) {
+  switch (role) {
+    case 'user':
+      return 'You';
+    case 'assistant':
+      return 'Assistant';
+    case 'tool':
+      return 'Tool';
+    case 'system':
+      return 'System';
+    default:
+      return role || 'Message';
+  }
+}
+function getRoleClass(role) {
+  switch (role) {
+    case 'user':
+      return 'from-user';
+    case 'assistant':
+      return 'from-assistant';
+    case 'tool':
+      return 'from-tool';
+    default:
+      return 'from-system';
+  }
+}
+function formatTimestamp(value) {
+  try {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (err) {
+    console.warn('Failed to format timestamp:', value, err);
+    return '';
+  }
+}
+/* harmony default export */ const AppSDK = (AppSDK_App);
 ;// ./src/indexSDK.js
 
 
 
-client.createRoot(document.getElementById("root")).render(/*#__PURE__*/react.createElement(react.StrictMode, null, /*#__PURE__*/react.createElement(ChatSDKClient, null)));
+client.createRoot(document.getElementById("root")).render(/*#__PURE__*/react.createElement(react.StrictMode, null, /*#__PURE__*/react.createElement(AppSDK, null)));
 /******/ })()
 ;
