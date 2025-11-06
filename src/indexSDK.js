@@ -1,10 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import ChatSDKClient from "./ChatSDKClient";
+import App from "./AppSDK";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ChatSDKClient />
+    <App />
   </React.StrictMode>
 );
 
