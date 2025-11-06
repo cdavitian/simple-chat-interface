@@ -2860,8 +2860,11 @@ app.post('/api/admin/version/increment', requireAuth, checkUserPermissions, requ
         // Get description from request body, default to empty string
         let description = req.body.description || req.body.message || '';
         
-        // Remove "chore: set version to" if present
-        description = description.replace(/^chore:\s*set\s+version\s+to\s*/i, '').trim();
+        // Remove "chore: set version to", "chore: bump version to", and similar variations if present
+        description = description
+            .replace(/^chore:\s*(set|bump|update)\s+version\s+to\s*/i, '')
+            .replace(/^chore:\s*version\s+(bump|update|set)\s*/i, '')
+            .trim();
         
         // If no description provided, use a default
         if (!description) {
