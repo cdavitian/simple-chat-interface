@@ -8,38 +8,6 @@ import MenuBar from './components/MenuBar';
 const fileStager = createFileStager();
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
-// --- message shape helpers ---
-
-function normalizeMessage(m) {
-  if (!m) return null;
-
-  const text =
-    m.text ??
-    (Array.isArray(m.content) && m.content.find(x => x?.type === "text")?.text) ??
-    m.content?.[0]?.text ??
-    (typeof m.content === "string" ? m.content : "") ??
-    "";
-
-  return {
-    id: m.id ?? `msg-${(globalThis.crypto?.randomUUID?.() ?? Date.now())}`,
-    role: m.role || "assistant",
-    text,
-    content: [{ type: "text", text }],     // mirror for any legacy paths in your UI
-    createdAt: m.createdAt ?? new Date().toISOString(),
-  };
-}
-
-// Merge by id, keep order = old first then new (replace on id collision)
-function mergeMessages(prev, incoming) {
-  const map = new Map(prev.map(x => [x.id, x]));
-  for (const raw of incoming) {
-    const nm = normalizeMessage(raw);
-    if (!nm) continue;
-    map.set(nm.id, { ...(map.get(nm.id) || {}), ...nm });
-  }
-  return Array.from(map.values());
-}
-
 export async function onCustomToolS3UploadSuccess({ key, filename, bucket }) {
   const { file_id, content_type, category } = await registerUploadedS3Object({ key, filename, bucket });
   fileStager.add(file_id, { content_type, filename, category });
@@ -116,7 +84,6 @@ function App() {
 
 function ChatInterface({ user }) {
   const [messages, setMessages] = useState([]);
-  
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState(null);
@@ -146,16 +113,7 @@ function ChatInterface({ user }) {
 
   const loadConversation = useCallback(async () => {
     try {
-      // Check if we're arriving from homepage via query parameter
-      const urlParams = new URLSearchParams(window.location.search);
-      const fromHomepage = urlParams.get('from') === 'homepage';
-      
-      // Build API URL with query parameter if coming from homepage
-      const apiUrl = fromHomepage 
-        ? '/api/sdk/conversation?from=homepage'
-        : '/api/sdk/conversation';
-      
-      const response = await fetch(apiUrl, {
+      const response = await fetch('/api/sdk/conversation', {
         method: 'GET',
         credentials: 'include',
       });
@@ -165,20 +123,7 @@ function ChatInterface({ user }) {
       }
 
       const data = await response.json();
-      // Clear messages if conversation is empty (new session)
-      // This ensures the message window is cleared when starting fresh
-      const conversation = Array.isArray(data.conversation) ? data.conversation : [];
-      setMessages(conversation.map(normalizeMessage));
-      
-      // Log conversation ID if present (for new sessions)
-      if (data.conversationId) {
-        console.log('SDK conversation session:', data.conversationId);
-      }
-      
-      // Remove query parameter from URL after processing
-      if (fromHomepage) {
-        window.history.replaceState({}, '', window.location.pathname);
-      }
+      setMessages(Array.isArray(data.conversation) ? data.conversation : []);
     } catch (err) {
       console.error('Failed to load SDK conversation:', err);
       setSendError('Unable to load previous conversation. You can still start a new one.');
@@ -242,15 +187,14 @@ function ChatInterface({ user }) {
           throw new Error(`Upload failed (${uploadResp.status})`);
         }
 
-        setUploadStatus('Registering and indexing file…');
+        setUploadStatus('Registering file with OpenAI…');
 
-        // The backend now waits for vector store indexing to complete before returning
         const fileId = await onCustomToolS3UploadSuccess({ key: objectKey, filename: file.name });
         setStagedFiles((prev) => [
           ...prev,
           { file_id: fileId, name: file.name, content_type: contentType || file.type || 'application/octet-stream' }
         ]);
-        setUploadStatus(`✓ ${file.name} indexed and ready!`);
+        setUploadStatus(`✓ ${file.name} ready for the next message`);
       } catch (err) {
         console.error('Upload error:', err);
         setUploadStatus(`✗ ${err.message || 'Upload failed'}`);
@@ -287,34 +231,52 @@ function ChatInterface({ user }) {
   }, []);
 
   const handleSend = useCallback(async () => {
-    if (isSending) return;
+    if (isSending) {
+      return;
+    }
 
-    const text = (inputValue || "").trim();
+    const text = inputValue.trim();
     const fileIds = fileStager.list();
 
-    if (!text && fileIds.length === 0) return;
+    if (!text && fileIds.length === 0) {
+      return;
+    }
 
-    // optimistic user bubble (normalized)
-    const optimistic = normalizeMessage({
-      id: `local-${Date.now()}`,
-      role: "user",
-      text,
+    const content = [];
+    if (text) {
+      content.push({ type: 'input_text', text });
+    }
+    fileStager.listWithMetadata().forEach(({ file_id, ...metadata }) => {
+      const messageContent = buildMessageContent(file_id, metadata);
+      content.push({
+        type: messageContent.type,
+        file_id: messageContent.file_id,
+        display_name: messageContent.display_name,
+      });
     });
 
-    setMessages(prev => mergeMessages(prev, [optimistic]));
+    const optimisticId = `local-${Date.now()}`;
+    const optimisticMessage = {
+      id: optimisticId,
+      role: 'user',
+      content,
+      createdAt: new Date().toISOString(),
+      optimistic: true,
+    };
 
+    setMessages((prev) => [...prev, optimisticMessage]);
     setIsSending(true);
     setSendError(null);
 
     try {
-      const response = await fetch("/api/sdk/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+      const response = await fetch('/api/sdk/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           text,
           staged_file_ids: fileIds,
-          staged_files: fileStager.listWithMetadata(),
+          staged_files: fileStager.listWithMetadata()
         }),
       });
 
@@ -324,23 +286,13 @@ function ChatInterface({ user }) {
       }
 
       const data = await response.json();
-
-      const assistantText = data?.message?.text ?? data?.text ?? "";
-      const assistant = normalizeMessage({
-        id: data?.message?.id ?? data?.responseId ?? `resp-${Date.now()}`,
-        role: "assistant",
-        text: assistantText,
-        createdAt: data?.message?.createdAt,
-      });
-
-      setMessages(prev => mergeMessages(prev, [assistant]));
-      setInputValue("");
+      setMessages(Array.isArray(data.conversation) ? data.conversation : []);
+      setInputValue('');
       resetUploads();
-
     } catch (err) {
-      console.error("Failed to send message:", err);
-      setSendError(err.message || "Failed to send message");
-      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+      console.error('Failed to send message:', err);
+      setSendError(err.message || 'Failed to send message');
+      setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
     } finally {
       setIsSending(false);
     }
@@ -356,45 +308,8 @@ function ChatInterface({ user }) {
     [handleSend],
   );
 
-  const handleNewChat = useCallback(async () => {
-    if (isSending) {
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/sdk/conversation/reset', {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to reset conversation');
-      }
-
-      const data = await response.json();
-      
-      // Clear local state (message window should be empty)
-      setMessages([]);
-      setInputValue('');
-      resetUploads();
-      setSendError(null);
-      setInitializing(false);
-      
-      // Log new session if conversationId is returned
-      if (data.conversationId) {
-        console.log('New SDK conversation session after reset:', data.conversationId);
-      }
-    } catch (err) {
-      console.error('Failed to reset conversation:', err);
-      setSendError('Failed to start new chat. Please try again.');
-    }
-  }, [isSending, resetUploads]);
-
   return (
     <div className="chat-sdk-container">
-      <div className="chat-title">
-        <h2>MCP Test - SDK</h2>
-      </div>
       <div className="message-pane">
         {initializing ? (
           <div className="loading">
@@ -439,18 +354,6 @@ function ChatInterface({ user }) {
           <button className="send-button" type="button" onClick={handleSend} disabled={isSending}>
             {isSending ? 'Sending…' : 'Send'}
           </button>
-          <button
-            className="new-chat-button"
-            type="button"
-            onClick={handleNewChat}
-            disabled={isSending}
-            title="Start a new chat"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
-              <line x1="20" y1="4" x2="4" y2="20"/>
-            </svg>
-          </button>
         </div>
       </div>
 
@@ -488,23 +391,6 @@ function MessageBubble({ message }) {
   const roleClass = getRoleClass(message.role);
   const timestamp = message.createdAt ? formatTimestamp(message.createdAt) : null;
 
-  const displayItems = (() => {
-    if (typeof message.text === "string" && message.text.length > 0) {
-      return [{ type: "text", text: message.text }];
-    }
-
-    if (Array.isArray(message.content) && message.content.length > 0) {
-      return message.content.map((it) => {
-        if (!it) return it;
-        if (it.type === "input_text" || it.type === "output_text")
-          return { type: "text", text: it.text ?? "" };
-        return it;
-      });
-    }
-
-    return [{ type: "text", text: JSON.stringify(message, null, 2) }];
-  })();
-
   return (
     <li className={`message-bubble ${roleClass}`}>
       <div className="message-meta">
@@ -512,9 +398,11 @@ function MessageBubble({ message }) {
         {timestamp && <time className="message-timestamp">{timestamp}</time>}
       </div>
       <div className="message-content">
-        {displayItems.map((item, idx) => (
-          <MessageContent key={idx} item={item} />
-        ))}
+        {Array.isArray(message.content) && message.content.length > 0 ? (
+          message.content.map((item, idx) => <MessageContent key={idx} item={item} />)
+        ) : (
+          <MessageContent item={{ type: 'text', text: JSON.stringify(message, null, 2) }} />
+        )}
       </div>
     </li>
   );
@@ -523,11 +411,6 @@ function MessageBubble({ message }) {
 function MessageContent({ item }) {
   if (!item) {
     return null;
-  }
-
-  // Guard: if item has text but no type, render as text
-  if (typeof item.text === "string" && (item.type === undefined || item.type === null)) {
-    return <p className="message-text">{item.text}</p>;
   }
 
   switch (item.type) {
@@ -631,7 +514,6 @@ function formatTimestamp(value) {
   }
 }
 
-export { App };
-export default ChatInterface;
+export default App;
 
 
