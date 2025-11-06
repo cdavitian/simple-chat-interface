@@ -256,6 +256,12 @@ app.use(session({
     proxy: isProduction // Trust the reverse proxy when setting secure cookies
 }));
 
+// Ensure a per-browser-session chat transcript exists
+app.use((req, _res, next) => {
+    if (!req.session.sdkTranscript) req.session.sdkTranscript = []; // [{role, content}]
+    next();
+});
+
 // Middleware to log session lifecycle (initiation and termination)
 app.use(async (req, res, next) => {
     // Log session initiation when user data is set (but not yet logged)
