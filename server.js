@@ -2438,45 +2438,56 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
             content_type: resolvedContentType
         });
 
-        // Add file to conversation's vector store for persistent file awareness
-        // CRITICAL: Use conversation-based vector store (one per conversationId) - persist and reuse
+        // Add file to the vector store used by the active chat session (priority: session store → conversation store → create session store)
         try {
             let vectorStoreId = null;
-            
-            // First, try to get or create conversationId and use conversation-based vector store
-            let conversationId = null;
-            try {
-                conversationId = await getOrCreateConversationId(req);
-            } catch (convError) {
-                console.warn('⚠️ ingest-s3: Failed to get/create conversationId, falling back to session-based vector store:', convError?.message);
+
+            // 1) Prefer the session-bound vector store (this is what ChatKit binds to at session creation)
+            if (req.session?.vectorStoreId) {
+                vectorStoreId = req.session.vectorStoreId;
+                console.log('✅ ingest-s3: Using existing session vector store:', {
+                    vectorStoreId: vectorStoreId.substring(0, 20) + '...',
+                    file_id: uploaded.id
+                });
             }
-            
-            if (conversationId) {
-                // Use conversation-based vector store (one per conversation)
+
+            // 2) If none set yet, try conversation-based store (used by SDK flows); also mirror into session for consistency
+            if (!vectorStoreId) {
+                let conversationId = null;
                 try {
-                    vectorStoreId = await getOrCreateVectorStoreForConversation(client, conversationId, req.session);
-                    console.log('✅ ingest-s3: Using conversation-based vector store:', {
-                        vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
-                        conversationId: conversationId.substring(0, 20) + '...',
-                        file_id: uploaded.id
-                    });
-                } catch (vsError) {
-                    console.error('❌ ingest-s3: Failed to get conversation-based vector store:', {
-                        error: vsError?.message,
-                        conversationId: conversationId.substring(0, 20) + '...',
-                        file_id: uploaded.id
-                    });
+                    conversationId = await getOrCreateConversationId(req);
+                } catch (convError) {
+                    console.warn('⚠️ ingest-s3: Failed to get/create conversationId:', convError?.message);
+                }
+
+                if (conversationId) {
+                    try {
+                        vectorStoreId = await getOrCreateVectorStoreForConversation(client, conversationId, req.session);
+                        // Mirror to session so future ChatKit sessions bind to the same store
+                        try { req.session.vectorStoreId = vectorStoreId; } catch (_) {}
+                        console.log('✅ ingest-s3: Using conversation-based vector store:', {
+                            vectorStoreId: vectorStoreId.substring(0, 20) + '...',
+                            conversationId: conversationId.substring(0, 20) + '...',
+                            file_id: uploaded.id
+                        });
+                    } catch (vsError) {
+                        console.error('❌ ingest-s3: Failed to get conversation-based vector store:', {
+                            error: vsError?.message,
+                            conversationId: conversationId.substring(0, 20) + '...',
+                            file_id: uploaded.id
+                        });
+                    }
                 }
             }
-            
-            // Fallback to session-based vector store if no conversationId or conversation-based store failed
+
+            // 3) If still none, create (or get) a session-based vector store and persist it
             if (!vectorStoreId) {
                 const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                 const sdkSessionId = `sdk_${userId}_${req.sessionID}`;
                 try {
                     vectorStoreId = await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
-                    console.log('✅ ingest-s3: Using session-based vector store (fallback):', {
-                        vectorStoreId: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
+                    console.log('✅ ingest-s3: Using session-based vector store (created):', {
+                        vectorStoreId: vectorStoreId.substring(0, 20) + '...',
                         file_id: uploaded.id
                     });
                 } catch (createError) {
