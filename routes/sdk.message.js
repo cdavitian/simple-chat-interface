@@ -1,39 +1,56 @@
-const OpenAI = require('openai');
+// routes/sdk.message.js
+const OpenAI = require("openai");
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const sdkMessage = async (req, res) => {
-  try {
-    const { text } = req.body || {};
-    const userId = req.session?.user?.id || 'anonymous';
-    const vectorStoreId = req.session?.vectorStoreId || null;
+// safe sanity logs (no package.json import)
+console.log("Has Responses API? ", typeof client.responses?.create === "function");
 
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({ error: 'Missing text' });
+module.exports.sdkMessage = async (req, res) => {
+  try {
+    // 1) inputs
+    const { text } = req.body || {};
+    const userId = req.session?.user?.id;
+    const vectorStoreId = req.session?.vectorStoreId;
+
+    if (!text || typeof text !== "string") {
+      return res.status(400).json({ error: "Missing text" });
     }
 
-    const tools = vectorStoreId ? [{ type: 'file_search' }] : undefined;
-    const tool_resources = vectorStoreId
-      ? { file_search: { vector_store_ids: [vectorStoreId] } }
-      : undefined;
-
+    // 2) call Responses API (use 'ai' to avoid shadowing Express 'res')
     const ai = await client.responses.create({
-      model: process.env.OPENAI_MODEL || 'gpt-5',
-      input: [{ role: 'user', content: text }],
-      ...(tools && { tools }),
-      ...(tool_resources && { tool_resources }),
-      metadata: { route: 'sdk.message', userId },
+      model: process.env.OPENAI_MODEL || "gpt-5",
+      input: [{ role: "user", content: text }],
+      tools: [{ type: "file_search" }],
+      ...(vectorStoreId
+        ? { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } }
+        : {}),
+      metadata: { route: "sdk.message", userId },
     });
 
+    // 3) normalize output
     const out =
       ai.output_text ??
-      ai.output?.[0]?.content?.[0]?.text ??
-      '(no text output)';
+      ai.output?.[0]?.content?.[0]?.text?.value ??
+      "";
 
-    return res.json({ ok: true, text: out });
+    return res.json({
+      success: true,
+      response_id: ai.id,
+      text: out,
+      message: {
+        id: ai.id,
+        role: "assistant",
+        text: out,
+        createdAt: new Date().toISOString(),
+      },
+      usage: ai?.usage || null,
+    });
   } catch (err) {
-    console.error('sdk.message error', err);
-    return res.status(500).json({ error: err?.message || 'Server error' });
+    console.error("[/api/sdk/message] ERROR:", err?.stack || err);
+    const status = err?.status || 500;
+    return res.status(status).json({
+      error: err?.error?.message || err?.message || String(err),
+      requestId: err?.request_id || err?.requestId,
+    });
   }
 };
-
-module.exports = { sdkMessage };
