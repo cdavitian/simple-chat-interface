@@ -1678,20 +1678,57 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         }
         // No session-level chatkit_configuration binding; retrieval uses message-level attachments
         // ---- harden the payload & prove what's being sent ----
-if (sessionConfig.thread) {
-    console.warn("⚠️ Removing unexpected sessionConfig.thread before create()");
-    delete sessionConfig.thread;
-  }
-  
-  // Ensure workflow is an object with an id (defensive)
-  if (typeof sessionConfig.workflow === "string") {
-    sessionConfig.workflow = { id: sessionConfig.workflow };
-  }
-  
-  // Log exactly what we send (keys + pretty JSON)
-  console.log("session.create payload keys:", Object.keys(sessionConfig));
-  console.log("session.create payload:", JSON.stringify(sessionConfig, null, 2));
-  
+        if (sessionConfig.thread) {
+            console.warn("⚠️ Removing unexpected sessionConfig.thread before create()");
+            delete sessionConfig.thread;
+        }
+        
+        // Ensure workflow is an object with an id (defensive)
+        if (typeof sessionConfig.workflow === "string") {
+            sessionConfig.workflow = { id: sessionConfig.workflow };
+        }
+        
+        // ---- File Search + Vector Store binding (safe for const sessionConfig) ----
+        
+        // Use exactly one source of truth for the vector store id.
+        // If you previously created one earlier in the request, assign it to req.session.vectorStoreId there.
+        // Here we only read it. Use the existing vectorStoreId variable (already declared above).
+        // Update it from session if it wasn't set, otherwise use the one from STEP 1
+        // Resolve the bound vector store id without mutating outer vars
+        const boundVectorStoreId =
+            (typeof vectorStoreId !== 'undefined' && vectorStoreId) ||
+            req.session?.vectorStoreId ||
+            null;
+
+
+        // 1) Ensure tools array exists and includes file_search
+        if (!Array.isArray(sessionConfig.tools)) {
+            sessionConfig.tools = [];
+        }
+        if (!sessionConfig.tools.some(t => t?.type === 'file_search')) {
+            sessionConfig.tools.push({ type: 'file_search' });
+        }
+
+        // 2) Ensure tool_resources.file_search.vector_store_ids points to this session's store
+        sessionConfig.tool_resources = sessionConfig.tool_resources || {};
+        const existingFs = sessionConfig.tool_resources.file_search || {};
+        sessionConfig.tool_resources.file_search = {
+            ...existingFs,
+            ...(boundVectorStoreId ? { vector_store_ids: [boundVectorStoreId] } : {}),
+        };
+
+        // Optional sanity logs
+        console.log('⛏️ ChatKit session tools:', sessionConfig.tools);
+        if (boundVectorStoreId) {
+            console.log('🔗 Binding vector store to session:', boundVectorStoreId);
+        } else {
+            console.warn('⚠️ No vectorStoreId on req.session — file search will have no data source');
+        }
+
+        // Log exactly what we send (keys + pretty JSON)
+        console.log("session.create payload keys:", Object.keys(sessionConfig));
+        console.log("session.create payload:", JSON.stringify(sessionConfig, null, 2));
+        
         const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
         console.log('Session created successfully:', {
@@ -1713,8 +1750,8 @@ if (sessionConfig.thread) {
         try {
             req.session.chatkitSessionId = sessionId;
             // Update vector store ID if it wasn't already stored
-            if (vectorStoreId && !req.session.vectorStoreId) {
-                req.session.vectorStoreId = vectorStoreId;
+            if (boundVectorStoreId && !req.session.vectorStoreId) {
+                req.session.vectorStoreId = boundVectorStoreId;
             }
         } catch (e) {
             console.warn('Unable to persist chatkitSessionId in session (GET):', e?.message);
@@ -1894,7 +1931,40 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         }
         
         // No session-level chatkit_configuration binding; retrieval uses message-level attachments
-        
+        // --- add this block BEFORE create() ---
+        // Use the existing vectorStoreId variable (already declared above).
+        // Update it from session if it wasn't set, otherwise use the one from STEP 1
+        // Resolve the bound vector store id without mutating outer vars
+        const boundVectorStoreId =
+            (typeof vectorStoreId !== 'undefined' && vectorStoreId) ||
+            req.session?.vectorStoreId ||
+            null;
+
+
+        // 1) Ensure tools array exists and includes file_search
+        if (!Array.isArray(sessionConfig.tools)) {
+            sessionConfig.tools = [];
+        }
+        if (!sessionConfig.tools.some(t => t?.type === 'file_search')) {
+            sessionConfig.tools.push({ type: 'file_search' });
+        }
+
+        // 2) Ensure tool_resources.file_search.vector_store_ids points to this session's store
+        sessionConfig.tool_resources = sessionConfig.tool_resources || {};
+        const existingFs = sessionConfig.tool_resources.file_search || {};
+        sessionConfig.tool_resources.file_search = {
+            ...existingFs,
+            ...(boundVectorStoreId ? { vector_store_ids: [boundVectorStoreId] } : {}),
+        };
+
+        // Optional sanity logs
+        console.log('⛏️ ChatKit session tools:', sessionConfig.tools);
+        if (boundVectorStoreId) {
+            console.log('🔗 Binding vector store to session:', boundVectorStoreId);
+        } else {
+            console.warn('⚠️ No vectorStoreId on req.session — file search will have no data source');
+        }
+
         const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
         console.log('Session created successfully:', {
@@ -1916,8 +1986,8 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         try {
             req.session.chatkitSessionId = sessionId;
             // Update vector store ID if it wasn't already stored
-            if (vectorStoreId && !req.session.vectorStoreId) {
-                req.session.vectorStoreId = vectorStoreId;
+            if (boundVectorStoreId && !req.session.vectorStoreId) {
+                req.session.vectorStoreId = boundVectorStoreId;
             }
         } catch (e) {
             console.warn('Unable to persist chatkitSessionId in session (POST):', e?.message);
