@@ -9,9 +9,20 @@ module.exports.sdkMessage = async (req, res) => {
       return res.status(400).json({ error: 'Missing text' });
     }
 
-    // 1) Append user turn to session transcript
+    // Ensure conversation arrays exist
+    req.session.sdkConversation = Array.isArray(req.session.sdkConversation) ? req.session.sdkConversation : [];
+    // 1) Append user turn to session transcript (legacy)
     req.session.sdkTranscript = Array.isArray(req.session.sdkTranscript) ? req.session.sdkTranscript : [];
     req.session.sdkTranscript.push({ role: 'user', content: text });
+
+    // Also append a normalized user message for the new React UI
+    const userMessage = {
+      id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      role: 'user',
+      createdAt: new Date().toISOString(),
+      content: [{ type: 'input_text', text }],
+    };
+    req.session.sdkConversation.push(userMessage);
 
     // 2) Optional: limit turns (e.g., last 20 messages)
     const MAX_TURNS = 20;
@@ -33,12 +44,23 @@ module.exports.sdkMessage = async (req, res) => {
 
     // 5) Append assistant turn to transcript and persist session
     req.session.sdkTranscript.push({ role: 'assistant', content: messageText });
+
+    // Append normalized assistant message for the new React UI
+    const assistantMessage = {
+      id: `asst_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      role: 'assistant',
+      createdAt: new Date().toISOString(),
+      content: [{ type: 'output_text', text: messageText }],
+    };
+    req.session.sdkConversation.push(assistantMessage);
+
     await new Promise(resolve => req.session.save(resolve));
 
     return res.json({
       success: true,
       response_id: ai.id || null,
-      text: messageText
+      text: messageText,
+      conversation: req.session.sdkConversation,
     });
   } catch (err) {
     console.error('sdk.message error:', err);
