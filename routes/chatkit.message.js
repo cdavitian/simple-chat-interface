@@ -36,6 +36,10 @@ async function chatkitMessage(req, res) {
   }
 
   try {
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing chatkit session' });
+    }
+
     const thread = await ThreadService.ensureThread({
       threadId,
       userId,
@@ -45,8 +49,15 @@ async function chatkitMessage(req, res) {
     const fileIdList = Array.from(allFileIds);
 
     if (fileIdList.length > 0) {
+      // Prefer the session-bound vector store so ChatKit retrieval sees new files
+      const sessionVectorStoreId = req.session?.vectorStoreId || null;
+      const targetVectorStoreId = sessionVectorStoreId || thread.vector_store_id || process.env.VECTOR_STORE_ID || null;
+      if (!targetVectorStoreId) {
+        return res.status(500).json({ error: 'No vector store available to attach files' });
+      }
+
       await AttachmentService.addFiles({
-        vectorStoreId: thread.vector_store_id,
+        vectorStoreId: targetVectorStoreId,
         fileIds: fileIdList,
       });
     }
@@ -58,40 +69,22 @@ async function chatkitMessage(req, res) {
       inputMessages.push({ role: 'user', content: 'Please review the uploaded files.' });
     }
 
-    const vectorStoreId = thread.vector_store_id || process.env.VECTOR_STORE_ID || null;
-    const tools = [];
-    if (vectorStoreId) {
-      tools.push({ type: 'file_search', vector_store_ids: [vectorStoreId] });
-    }
-    if (fileIdList.length > 0) {
-      tools.push({ type: 'code_interpreter' });
-    }
-
-    const baseRequest = {
-      model: process.env.OPENAI_MODEL || 'gpt-5',
+    const response = await openai.beta.chatkit.sessions.responses.create({
+      session_id: sessionId,
       input: inputMessages,
-      tools,
-    };
-
-    if (thread.conversation_id) {
-      baseRequest.conversation = thread.conversation_id;
-    }
-
-    const response = await openai.responses.create(baseRequest);
-
-    const conversationId = response?.conversation_id || thread.conversation_id || null;
-
-    if (!thread.conversation_id && conversationId) {
-      await ThreadService.setConversationId(thread.id, conversationId);
-    }
+      // NOTE: do not pass tool_resources; retrieval uses the bound vector store
+    });
 
     const responseId = response?.id || uuid();
     const messageId = uuid();
+
+    const out = response.output_text ?? response.output?.[0]?.content?.[0]?.text?.value ?? '';
 
     return res.json({
       success: true,
       message_id: messageId,
       response_id: responseId,
+      text: out,
     });
   } catch (error) {
     console.error('chatkit.message error:', error);

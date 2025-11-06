@@ -1667,6 +1667,16 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
                 delete sessionConfig.chatkit_configuration;
             }
         }
+        // ✅ Inject ChatKit retrieval binding (file_search) using existing vector store
+        if (req.session?.vectorStoreId) {
+            sessionConfig.chatkit_configuration = {
+                ...(sessionConfig.chatkit_configuration || {}),
+                file_search: {
+                    vector_store_ids: [req.session.vectorStoreId],
+                },
+            };
+            console.log("✅ Vector store ready for ChatKit session:", req.session.vectorStoreId);
+        }
         // ---- harden the payload & prove what's being sent ----
 if (sessionConfig.thread) {
     console.warn("⚠️ Removing unexpected sessionConfig.thread before create()");
@@ -1881,6 +1891,17 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             if (Object.keys(sessionConfig.chatkit_configuration).length === 0) {
                 delete sessionConfig.chatkit_configuration;
             }
+        }
+        
+        // ✅ Inject ChatKit retrieval binding (file_search) using existing vector store
+        if (req.session?.vectorStoreId) {
+            sessionConfig.chatkit_configuration = {
+                ...(sessionConfig.chatkit_configuration || {}),
+                file_search: {
+                    vector_store_ids: [req.session.vectorStoreId],
+                },
+            };
+            console.log("✅ Vector store ready for ChatKit session:", req.session.vectorStoreId);
         }
         
         const session = await client.beta.chatkit.sessions.create(sessionConfig);
