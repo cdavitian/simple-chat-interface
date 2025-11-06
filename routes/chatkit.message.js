@@ -1,100 +1,66 @@
-const { v4: uuid } = require('uuid');
+const OpenAI = require("openai");
 const { openai } = require('../lib/openai');
-const { ThreadService } = require('../services/thread.service');
-const { AttachmentService } = require('../services/attachment.service');
 
-async function chatkitMessage(req, res) {
-  const body = req.body || {};
-  const userId = req.session?.user?.id || 'anonymous';
-
-  const sessionId = body.session_id ?? req.session?.chatkitSessionId ?? null;
-  const threadId = sessionId || `thread:${userId}`;
-
-  const text = typeof body.text === 'string' ? body.text.trim() : '';
-
-  const stagedFileIds = Array.isArray(body.staged_file_ids) ? body.staged_file_ids : [];
-  const stagedFiles = Array.isArray(body.staged_files) ? body.staged_files : [];
-  const legacyFileId = typeof body.file_id === 'string' ? body.file_id : null;
-
-  const allFileIds = new Set();
-  stagedFileIds.forEach((id) => {
-    if (typeof id === 'string' && id.trim()) {
-      allFileIds.add(id.trim());
-    }
-  });
-  stagedFiles.forEach((file) => {
-    if (file && typeof file.file_id === 'string' && file.file_id.trim()) {
-      allFileIds.add(file.file_id.trim());
-    }
-  });
-  if (legacyFileId && legacyFileId.trim()) {
-    allFileIds.add(legacyFileId.trim());
-  }
-
-  if (!text && allFileIds.size === 0) {
-    return res.status(400).json({ error: 'Missing text or files' });
-  }
-
-  try {
-    if (!sessionId) {
-      return res.status(400).json({ error: 'Missing chatkit session' });
-    }
-
-    const thread = await ThreadService.ensureThread({
-      threadId,
-      userId,
-      sessionId,
-    });
-
-    const fileIdList = Array.from(allFileIds);
-
-    if (fileIdList.length > 0) {
-      // Prefer the session-bound vector store so ChatKit retrieval sees new files
-      const sessionVectorStoreId = req.session?.vectorStoreId || null;
-      const targetVectorStoreId = sessionVectorStoreId || thread.vector_store_id || process.env.VECTOR_STORE_ID || null;
-      if (!targetVectorStoreId) {
-        return res.status(500).json({ error: 'No vector store available to attach files' });
-      }
-
-      await AttachmentService.addFiles({
-        vectorStoreId: targetVectorStoreId,
-        fileIds: fileIdList,
-      });
-    }
-
-    const inputMessages = [];
-    if (text) {
-      inputMessages.push({ role: 'user', content: text });
-    } else {
-      inputMessages.push({ role: 'user', content: 'Please review the uploaded files.' });
-    }
-
-    const response = await openai.beta.chatkit.sessions.responses.create({
-      session_id: sessionId,
-      input: inputMessages,
-      // NOTE: do not pass tool_resources; retrieval uses the bound vector store
-    });
-
-    const responseId = response?.id || uuid();
-    const messageId = uuid();
-
-    const out = response.output_text ?? response.output?.[0]?.content?.[0]?.text?.value ?? '';
-
-    return res.json({
-      success: true,
-      message_id: messageId,
-      response_id: responseId,
-      text: out,
-    });
-  } catch (error) {
-    console.error('chatkit.message error:', error);
-    return res.status(500).json({
-      error: error?.message || 'server_error',
-    });
-  }
+// Helper to get the files client regardless of API surface
+function getVectorStoreFilesClient() {
+  if (openai?.vectorStores?.files?.list) return openai.vectorStores.files;
+  if (openai?.beta?.vectorStores?.files?.list) return openai.beta.vectorStores.files;
+  const direct = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return direct.vectorStores.files;
 }
 
-module.exports = {
-  chatkitMessage,
+// Helper to list all file ids in a vector store (handles pagination)
+async function listVectorStoreFileIds(vectorStoreId) {
+  if (!vectorStoreId) return [];
+  const filesClient = getVectorStoreFilesClient();
+  const ids = [];
+  let cursor = undefined;
+  do {
+    const page = await filesClient.list({
+      vector_store_id: vectorStoreId,
+      limit: 100,
+      after: cursor,
+    });
+    const data = Array.isArray(page?.data) ? page.data : [];
+    ids.push(...data.map(f => f.id));
+    cursor = page?.has_more ? page.last_id : undefined;
+  } while (cursor);
+  return ids;
+}
+
+module.exports.chatkitMessage = async (req, res) => {
+  try {
+    const { text } = req.body || {};
+    const sessionId = req.session?.chatkitSessionId;
+    const vectorStoreId = req.session?.vectorStoreId;
+
+    if (!text || !sessionId) {
+      return res.status(400).json({ error: "Missing text or session" });
+    }
+
+    // Get file_ids from your per-session/per-user vector store
+    const fileIds = await listVectorStoreFileIds(vectorStoreId);
+    const attachments = fileIds.map(id => ({ file_id: id }));
+
+    // Send the message through ChatKit; attach files if present
+    const reply = await openai.beta.chatkit.sessions.responses.create({
+      session_id: sessionId,
+      input: [{ role: "user", content: text }],
+      ...(attachments.length ? { attachments } : {}),
+      // NOTE: no chatkit_configuration and no tool_resources here
+    });
+
+    const out =
+      reply.output_text ??
+      reply.output?.[0]?.content?.[0]?.text?.value ??
+      "";
+
+    return res.json({ success: true, text: out, response_id: reply.id });
+  } catch (err) {
+    console.error("[/api/chatkit/message] ERROR:", err?.stack || err);
+    return res.status(err?.status || 500).json({
+      error: err?.error?.message || err?.message || "chatkit_message_error",
+    });
+  }
 };
 
