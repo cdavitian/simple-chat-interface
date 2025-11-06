@@ -2060,6 +2060,226 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
     }
 });
 
+// ChatKit session reset endpoint - ends current session and starts a new one
+app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
+    try {
+        console.log('ChatKit session reset request received');
+        
+        // Store old session ID for logging
+        const oldSessionId = req.session.chatkitSessionId;
+        
+        // Try to delete/close the old session if it exists (optional - may not be supported by OpenAI API)
+        if (oldSessionId) {
+            try {
+                const client = getOpenAIClient();
+                if (client) {
+                    // Try to delete the session (if OpenAI ChatKit API supports it)
+                    // Note: OpenAI ChatKit may not have a delete method, so we'll catch and continue
+                    try {
+                        await client.beta.chatkit.sessions.delete(oldSessionId);
+                        console.log('✅ Old ChatKit session deleted:', oldSessionId);
+                    } catch (deleteError) {
+                        // If delete is not supported or fails, just log and continue
+                        console.log('⚠️ Could not delete old ChatKit session (may not be supported):', deleteError?.message || 'Unknown error');
+                    }
+                }
+            } catch (error) {
+                console.warn('⚠️ Error attempting to delete old ChatKit session:', error?.message);
+                // Continue anyway - the old session will expire naturally
+            }
+        }
+        
+        // Clear the old session ID from the session
+        req.session.chatkitSessionId = null;
+        
+        // Set cache headers to prevent any caching (critical for fresh tokens)
+        res.set('Cache-Control', 'no-store, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+        
+        // Validate environment variables
+        if (!process.env.OPENAI_API_KEY) {
+            return res.status(500).json({ 
+                error: 'OpenAI API Key not configured' 
+            });
+        }
+        
+        if (!process.env.OPENAI_CHATKIT_WORKFLOW_ID) {
+            return res.status(500).json({ 
+                error: 'ChatKit Workflow ID not configured' 
+            });
+        }
+
+        if (!process.env.OPENAI_CHATKIT_PUBLIC_KEY) {
+            return res.status(500).json({ 
+                error: 'OpenAI ChatKit Public Key not configured' 
+            });
+        }
+
+        // Use OpenAI API to create a proper session
+        const client = getOpenAIClient();
+        
+        if (!client) {
+            return res.status(500).json({ 
+                error: 'OpenAI API Key not configured' 
+            });
+        }
+        
+        console.log('Creating new ChatKit session after reset...');
+        
+        // Get or create a stable user ID for this session
+        let userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // STEP 1: Create or get vector store FIRST (before creating session)
+        let vectorStoreId = null;
+        try {
+            console.log('🔍 ChatKit (RESET): Creating/getting vector store BEFORE session creation...', {
+                userId,
+                hasExistingVectorStore: !!req.session?.vectorStoreId
+            });
+            vectorStoreId = await getOrCreateVectorStore(client, req.session, null, userId);
+            console.log('✅ Vector store ready for ChatKit session (RESET):', {
+                vectorStoreId,
+                storedInSession: !!req.session.vectorStoreId
+            });
+        } catch (vectorStoreError) {
+            console.error('❌ Failed to create vector store (RESET):', {
+                error: vectorStoreError?.message,
+                stack: vectorStoreError?.stack,
+                name: vectorStoreError?.name,
+                userId
+            });
+            // Continue even if vector store creation fails
+        }
+        
+        // STEP 2: Create session with thread linking to vector store (if available)
+        const sessionConfig = {
+            user: userId,
+            workflow: {
+                id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,
+            }
+        };
+        
+        // Clean up session config
+        if (sessionConfig.chatkit_configuration) {
+            if (sessionConfig.chatkit_configuration.file_upload) {
+                delete sessionConfig.chatkit_configuration.file_upload;
+            }
+            if (Object.keys(sessionConfig.chatkit_configuration).length === 0) {
+                delete sessionConfig.chatkit_configuration;
+            }
+        }
+        
+        if (sessionConfig.thread) {
+            console.warn("⚠️ Removing unexpected sessionConfig.thread before create()");
+            delete sessionConfig.thread;
+        }
+        
+        if (typeof sessionConfig.workflow === "string") {
+            sessionConfig.workflow = { id: sessionConfig.workflow };
+        }
+        
+        // File Search + Vector Store binding
+        const boundVectorStoreId =
+            (typeof vectorStoreId !== 'undefined' && vectorStoreId) ||
+            req.session?.vectorStoreId ||
+            null;
+
+        if (!Array.isArray(sessionConfig.tools)) {
+            sessionConfig.tools = [];
+        }
+        if (!sessionConfig.tools.some(t => t?.type === 'file_search')) {
+            sessionConfig.tools.push({ type: 'file_search' });
+        }
+
+        sessionConfig.tool_resources = sessionConfig.tool_resources || {};
+        const existingFs = sessionConfig.tool_resources.file_search || {};
+        sessionConfig.tool_resources.file_search = {
+            ...existingFs,
+            ...(boundVectorStoreId ? { vector_store_ids: [boundVectorStoreId] } : {}),
+        };
+
+        console.log('⛏️ ChatKit session tools (RESET):', sessionConfig.tools);
+        if (boundVectorStoreId) {
+            console.log('🔗 Binding vector store to session (RESET):', boundVectorStoreId);
+        }
+        
+        const session = await client.beta.chatkit.sessions.create(sessionConfig);
+        
+        const clientToken = session.clientToken || session.client_secret;
+        const sessionId = session.id;
+        
+        // Persist the new ChatKit session id in the user's server session
+        try {
+            req.session.chatkitSessionId = sessionId;
+            if (boundVectorStoreId && !req.session.vectorStoreId) {
+                req.session.vectorStoreId = boundVectorStoreId;
+            }
+        } catch (e) {
+            console.warn('Unable to persist chatkitSessionId in session (RESET):', e?.message);
+        }
+        
+        if (!clientToken) {
+            return res.status(500).json({ 
+                error: 'Session created but no client token found',
+                sessionKeys: Object.keys(session)
+            });
+        }
+        
+        if (!sessionId) {
+            return res.status(500).json({ 
+                error: 'Session created but no session ID found',
+                sessionKeys: Object.keys(session)
+            });
+        }
+        
+        // Choose public key based on request host
+        const hostHeader = req.headers.host || '';
+        const isLocalHost = /(^localhost)|(127\.0\.0\.1)/i.test(hostHeader);
+        const publicKey = isLocalHost && process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
+            ? process.env.OPENAI_CHATKIT_PUBLIC_KEY_LOCAL
+            : process.env.OPENAI_CHATKIT_PUBLIC_KEY;
+
+        // Return the session information that ChatKit needs
+        const sessionData = {
+            clientToken: clientToken,
+            publicKey: publicKey,
+            sessionId: sessionId,
+            vector_store_id: vectorStoreId || null
+        };
+        
+        // Log the reset to deployment logs
+        console.log('🔄 ChatKit: Session reset - new session created', {
+            oldSessionId: oldSessionId || 'none',
+            newSessionId: sessionId,
+            userId: req.session.user?.id || 'unknown',
+            userEmail: req.session.user?.email || 'unknown',
+            sessionId: req.sessionID,
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log('Sending ChatKit session data (RESET):', {
+            clientToken: clientToken.substring(0, 20) + '...',
+            publicKey: sessionData.publicKey.substring(0, 20) + '...',
+            sessionId: sessionId,
+            vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
+        });
+        
+        res.json({
+            success: true,
+            ...sessionData
+        });
+
+    } catch (error) {
+        console.error('ChatKit session reset error:', error);
+        console.error("session.create failed:", error?.response?.data ?? error?.message ?? error);
+        res.status(500).json({ 
+            error: 'Internal server error',
+            details: error.message 
+        });
+    }
+});
+
 // ============ S3 Upload Endpoints ============
 // Presign S3 upload for ChatKit attachments (following guidance pattern)
 app.post('/api/uploads/presign', requireAuth, async (req, res) => {

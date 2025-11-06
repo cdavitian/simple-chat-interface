@@ -308,6 +308,45 @@ function ChatInterface({ user }) {
     [handleSend],
   );
 
+  const handleReset = useCallback(async () => {
+    if (isSending) {
+      return;
+    }
+
+    try {
+      setIsSending(true);
+      setSendError(null);
+
+      // Call the reset endpoint
+      const response = await fetch('/api/sdk/conversation/reset', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Failed to reset conversation (${response.status})`);
+      }
+
+      const data = await response.json();
+      
+      // Clear messages immediately
+      setMessages([]);
+      
+      // Clear input and staged files
+      setInputValue('');
+      resetUploads();
+      
+      // Reload the conversation (which should be empty now)
+      await loadConversation();
+    } catch (err) {
+      console.error('Failed to reset conversation:', err);
+      setSendError(err.message || 'Failed to reset conversation');
+    } finally {
+      setIsSending(false);
+    }
+  }, [isSending, resetUploads, loadConversation]);
+
   return (
     <div className="chat-sdk-container">
       <div className="message-pane">
@@ -351,8 +390,20 @@ function ChatInterface({ user }) {
             rows={1}
             disabled={isSending}
           />
-          <button className="send-button" type="button" onClick={handleSend} disabled={isSending}>
+          <button className="send-button send-button-compact" type="button" onClick={handleSend} disabled={isSending}>
             {isSending ? 'Sending…' : 'Send'}
+          </button>
+          <button 
+            className="reset-button" 
+            type="button" 
+            onClick={handleReset} 
+            disabled={isSending}
+            title="Start new conversation"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" fill="none"/>
+              <path d="M8 14L14 8M14 8L11 8M14 8L14 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </button>
         </div>
       </div>
