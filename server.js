@@ -2222,6 +2222,46 @@ app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
     }
 });
 
+// Lightweight endpoint for outside agents to fetch the active vector store id
+// Optional: pass conversation_id to scope per durable conversation; otherwise uses session-scoped store
+app.get('/api/vector-store/id', requireAuth, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
+        const sessionIdParam = typeof req.query.session_id === 'string' ? req.query.session_id : null;
+        if (sessionIdParam && sessionIdParam !== req.sessionID) {
+            return res.status(403).json({ error: 'session_id does not match current session' });
+        }
+
+        const client = getOpenAIClient();
+        if (!client) {
+            return res.status(500).json({ error: 'OpenAI API Key not configured' });
+        }
+
+        const userId = req.session?.user?.id || 'anonymous';
+        const conversationId = (typeof req.query.conversation_id === 'string' && req.query.conversation_id.trim())
+            ? req.query.conversation_id.trim()
+            : null;
+
+        const vectorStoreId = await getOrCreateVectorStore(client, req.session, conversationId, userId);
+
+        if (typeof req.session.save === 'function') {
+            await new Promise((resolve, reject) => req.session.save(err => (err ? reject(err) : resolve())));
+        }
+
+        return res.json({
+            vector_store_id: vectorStoreId || null,
+            conversation_id: conversationId,
+            session_id: req.sessionID,
+        });
+    } catch (error) {
+        console.error('/api/vector-store/id error:', error);
+        return res.status(500).json({ error: error?.message || 'vector_store_id_error' });
+    }
+});
+
 // ============ S3 Upload Endpoints ============
 // Presign S3 upload for ChatKit attachments (following guidance pattern)
 app.post('/api/uploads/presign', requireAuth, async (req, res) => {
