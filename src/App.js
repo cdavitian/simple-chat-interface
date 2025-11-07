@@ -739,21 +739,49 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         console.log('[ChatKit] 🔍 Shadow DOM contains', allInputs.length, 'elements');
         
         // Log all elements with their details for debugging
-        const allElementsInfo = Array.from(allInputs).map(el => ({
-          tag: el.tagName,
-          id: el.id || '(no id)',
-          class: el.className || '(no class)',
-          type: el.type || '(no type)',
-          role: el.getAttribute('role') || '(no role)',
-          placeholder: el.getAttribute('placeholder') || '(no placeholder)',
-          ariaLabel: el.getAttribute('aria-label') || '(no aria-label)',
-          contentEditable: el.contentEditable || '(not editable)',
-          display: window.getComputedStyle(el).display,
-          visibility: window.getComputedStyle(el).visibility,
-          opacity: window.getComputedStyle(el).opacity,
-          height: window.getComputedStyle(el).height
-        }));
-        console.log('[ChatKit] 🔍 All shadow DOM elements:', allElementsInfo);
+        try {
+          const allElementsInfo = Array.from(allInputs).map(el => {
+            try {
+              const styles = window.getComputedStyle(el);
+              return {
+                tag: el.tagName,
+                id: el.id || '(no id)',
+                class: el.className || '(no class)',
+                type: el.type || '(no type)',
+                role: el.getAttribute('role') || '(no role)',
+                placeholder: el.getAttribute('placeholder') || '(no placeholder)',
+                ariaLabel: el.getAttribute('aria-label') || '(no aria-label)',
+                contentEditable: el.contentEditable || '(not editable)',
+                display: styles.display,
+                visibility: styles.visibility,
+                opacity: styles.opacity,
+                height: styles.height
+              };
+            } catch (styleError) {
+              return {
+                tag: el.tagName,
+                id: el.id || '(no id)',
+                class: el.className || '(no class)',
+                type: el.type || '(no type)',
+                role: el.getAttribute('role') || '(no role)',
+                placeholder: el.getAttribute('placeholder') || '(no placeholder)',
+                ariaLabel: el.getAttribute('aria-label') || '(no aria-label)',
+                contentEditable: el.contentEditable || '(not editable)',
+                styleError: String(styleError)
+              };
+            }
+          });
+          console.log('[ChatKit] 🔍 All shadow DOM elements:', allElementsInfo);
+        } catch (error) {
+          console.error('[ChatKit] ❌ Error logging shadow DOM elements:', error);
+          // Fallback: just log basic info
+          const basicInfo = Array.from(allInputs).map(el => ({
+            tag: el.tagName,
+            id: el.id || '(no id)',
+            class: el.className || '(no class)'
+          }));
+          console.log('[ChatKit] 🔍 Shadow DOM elements (basic):', basicInfo);
+        }
         
         const inputLike = Array.from(allInputs).filter(el => 
           el.tagName === 'TEXTAREA' || 
@@ -762,14 +790,27 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
           el.getAttribute('contenteditable') === 'true' ||
           el.getAttribute('role') === 'textbox'
         );
-        console.log('[ChatKit] 🔍 Found', inputLike.length, 'input-like elements:', inputLike.map(el => ({ 
-          tag: el.tagName, 
-          id: el.id, 
-          class: el.className,
-          role: el.getAttribute('role'),
-          display: window.getComputedStyle(el).display,
-          visibility: window.getComputedStyle(el).visibility
-        })));
+        console.log('[ChatKit] 🔍 Found', inputLike.length, 'input-like elements:', inputLike.map(el => {
+          try {
+            const styles = window.getComputedStyle(el);
+            return { 
+              tag: el.tagName, 
+              id: el.id, 
+              class: el.className,
+              role: el.getAttribute('role'),
+              display: styles.display,
+              visibility: styles.visibility
+            };
+          } catch (e) {
+            return { 
+              tag: el.tagName, 
+              id: el.id, 
+              class: el.className,
+              role: el.getAttribute('role'),
+              error: String(e)
+            };
+          }
+        }));
       }
       if (!composerInput) {
         console.log('[ChatKit] ⏳ Composer input not found');
