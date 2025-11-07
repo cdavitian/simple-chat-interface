@@ -412,14 +412,15 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     composer: composerConfig
   });
   
-  const { control } = chatkit;
+  const { control, sendUserMessage } = chatkit;
 
   console.log('[ChatKit] 🔐 useChatKit hook returned:', chatkit);
   console.log('[ChatKit] 🔐 useChatKit hook returned control:', control);
   console.log('[ChatKit] 🔐 Control methods available:', control ? Object.keys(control) : 'control is null/undefined');
   console.log('[ChatKit] 🔐 ChatKit methods available:', Object.keys(chatkit).filter(k => k !== 'control' && k !== 'ref'));
+  console.log('[ChatKit] 🔐 sendUserMessage method:', typeof sendUserMessage === 'function' ? 'available' : 'not available');
   
-  // Log when control is first available
+  // Log when control is first available and set up event handlers
   useEffect(() => {
     if (control) {
       console.log('[ChatKit] ✅ Control object is now available');
@@ -441,6 +442,20 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         } catch (err) {
           console.warn('[ChatKit] ⚠️ Failed to set composer options via control API:', err);
         }
+      }
+      
+      // Set up event handlers to intercept message sends
+      if (control.handlers) {
+        const originalOnThreadChange = control.handlers.onThreadChange;
+        control.handlers.onThreadChange = (...args) => {
+          console.log('[ChatKit] 📨 onThreadChange event:', args);
+          if (originalOnThreadChange) {
+            originalOnThreadChange(...args);
+          }
+        };
+        
+        // Note: ChatKit might not have a direct "onMessageSend" handler
+        // We'll need to rely on fetch interception or use sendUserMessage directly
       }
     } else {
       console.warn('[ChatKit] ⚠️ Control object is not available yet');
@@ -669,8 +684,20 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       // Check if this is a ChatKit message creation request
       const urlString = typeof url === 'string' ? url : url?.toString() || '';
       const method = options.method || 'GET';
-      const isChatKitMessageCreate = urlString.includes('/chatkit') && 
-                                     (urlString.includes('/messages') || urlString.includes('/conversation')) &&
+      
+      // Log all POST/PUT requests to help debug what ChatKit is actually calling
+      if ((method === 'POST' || method === 'PUT') && blockActive) {
+        console.log('[ChatKit] 🔍 Checking fetch request:', { url: urlString, method });
+      }
+      
+      // Check for ChatKit API calls - be more permissive with URL patterns
+      const isChatKitMessageCreate = (urlString.includes('/chatkit') || 
+                                      urlString.includes('api.openai.com') ||
+                                      urlString.includes('openai.com')) && 
+                                     (urlString.includes('/messages') || 
+                                      urlString.includes('/conversation') ||
+                                      urlString.includes('/sessions') ||
+                                      urlString.includes('/responses')) &&
                                      (method === 'POST' || method === 'PUT');
       
       if (isChatKitMessageCreate && blockActive) {
@@ -757,6 +784,27 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       // Allow all other requests to proceed normally
       return originalFetch.apply(window, args);
     };
+    
+    // Also log all fetch calls to help debug (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      const originalFetchWithLogging = originalFetch;
+      const loggedFetch = async (...args) => {
+        const [url, options = {}] = args;
+        const urlString = typeof url === 'string' ? url : url?.toString() || '';
+        const method = options.method || 'GET';
+        
+        // Log all POST requests to OpenAI domains
+        if ((method === 'POST' || method === 'PUT') && 
+            (urlString.includes('openai.com') || urlString.includes('/chatkit'))) {
+          console.log('[ChatKit] 🌐 Fetch call to OpenAI:', { url: urlString, method });
+        }
+        
+        return originalFetchWithLogging.apply(window, args);
+      };
+      
+      // Note: We're already overriding fetch above, so this is just for reference
+      // The actual interception happens in blockingFetch
+    }
 
     // Override fetch
     window.fetch = blockingFetch;

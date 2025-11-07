@@ -92,6 +92,13 @@ module.exports.chatkitMessage = async (req, res) => {
       input: [inputMessage],
     };
 
+    // Log the payload being sent to OpenAI (for debugging)
+    console.log('[chatkit.message] 📤 Sending to OpenAI ChatKit API:');
+    console.log('[chatkit.message] 📤 Session ID:', sessionId);
+    console.log('[chatkit.message] 📤 File IDs in attachments:', attachments.map(a => a.file_id));
+    console.log('[chatkit.message] 📤 Tools:', tools);
+    console.log('[chatkit.message] 📤 Input message:', JSON.stringify(inputMessage, null, 2));
+
     const reply = await openai.beta.chatkit.sessions.responses.create(payload);
 
     // Mark any session-tracked unsent file ids that were included as sent now
