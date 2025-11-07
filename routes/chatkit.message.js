@@ -62,11 +62,34 @@ module.exports.chatkitMessage = async (req, res) => {
       return { file_id: id, tools };
     });
 
-    // Send the message through ChatKit; attach files if present
+    // Build tools set based on attachments
+    const toolTypes = new Set();
+    for (const att of attachments) {
+      for (const t of att.tools || []) {
+        if (t?.type) toolTypes.add(t.type);
+      }
+    }
+    const tools = Array.from(toolTypes).map(type => ({ type }));
+
+    // Build input message with inlined attachments (preferred shape for ChatKit)
+    const inputMessage = {
+      role: "user",
+      content: text,
+      ...(attachments.length
+        ? {
+            attachments: attachments.map(a => ({
+              file_id: a.file_id,
+              tools: Array.isArray(a.tools) && a.tools.length ? a.tools : [{ type: "file_search" }],
+            })),
+          }
+        : {}),
+    };
+
+    // Send the message through ChatKit with per-message attachments
     const payload = {
       session_id: sessionId,
-      input: [{ role: "user", content: text }],
-      ...(attachments.length ? { attachments } : {}),
+      ...(tools.length ? { tools } : {}),
+      input: [inputMessage],
     };
 
     const reply = await openai.beta.chatkit.sessions.responses.create(payload);
