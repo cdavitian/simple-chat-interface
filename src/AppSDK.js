@@ -275,20 +275,31 @@ function ChatInterface({ user }) {
       console.log('[SDK][DEBUG] staged_files:', debugFilesMeta);
 
       const debugQuery = debugFileIds.length ? `?file_ids=${encodeURIComponent(debugFileIds.join(','))}` : '';
-      const response = await fetch(`/api/sdk/message${debugQuery}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Debug-File-Ids': debugFileIds.join(','),
-          'X-Debug-File-Count': String(debugFileIds.length)
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          text,
-          staged_file_ids: fileIds,
-          staged_files: debugFilesMeta
-        }),
-      });
+      const url = `/api/sdk/message${debugQuery}`;
+      const payload = {
+        text,
+        staged_file_ids: fileIds,
+        staged_files: debugFilesMeta
+      };
+      console.log('[SDK][NETWORK] About to POST:', { url, method: 'POST', payload });
+      console.log('[SDK][NETWORK] ⚡⚡⚡ FETCH CALL STARTING ⚡⚡⚡');
+      let response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-File-Ids': debugFileIds.join(','),
+            'X-Debug-File-Count': String(debugFileIds.length)
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        console.log('[SDK][NETWORK] ✅ POST request completed, response status:', response.status);
+      } catch (fetchError) {
+        console.error('[SDK][NETWORK] ❌ FETCH ERROR:', fetchError);
+        throw fetchError;
+      }
 
       if (!response.ok) {
         const errorText = await response.text();

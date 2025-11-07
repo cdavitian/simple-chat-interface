@@ -599,21 +599,32 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
 
       // Send the user message to the current session via our controlled endpoint
       const debugQuery = debugFileIds.length ? `?file_ids=${encodeURIComponent(debugFileIds.join(','))}` : '';
-      const resp = await fetch(`/api/chatkit/message${debugQuery}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Debug-File-Ids': debugFileIds.join(','),
-          'X-Debug-File-Count': String(debugFileIds.length)
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          session_id: sessionData.sessionId,
-          text: userPrompt || undefined,
-          staged_file_ids: fileStager.list(),
-          staged_files: fileStager.listWithMetadata()  // Send metadata for content type routing
-        })
-      });
+      const url = `/api/chatkit/message${debugQuery}`;
+      const payload = {
+        session_id: sessionData.sessionId,
+        text: userPrompt || undefined,
+        staged_file_ids: fileStager.list(),
+        staged_files: fileStager.listWithMetadata()  // Send metadata for content type routing
+      };
+      console.log('[ChatKit][NETWORK] About to POST:', { url, method: 'POST', payload });
+      console.log('[ChatKit][NETWORK] ⚡⚡⚡ FETCH CALL STARTING ⚡⚡⚡');
+      let resp;
+      try {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-File-Ids': debugFileIds.join(','),
+            'X-Debug-File-Count': String(debugFileIds.length)
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        console.log('[ChatKit][NETWORK] ✅ POST request completed, response status:', resp.status);
+      } catch (fetchError) {
+        console.error('[ChatKit][NETWORK] ❌ FETCH ERROR:', fetchError);
+        throw fetchError;
+      }
 
       if (!resp.ok) {
         const errorText = await resp.text();
