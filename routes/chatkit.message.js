@@ -107,7 +107,17 @@ module.exports.chatkitMessage = async (req, res) => {
     }
     console.log('[chatkit.message] 📤 Input message:', JSON.stringify(inputMessage, null, 2));
 
-    const reply = await openai.beta.chatkit.sessions.responses.create(payload);
+    // Create a response in the existing ChatKit session
+    // Some SDK versions expose responses under chatkit.responses instead of sessions.responses
+    const chatkitApi = openai?.beta?.chatkit;
+    if (!chatkitApi) {
+      throw new Error('OpenAI client does not expose beta.chatkit API');
+    }
+    const responsesApi = chatkitApi?.sessions?.responses || chatkitApi?.responses;
+    if (!responsesApi?.create) {
+      throw new Error('ChatKit responses API not available on this OpenAI client');
+    }
+    const reply = await responsesApi.create(payload);
 
     // Mark any session-tracked unsent file ids that were included as sent now
     try {
