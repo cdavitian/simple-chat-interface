@@ -328,10 +328,10 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     }
   }, [handleFileUpload]);
   
-  // Composer configuration - disable attachments
+  // Composer configuration - enable attachments
   const composerConfig = useMemo(() => ({
     attachments: {
-      enabled: false, // Disable to prevent built-in upload mechanism
+      enabled: true, // Enable attachments so ChatKit can recognize and handle file attachments
       maxSize: 20 * 1024 * 1024, // 20MB per file
       maxCount: 3,
       accept: {
@@ -674,12 +674,84 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
                                      (method === 'POST' || method === 'PUT');
       
       if (isChatKitMessageCreate && blockActive) {
-        console.warn('[ChatKit] 🚫 BLOCKED: Direct ChatKit API call detected:', urlString);
-        console.warn('[ChatKit] 🚫 Method:', method);
-        console.warn('[ChatKit] 🚫 All messages must go through sendUserPrompt() function');
+        console.log('[ChatKit] 🔄 INTERCEPTED: ChatKit message send attempt');
+        console.log('[ChatKit] 🔄 URL:', urlString);
+        console.log('[ChatKit] 🔄 Method:', method);
         
-        // Return a rejected promise to prevent the call
-        return Promise.reject(new Error('Direct ChatKit message API calls are disabled. Use sendUserPrompt() instead.'));
+        try {
+          // Extract the request body to get the message content
+          let requestBody = null;
+          if (options.body) {
+            if (typeof options.body === 'string') {
+              requestBody = JSON.parse(options.body);
+            } else if (options.body instanceof FormData) {
+              // Handle FormData if needed
+              console.log('[ChatKit] ⚠️ FormData body detected - may contain file attachments');
+              requestBody = options.body;
+            } else {
+              requestBody = options.body;
+            }
+          }
+          
+          console.log('[ChatKit] 🔄 Request body:', requestBody);
+          
+          // Extract text from the request
+          const text = requestBody?.input?.[0]?.content || 
+                      requestBody?.content || 
+                      requestBody?.text || 
+                      '';
+          
+          // Get staged files
+          const stagedFileIds = fileStager.list();
+          const stagedFiles = fileStager.listWithMetadata();
+          
+          console.log('[ChatKit] 🔄 Extracted text:', text);
+          console.log('[ChatKit] 🔄 Staged file IDs:', stagedFileIds);
+          console.log('[ChatKit] 🔄 Staged files:', stagedFiles);
+          
+          // Send through our controlled endpoint with staged files
+          const payload = {
+            session_id: sessionData.sessionId,
+            text: text || undefined,
+            staged_file_ids: stagedFileIds,
+            staged_files: stagedFiles
+          };
+          
+          console.log('[ChatKit] 🔄 Forwarding to /api/chatkit/message with payload:', payload);
+          
+          const response = await originalFetch('/api/chatkit/message', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to send message: ${response.status} ${errorText}`);
+          }
+          
+          const result = await response.json();
+          console.log('[ChatKit] ✅ Message sent successfully through controlled endpoint:', result);
+          
+          // Clear staged files after successful send
+          fileStager.clear();
+          
+          // Return a mock response that ChatKit expects
+          return new Response(JSON.stringify(result), {
+            status: 200,
+            statusText: 'OK',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          
+        } catch (error) {
+          console.error('[ChatKit] ❌ Error intercepting and forwarding message:', error);
+          return Promise.reject(error);
+        }
       }
 
       // Allow all other requests to proceed normally
