@@ -46,10 +46,14 @@ module.exports.chatkitMessage = async (req, res) => {
     const allCandidateIds = Array.from(new Set([ ...clientFileIds, ...sessionUnsent ]));
 
     // If a Python ChatKit service URL is configured, proxy the request there
-    const pythonUrl = process.env.PYTHON_CHATKIT_URL && String(process.env.PYTHON_CHATKIT_URL).trim();
+    const pythonUrl =
+      (process.env.PYTHON_CHATKIT_URL && String(process.env.PYTHON_CHATKIT_URL).trim()) ||
+      (process.env.PY_BACKEND_URL && String(process.env.PY_BACKEND_URL).trim()) ||
+      '';
     if (pythonUrl) {
       try {
         const url = pythonUrl.replace(/\/$/, '') + '/chatkit/message';
+        console.log('[chatkit.message] → Python proxy URL:', url);
         const resp = await fetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -60,13 +64,20 @@ module.exports.chatkitMessage = async (req, res) => {
             vector_store_id: vectorStoreId || undefined,
           }),
         });
+        console.log('[chatkit.message] ← Python proxy status:', resp.status);
+
+        const data = await resp.json().catch(async () => {
+          const asText = await resp.text().catch(() => '');
+          return { error: asText || 'invalid_json' };
+        });
+
         if (!resp.ok) {
-          const textBody = await resp.text().catch(() => '');
-          const err = new Error(`Python ChatKit service error (${resp.status}): ${textBody || 'no body'}`);
+          const detail = data?.detail || data?.error || data;
+          const err = new Error(`Python ChatKit service error (${resp.status}): ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`);
           err.status = resp.status;
           throw err;
         }
-        const data = await resp.json();
+
         const out = data?.text || data?.output_text || '';
 
         // Update sent/unsent tracking in session
