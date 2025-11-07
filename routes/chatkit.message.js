@@ -116,12 +116,13 @@ module.exports.chatkitMessage = async (req, res) => {
       reply = await responsesApi.create(payload);
     } else {
       // Fallback to raw HTTP for environments where SDK surface is missing responses API
-      const url = 'https://api.openai.com/v1/chatkit/sessions/responses';
+      const url = 'https://api.openai.com/v1/chatkit/responses';
       const httpResp = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'OpenAI-Beta': 'chatkit=v1'
         },
         body: JSON.stringify(payload)
       });
