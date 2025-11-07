@@ -30,7 +30,7 @@ async function listVectorStoreFileIds(vectorStoreId) {
 
 module.exports.chatkitMessage = async (req, res) => {
   try {
-    const { text, staged_file_ids } = req.body || {};
+    const { text, staged_file_ids, staged_files } = req.body || {};
     const sessionId = req.session?.chatkitSessionId;
     // We will attach files directly by file_id instead of using vector store ids
 
@@ -38,9 +38,27 @@ module.exports.chatkitMessage = async (req, res) => {
       return res.status(400).json({ error: "Missing text or session" });
     }
 
-    // Build attachments directly from client-provided file ids (OpenAI Files API ids)
-    const fileIds = Array.isArray(staged_file_ids) ? staged_file_ids : [];
-    const attachments = fileIds.map(id => ({ file_id: id }));
+    // Build attachments with tool permissions per file
+    // Prefer client-provided staged_files (includes metadata/category) to choose tools
+    const filesWithMeta = Array.isArray(staged_files) ? staged_files : [];
+    let attachments = [];
+
+    if (filesWithMeta.length > 0) {
+      attachments = filesWithMeta
+        .filter(f => f && typeof f.file_id === 'string' && f.file_id)
+        .map(f => {
+          const categoryRaw = (f.category || f.file_category || '').toString();
+          const category = categoryRaw.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+          const tools = category === 'code_interpreter'
+            ? [{ type: 'code_interpreter' }]
+            : [{ type: 'file_search' }];
+          return { file_id: f.file_id, tools };
+        });
+    } else {
+      // Fallback: if only file ids were provided, default to file_search
+      const fileIds = Array.isArray(staged_file_ids) ? staged_file_ids : [];
+      attachments = fileIds.map(id => ({ file_id: id, tools: [{ type: 'file_search' }] }));
+    }
 
     // Send the message through ChatKit; attach files if present
     const payload = {
