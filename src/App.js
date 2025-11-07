@@ -702,18 +702,38 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
 
     const attachInterceptIfPossible = () => {
       const el = document.querySelector('openai-chatkit');
+      console.log('[ChatKit] 🔍 Checking for ChatKit element:', { found: !!el, tagName: el?.tagName });
       if (!el) {
         console.log('[ChatKit] ⏳ ChatKit element not found yet');
         return false;
       }
 
+      console.log('[ChatKit] 🔍 Checking shadow root:', { hasShadowRoot: !!el.shadowRoot, shadowRootMode: el.shadowRoot?.mode });
       if (!el.shadowRoot) {
         console.log('[ChatKit] ⏳ ChatKit shadow root not available yet');
+        // Check if it's in an iframe
+        const iframe = el.closest('iframe');
+        if (iframe) {
+          console.warn('[ChatKit] ⚠️ ChatKit element is inside an iframe - cannot access shadow DOM from parent page');
+        }
         return false;
       }
 
       // Find the composer input
       const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+      console.log('[ChatKit] 🔍 Checking composer input:', { found: !!composerInput, tagName: composerInput?.tagName });
+      if (!composerInput) {
+        // Try to find any input-like elements for debugging
+        const allInputs = el.shadowRoot.querySelectorAll('*');
+        console.log('[ChatKit] 🔍 Shadow DOM contains', allInputs.length, 'elements');
+        const inputLike = Array.from(allInputs).filter(el => 
+          el.tagName === 'TEXTAREA' || 
+          el.tagName === 'INPUT' || 
+          el.contentEditable === 'true' ||
+          el.getAttribute('contenteditable') === 'true'
+        );
+        console.log('[ChatKit] 🔍 Found', inputLike.length, 'input-like elements:', inputLike.map(el => ({ tag: el.tagName, id: el.id, class: el.className })));
+      }
       if (!composerInput) {
         console.log('[ChatKit] ⏳ Composer input not found');
         return false;
