@@ -719,20 +719,57 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         return false;
       }
 
-      // Find the composer input
-      const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+      // Find the composer input - try multiple selectors
+      let composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+      
+      // If not found, try more specific selectors
+      if (!composerInput) {
+        composerInput = el.shadowRoot.querySelector('textarea[placeholder*="message" i], textarea[placeholder*="type" i], textarea[aria-label*="message" i]');
+      }
+      
+      // Try finding by role
+      if (!composerInput) {
+        composerInput = el.shadowRoot.querySelector('[role="textbox"]');
+      }
+      
       console.log('[ChatKit] 🔍 Checking composer input:', { found: !!composerInput, tagName: composerInput?.tagName });
       if (!composerInput) {
         // Try to find any input-like elements for debugging
         const allInputs = el.shadowRoot.querySelectorAll('*');
         console.log('[ChatKit] 🔍 Shadow DOM contains', allInputs.length, 'elements');
+        
+        // Log all elements with their details for debugging
+        const allElementsInfo = Array.from(allInputs).map(el => ({
+          tag: el.tagName,
+          id: el.id || '(no id)',
+          class: el.className || '(no class)',
+          type: el.type || '(no type)',
+          role: el.getAttribute('role') || '(no role)',
+          placeholder: el.getAttribute('placeholder') || '(no placeholder)',
+          ariaLabel: el.getAttribute('aria-label') || '(no aria-label)',
+          contentEditable: el.contentEditable || '(not editable)',
+          display: window.getComputedStyle(el).display,
+          visibility: window.getComputedStyle(el).visibility,
+          opacity: window.getComputedStyle(el).opacity,
+          height: window.getComputedStyle(el).height
+        }));
+        console.log('[ChatKit] 🔍 All shadow DOM elements:', allElementsInfo);
+        
         const inputLike = Array.from(allInputs).filter(el => 
           el.tagName === 'TEXTAREA' || 
           el.tagName === 'INPUT' || 
           el.contentEditable === 'true' ||
-          el.getAttribute('contenteditable') === 'true'
+          el.getAttribute('contenteditable') === 'true' ||
+          el.getAttribute('role') === 'textbox'
         );
-        console.log('[ChatKit] 🔍 Found', inputLike.length, 'input-like elements:', inputLike.map(el => ({ tag: el.tagName, id: el.id, class: el.className })));
+        console.log('[ChatKit] 🔍 Found', inputLike.length, 'input-like elements:', inputLike.map(el => ({ 
+          tag: el.tagName, 
+          id: el.id, 
+          class: el.className,
+          role: el.getAttribute('role'),
+          display: window.getComputedStyle(el).display,
+          visibility: window.getComputedStyle(el).visibility
+        })));
       }
       if (!composerInput) {
         console.log('[ChatKit] ⏳ Composer input not found');
@@ -830,6 +867,39 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       attempts.push(timeoutId);
     });
 
+    // Also use MutationObserver to watch for composer to appear
+    const el = document.querySelector('openai-chatkit');
+    if (el?.shadowRoot && !attached) {
+      const composerObserver = new MutationObserver(() => {
+        if (!attached) {
+          console.log('[ChatKit] 🔄 MutationObserver detected shadow DOM change, checking for composer...');
+          attached = attachInterceptIfPossible();
+          if (attached) {
+            console.log('[ChatKit] ✅ Intercept attached via MutationObserver');
+            composerObserver.disconnect();
+          }
+        }
+      });
+
+      composerObserver.observe(el.shadowRoot, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['contenteditable', 'role', 'placeholder']
+      });
+
+      // Disconnect after 10 seconds to avoid memory leaks
+      setTimeout(() => {
+        if (!attached) {
+          console.warn('[ChatKit] ⚠️ Composer not found after 10 seconds - intercept may not be attached');
+          composerObserver.disconnect();
+        }
+      }, 10000);
+
+      // Store observer for cleanup
+      attempts.push(composerObserver);
+    }
+
     // Global intercept as last resort (catches events that bubble up)
     const globalKeydownHandler = async (evt) => {
       // Check if we're in the ChatKit context
@@ -868,7 +938,13 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     window.addEventListener('keydown', globalKeydownHandler, { capture: true, passive: false });
 
     return () => {
-      attempts.forEach(id => clearTimeout(id));
+      attempts.forEach(item => {
+        if (typeof item === 'number') {
+          clearTimeout(item);
+        } else if (item && typeof item.disconnect === 'function') {
+          item.disconnect();
+        }
+      });
       window.removeEventListener('keydown', globalKeydownHandler, { capture: true });
       
       const el = document.querySelector('openai-chatkit');
