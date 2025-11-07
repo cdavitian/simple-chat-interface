@@ -3032,7 +3032,7 @@ function ChatKitComponent(_ref4) {
     } else {
       console.warn('[ChatKit] ⚠️ Control object is not available yet');
     }
-  }, [control, composerConfig]);
+  }, [control]);
 
   // Built-in composer is disabled; no DOM hiding needed
 
@@ -3140,8 +3140,7 @@ function ChatKitComponent(_ref4) {
   console.log('[ChatKit] Rendering ChatKit component with props:', {
     hasControl: !!control,
     hasClientToken: !!(sessionData !== null && sessionData !== void 0 && sessionData.clientToken),
-    hasPublicKey: !!(sessionData !== null && sessionData !== void 0 && sessionData.publicKey),
-    composerConfig: composerConfig
+    hasPublicKey: !!(sessionData !== null && sessionData !== void 0 && sessionData.publicKey)
   });
 
   // Only render ChatKit when we have the required data

@@ -430,7 +430,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     } else {
       console.warn('[ChatKit] ⚠️ Control object is not available yet');
     }
-  }, [control, composerConfig]);
+  }, [control]);
   
   // Built-in composer is disabled; no DOM hiding needed
 
@@ -510,8 +510,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   console.log('[ChatKit] Rendering ChatKit component with props:', {
     hasControl: !!control,
     hasClientToken: !!sessionData?.clientToken,
-    hasPublicKey: !!sessionData?.publicKey,
-    composerConfig: composerConfig
+    hasPublicKey: !!sessionData?.publicKey
   });
 
   // Only render ChatKit when we have the required data
