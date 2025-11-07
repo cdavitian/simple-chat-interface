@@ -110,14 +110,29 @@ module.exports.chatkitMessage = async (req, res) => {
     // Create a response in the existing ChatKit session
     // Some SDK versions expose responses under chatkit.responses instead of sessions.responses
     const chatkitApi = openai?.beta?.chatkit;
-    if (!chatkitApi) {
-      throw new Error('OpenAI client does not expose beta.chatkit API');
+    let reply;
+    if (chatkitApi?.sessions?.responses?.create || chatkitApi?.responses?.create) {
+      const responsesApi = chatkitApi?.sessions?.responses || chatkitApi?.responses;
+      reply = await responsesApi.create(payload);
+    } else {
+      // Fallback to raw HTTP for environments where SDK surface is missing responses API
+      const url = 'https://api.openai.com/v1/chatkit/sessions/responses';
+      const httpResp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!httpResp.ok) {
+        const txt = await httpResp.text();
+        const err = new Error(`HTTP responses.create failed: ${httpResp.status} ${txt}`);
+        err.status = httpResp.status;
+        throw err;
+      }
+      reply = await httpResp.json();
     }
-    const responsesApi = chatkitApi?.sessions?.responses || chatkitApi?.responses;
-    if (!responsesApi?.create) {
-      throw new Error('ChatKit responses API not available on this OpenAI client');
-    }
-    const reply = await responsesApi.create(payload);
 
     // Mark any session-tracked unsent file ids that were included as sent now
     try {
