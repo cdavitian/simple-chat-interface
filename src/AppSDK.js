@@ -231,14 +231,18 @@ function ChatInterface({ user }) {
   }, []);
 
   const handleSend = useCallback(async () => {
+    console.log('[SDK] 🚀🚀🚀 handleSend CALLED 🚀🚀🚀', { isSending, inputValue: inputValue.substring(0, 50) });
     if (isSending) {
+      console.log('[SDK] ⏸️ Already sending, returning early');
       return;
     }
 
     const text = inputValue.trim();
     const fileIds = fileStager.list();
+    console.log('[SDK] 📝 Message details:', { textLength: text.length, fileIdsCount: fileIds.length });
 
     if (!text && fileIds.length === 0) {
+      console.log('[SDK] ⚠️ No content to send (no text and no files) - RETURNING EARLY');
       return;
     }
 

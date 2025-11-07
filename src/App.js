@@ -555,6 +555,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   // CENTRALIZED MESSAGE SEND FUNCTION
   // All messages must go through this function - no direct ChatKit API calls allowed
   const sendUserPrompt = useCallback(async (event) => {
+    console.log('[ChatKit] 🚀🚀🚀 sendUserPrompt CALLED 🚀🚀🚀', { event, hasSessionId: !!sessionData?.sessionId });
     try {
       // Prevent form submit or default key handling
       event?.preventDefault?.();
@@ -587,7 +588,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       const content = fileStager.toMessageContent(userPrompt);
 
       if (content.length === 0) {
-        console.log('[ChatKit] ⚠️ No content to send (no text and no staged files)');
+        console.log('[ChatKit] ⚠️ No content to send (no text and no staged files) - RETURNING EARLY');
+        console.log('[ChatKit] Debug:', { userPrompt, contentLength: content.length, stagedCount: fileStager.list().length });
         return;
       }
 
