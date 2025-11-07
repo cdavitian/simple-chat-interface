@@ -269,14 +269,24 @@ function ChatInterface({ user }) {
     setSendError(null);
 
     try {
-      const response = await fetch('/api/sdk/message', {
+      const debugFileIds = fileIds;
+      const debugFilesMeta = fileStager.listWithMetadata();
+      console.log('[SDK][DEBUG] staged_file_ids:', debugFileIds);
+      console.log('[SDK][DEBUG] staged_files:', debugFilesMeta);
+
+      const debugQuery = debugFileIds.length ? `?file_ids=${encodeURIComponent(debugFileIds.join(','))}` : '';
+      const response = await fetch(`/api/sdk/message${debugQuery}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-File-Ids': debugFileIds.join(','),
+          'X-Debug-File-Count': String(debugFileIds.length)
+        },
         credentials: 'include',
         body: JSON.stringify({
           text,
           staged_file_ids: fileIds,
-          staged_files: fileStager.listWithMetadata()
+          staged_files: debugFilesMeta
         }),
       });
 

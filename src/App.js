@@ -592,11 +592,20 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       }
 
       console.log('[ChatKit] 📤 [SEND] Outgoing content:', content);
+      const debugFileIds = fileStager.list();
+      const debugFilesMeta = fileStager.listWithMetadata();
+      console.log('[ChatKit][DEBUG] staged_file_ids:', debugFileIds);
+      console.log('[ChatKit][DEBUG] staged_files:', debugFilesMeta);
 
       // Send the user message to the current session via our controlled endpoint
-      const resp = await fetch('/api/chatkit/message', {
+      const debugQuery = debugFileIds.length ? `?file_ids=${encodeURIComponent(debugFileIds.join(','))}` : '';
+      const resp = await fetch(`/api/chatkit/message${debugQuery}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-File-Ids': debugFileIds.join(','),
+          'X-Debug-File-Count': String(debugFileIds.length)
+        },
         credentials: 'include',
         body: JSON.stringify({
           session_id: sessionData.sessionId,
