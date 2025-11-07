@@ -2420,6 +2420,18 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
             content_type: resolvedContentType
         });
 
+        // Track unsent file_ids in session for automatic attachment on next message
+        try {
+            if (!Array.isArray(req.session.unsentFileIds)) {
+                req.session.unsentFileIds = [];
+            }
+            if (!req.session.unsentFileIds.includes(uploaded.id)) {
+                req.session.unsentFileIds.push(uploaded.id);
+            }
+        } catch (trackErr) {
+            console.warn('Unable to track unsent file_id in session:', trackErr?.message);
+        }
+
         // Add file to the vector store used by the active chat session (priority: session store → conversation store → create session store)
         try {
             let vectorStoreId = null;
@@ -2753,6 +2765,18 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
             });
         } catch (e) {
             console.warn('Unable to stash file_id in session:', e?.message);
+        }
+
+        // Also track as unsent so next message will include it automatically
+        try {
+            if (!Array.isArray(req.session.unsentFileIds)) {
+                req.session.unsentFileIds = [];
+            }
+            if (!req.session.unsentFileIds.includes(uploadedFile.id)) {
+                req.session.unsentFileIds.push(uploadedFile.id);
+            }
+        } catch (trackErr) {
+            console.warn('Unable to track unsent file_id in session (import-s3):', trackErr?.message);
         }
 
         res.json({

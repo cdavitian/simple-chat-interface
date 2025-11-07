@@ -38,27 +38,29 @@ module.exports.chatkitMessage = async (req, res) => {
       return res.status(400).json({ error: "Missing text or session" });
     }
 
+    // Collect candidate file ids: client-provided + any unsent from the session
+    const clientFileIds = Array.isArray(staged_file_ids) ? staged_file_ids : [];
+    const sessionUnsent = Array.isArray(req.session?.unsentFileIds) ? req.session.unsentFileIds : [];
+    const allCandidateIds = Array.from(new Set([ ...clientFileIds, ...sessionUnsent ]));
+
     // Build attachments with tool permissions per file
     // Prefer client-provided staged_files (includes metadata/category) to choose tools
     const filesWithMeta = Array.isArray(staged_files) ? staged_files : [];
+    const metaById = new Map(filesWithMeta
+      .filter(f => f && typeof f.file_id === 'string' && f.file_id)
+      .map(f => [f.file_id, f]));
+
     let attachments = [];
 
-    if (filesWithMeta.length > 0) {
-      attachments = filesWithMeta
-        .filter(f => f && typeof f.file_id === 'string' && f.file_id)
-        .map(f => {
-          const categoryRaw = (f.category || f.file_category || '').toString();
-          const category = categoryRaw.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-          const tools = category === 'code_interpreter'
-            ? [{ type: 'code_interpreter' }]
-            : [{ type: 'file_search' }];
-          return { file_id: f.file_id, tools };
-        });
-    } else {
-      // Fallback: if only file ids were provided, default to file_search
-      const fileIds = Array.isArray(staged_file_ids) ? staged_file_ids : [];
-      attachments = fileIds.map(id => ({ file_id: id, tools: [{ type: 'file_search' }] }));
-    }
+    attachments = allCandidateIds.map(id => {
+      const f = metaById.get(id) || {};
+      const categoryRaw = (f.category || f.file_category || '').toString();
+      const category = categoryRaw.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      const tools = category === 'code_interpreter'
+        ? [{ type: 'code_interpreter' }]
+        : [{ type: 'file_search' }];
+      return { file_id: id, tools };
+    });
 
     // Send the message through ChatKit; attach files if present
     const payload = {
@@ -68,6 +70,21 @@ module.exports.chatkitMessage = async (req, res) => {
     };
 
     const reply = await openai.beta.chatkit.sessions.responses.create(payload);
+
+    // Mark any session-tracked unsent file ids that were included as sent now
+    try {
+      if (Array.isArray(req.session.unsentFileIds)) {
+        const sentIds = new Set(allCandidateIds);
+        req.session.unsentFileIds = req.session.unsentFileIds.filter(id => !sentIds.has(id));
+      }
+      if (!Array.isArray(req.session.sentFileIds)) req.session.sentFileIds = [];
+      req.session.sentFileIds = Array.from(new Set([ ...req.session.sentFileIds, ...allCandidateIds ]));
+      if (typeof req.session.save === 'function') {
+        await new Promise((resolve, reject) => req.session.save(err => (err ? reject(err) : resolve())));
+      }
+    } catch (trackErr) {
+      console.warn('[chatkit.message] Failed to update sent/unsent file tracking:', trackErr?.message);
+    }
 
     const out =
       reply.output_text ??
