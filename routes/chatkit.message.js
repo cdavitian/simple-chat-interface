@@ -38,17 +38,25 @@ module.exports.chatkitMessage = async (req, res) => {
       return res.status(400).json({ error: "Missing text or session" });
     }
 
-    // Get file_ids from your per-session/per-user vector store
+    // Get file_ids from the active vector store (if any)
     const fileIds = await listVectorStoreFileIds(vectorStoreId);
     const attachments = fileIds.map(id => ({ file_id: id }));
 
     // Send the message through ChatKit; attach files if present
-    const reply = await openai.beta.chatkit.sessions.responses.create({
+    const payload = {
       session_id: sessionId,
       input: [{ role: "user", content: text }],
       ...(attachments.length ? { attachments } : {}),
-      // NOTE: no chatkit_configuration and no tool_resources here
-    });
+    };
+
+    // Also bind the vector store at response-time so the workflow's File Search can use it
+    if (vectorStoreId) {
+      payload.tool_resources = {
+        file_search: { vector_store_ids: [vectorStoreId] },
+      };
+    }
+
+    const reply = await openai.beta.chatkit.sessions.responses.create(payload);
 
     const out =
       reply.output_text ??
