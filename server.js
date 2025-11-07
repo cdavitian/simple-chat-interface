@@ -1701,29 +1701,8 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             null;
 
 
-        // 1) Ensure tools array exists and includes file_search
-        if (!Array.isArray(sessionConfig.tools)) {
-            sessionConfig.tools = [];
-        }
-        if (!sessionConfig.tools.some(t => t?.type === 'file_search')) {
-            sessionConfig.tools.push({ type: 'file_search' });
-        }
-
-        // 2) Ensure tool_resources.file_search.vector_store_ids points to this session's store
-        sessionConfig.tool_resources = sessionConfig.tool_resources || {};
-        const existingFs = sessionConfig.tool_resources.file_search || {};
-        sessionConfig.tool_resources.file_search = {
-            ...existingFs,
-            ...(boundVectorStoreId ? { vector_store_ids: [boundVectorStoreId] } : {}),
-        };
-
-        // Optional sanity logs
-        console.log('⛏️ ChatKit session tools:', sessionConfig.tools);
-        if (boundVectorStoreId) {
-            console.log('🔗 Binding vector store to session:', boundVectorStoreId);
-        } else {
-            console.warn('⚠️ No vectorStoreId on req.session — file search will have no data source');
-        }
+        // Do not send tools/tool_resources to ChatKit Sessions API (unsupported)
+        // Vector store binding will be handled at message/response time.
 
         // Log exactly what we send (keys + pretty JSON)
         console.log("session.create payload keys:", Object.keys(sessionConfig));
@@ -1941,29 +1920,8 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             null;
 
 
-        // 1) Ensure tools array exists and includes file_search
-        if (!Array.isArray(sessionConfig.tools)) {
-            sessionConfig.tools = [];
-        }
-        if (!sessionConfig.tools.some(t => t?.type === 'file_search')) {
-            sessionConfig.tools.push({ type: 'file_search' });
-        }
-
-        // 2) Ensure tool_resources.file_search.vector_store_ids points to this session's store
-        sessionConfig.tool_resources = sessionConfig.tool_resources || {};
-        const existingFs = sessionConfig.tool_resources.file_search || {};
-        sessionConfig.tool_resources.file_search = {
-            ...existingFs,
-            ...(boundVectorStoreId ? { vector_store_ids: [boundVectorStoreId] } : {}),
-        };
-
-        // Optional sanity logs
-        console.log('⛏️ ChatKit session tools:', sessionConfig.tools);
-        if (boundVectorStoreId) {
-            console.log('🔗 Binding vector store to session:', boundVectorStoreId);
-        } else {
-            console.warn('⚠️ No vectorStoreId on req.session — file search will have no data source');
-        }
+        // Do not send tools/tool_resources to ChatKit Sessions API (unsupported)
+        // Vector store binding will be handled at message/response time.
 
         const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
@@ -2185,24 +2143,8 @@ app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
             req.session?.vectorStoreId ||
             null;
 
-        if (!Array.isArray(sessionConfig.tools)) {
-            sessionConfig.tools = [];
-        }
-        if (!sessionConfig.tools.some(t => t?.type === 'file_search')) {
-            sessionConfig.tools.push({ type: 'file_search' });
-        }
-
-        sessionConfig.tool_resources = sessionConfig.tool_resources || {};
-        const existingFs = sessionConfig.tool_resources.file_search || {};
-        sessionConfig.tool_resources.file_search = {
-            ...existingFs,
-            ...(boundVectorStoreId ? { vector_store_ids: [boundVectorStoreId] } : {}),
-        };
-
-        console.log('⛏️ ChatKit session tools (RESET):', sessionConfig.tools);
-        if (boundVectorStoreId) {
-            console.log('🔗 Binding vector store to session (RESET):', boundVectorStoreId);
-        }
+        // Do not send tools/tool_resources to ChatKit Sessions API (unsupported in session.create)
+        // Vector store binding (file_search) will be handled when sending messages/responses.
         
         const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
