@@ -30,16 +30,16 @@ async function listVectorStoreFileIds(vectorStoreId) {
 
 module.exports.chatkitMessage = async (req, res) => {
   try {
-    const { text } = req.body || {};
+    const { text, staged_file_ids } = req.body || {};
     const sessionId = req.session?.chatkitSessionId;
-    const vectorStoreId = req.session?.vectorStoreId;
+    // We will attach files directly by file_id instead of using vector store ids
 
     if (!text || !sessionId) {
       return res.status(400).json({ error: "Missing text or session" });
     }
 
-    // Get file_ids from the active vector store (if any)
-    const fileIds = await listVectorStoreFileIds(vectorStoreId);
+    // Build attachments directly from client-provided file ids (OpenAI Files API ids)
+    const fileIds = Array.isArray(staged_file_ids) ? staged_file_ids : [];
     const attachments = fileIds.map(id => ({ file_id: id }));
 
     // Send the message through ChatKit; attach files if present
@@ -48,13 +48,6 @@ module.exports.chatkitMessage = async (req, res) => {
       input: [{ role: "user", content: text }],
       ...(attachments.length ? { attachments } : {}),
     };
-
-    // Also bind the vector store at response-time so the workflow's File Search can use it
-    if (vectorStoreId) {
-      payload.tool_resources = {
-        file_search: { vector_store_ids: [vectorStoreId] },
-      };
-    }
 
     const reply = await openai.beta.chatkit.sessions.responses.create(payload);
 
