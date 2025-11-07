@@ -45,6 +45,54 @@ module.exports.chatkitMessage = async (req, res) => {
     const sessionUnsent = Array.isArray(req.session?.unsentFileIds) ? req.session.unsentFileIds : [];
     const allCandidateIds = Array.from(new Set([ ...clientFileIds, ...sessionUnsent ]));
 
+    // If a Python ChatKit service URL is configured, proxy the request there
+    const pythonUrl = process.env.PYTHON_CHATKIT_URL && String(process.env.PYTHON_CHATKIT_URL).trim();
+    if (pythonUrl) {
+      try {
+        const url = pythonUrl.replace(/\/$/, '') + '/chatkit/message';
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            text,
+            staged_file_ids: allCandidateIds,
+            vector_store_id: vectorStoreId || undefined,
+          }),
+        });
+        if (!resp.ok) {
+          const textBody = await resp.text().catch(() => '');
+          const err = new Error(`Python ChatKit service error (${resp.status}): ${textBody || 'no body'}`);
+          err.status = resp.status;
+          throw err;
+        }
+        const data = await resp.json();
+        const out = data?.text || data?.output_text || '';
+
+        // Update sent/unsent tracking in session
+        try {
+          if (Array.isArray(req.session.unsentFileIds)) {
+            const sentIds = new Set(allCandidateIds);
+            req.session.unsentFileIds = req.session.unsentFileIds.filter(id => !sentIds.has(id));
+          }
+          if (!Array.isArray(req.session.sentFileIds)) req.session.sentFileIds = [];
+          req.session.sentFileIds = Array.from(new Set([ ...req.session.sentFileIds, ...allCandidateIds ]));
+          if (typeof req.session.save === 'function') {
+            await new Promise((resolve, reject) => req.session.save(err => (err ? reject(err) : resolve())));
+          }
+        } catch (trackErr) {
+          console.warn('[chatkit.message] (python proxy) Failed to update sent/unsent tracking:', trackErr?.message);
+        }
+
+        return res.json({ success: true, text: out, response_id: data?.response_id });
+      } catch (proxyErr) {
+        console.error('[/api/chatkit/message] Python proxy error:', proxyErr?.stack || proxyErr);
+        return res.status(proxyErr?.status || 502).json({
+          error: proxyErr?.message || 'python_proxy_error',
+        });
+      }
+    }
+
     // Build attachments with tool permissions per file
     // Prefer client-provided staged_files (includes metadata/category) to choose tools
     const filesWithMeta = Array.isArray(staged_files) ? staged_files : [];
