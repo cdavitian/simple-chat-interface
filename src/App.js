@@ -666,12 +666,14 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       
       // Check if this is a ChatKit message creation request
       const urlString = typeof url === 'string' ? url : url?.toString() || '';
+      const method = options.method || 'GET';
       const isChatKitMessageCreate = urlString.includes('/chatkit') && 
-                                     urlString.includes('/messages') &&
-                                     (options.method === 'POST' || options.method === 'PUT');
+                                     (urlString.includes('/messages') || urlString.includes('/conversation')) &&
+                                     (method === 'POST' || method === 'PUT');
       
       if (isChatKitMessageCreate && blockActive) {
-        console.warn('[ChatKit] 🚫 BLOCKED: Direct ChatKit messages.create() call detected');
+        console.warn('[ChatKit] 🚫 BLOCKED: Direct ChatKit API call detected:', urlString);
+        console.warn('[ChatKit] 🚫 Method:', method);
         console.warn('[ChatKit] 🚫 All messages must go through sendUserPrompt() function');
         
         // Return a rejected promise to prevent the call
@@ -729,6 +731,9 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       const keydownHandler = async (evt) => {
         if (evt.key === 'Enter' && !evt.shiftKey) {
           console.log('[ChatKit] ⌨️ Enter pressed, routing through sendUserPrompt');
+          evt.preventDefault();
+          evt.stopPropagation();
+          evt.stopImmediatePropagation();
           await sendUserPrompt(evt);
         }
       };
@@ -742,6 +747,9 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
             target.closest('[role="button"]')?.getAttribute('aria-label')?.toLowerCase().includes('send')) {
           
           console.log('[ChatKit] 🖱️ Send button clicked, routing through sendUserPrompt');
+          evt.preventDefault();
+          evt.stopPropagation();
+          evt.stopImmediatePropagation();
           await sendUserPrompt(evt);
         }
       };
@@ -750,6 +758,9 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       const formSubmitHandler = async (evt) => {
         if (evt.target.tagName === 'FORM' || evt.target.closest('form')) {
           console.log('[ChatKit] 📝 Form submit intercepted, routing through sendUserPrompt');
+          evt.preventDefault();
+          evt.stopPropagation();
+          evt.stopImmediatePropagation();
           await sendUserPrompt(evt);
         }
       };
