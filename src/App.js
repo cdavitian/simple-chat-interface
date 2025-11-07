@@ -241,6 +241,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadedFileId, setUploadedFileId] = useState(null);
   const fileInputRef = useRef(null);
+  const [promptText, setPromptText] = useState('');
   
   // S3 upload handler following the guidance pattern
   const handleFileUpload = useCallback(async (file) => {
@@ -328,24 +329,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     }
   }, [handleFileUpload]);
   
-  // Composer configuration - enable attachments
-  const composerConfig = useMemo(() => ({
-    attachments: {
-      enabled: true, // Enable attachments so ChatKit can recognize and handle file attachments
-      maxSize: 20 * 1024 * 1024, // 20MB per file
-      maxCount: 3,
-      accept: {
-        "application/pdf": [".pdf"],
-        "image/*": [".png", ".jpg"],
-        "text/csv": [".csv"],
-        "application/csv": [".csv"],
-        "text/plain": [".csv"],
-        "application/vnd.ms-excel": [".xls", ".csv"],
-        "application/octet-stream": [".csv", ".xls", ".xlsx"],
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"]
-      },
-    },
-  }), []);
+  // Disable ChatKit's built-in composer; use our own input + send
+  const composerConfig = useMemo(() => ({ enabled: false }), []);
   
   console.log('[ChatKit] Composer configuration:', JSON.stringify(composerConfig, null, 2));
   
@@ -462,391 +447,54 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     }
   }, [control, composerConfig]);
   
-  // Hide composer elements (input field and send button) after ChatKit renders
-  useEffect(() => {
-    const hideComposer = () => {
-      const el = document.querySelector('openai-chatkit');
-      if (!el?.shadowRoot) {
-        return false;
-      }
-      
-      // Find and hide the composer container/elements
-      // Try multiple selectors to find the composer
-      const composerSelectors = [
-        '[class*="composer"]',
-        '[class*="Composer"]',
-        '[class*="input-container"]',
-        '[class*="InputContainer"]',
-        'form',
-        'textarea',
-        'input[type="text"]',
-        '[contenteditable="true"]',
-        'button[type="submit"]',
-        'button[aria-label*="send" i]',
-        'button[aria-label*="Send" i]'
-      ];
-      
-      let hidden = false;
-      composerSelectors.forEach(selector => {
-        const elements = el.shadowRoot.querySelectorAll(selector);
-        elements.forEach(elem => {
-          // Check if element is likely part of the composer
-          const isComposer = elem.closest('[class*="composer"]') || 
-                           elem.closest('form') ||
-                           elem.tagName === 'TEXTAREA' ||
-                           elem.tagName === 'INPUT' ||
-                           (elem.tagName === 'BUTTON' && (
-                             elem.getAttribute('type') === 'submit' ||
-                             elem.getAttribute('aria-label')?.toLowerCase().includes('send')
-                           ));
-          
-          if (isComposer) {
-            elem.style.display = 'none';
-            elem.style.visibility = 'hidden';
-            elem.style.opacity = '0';
-            elem.style.height = '0';
-            elem.style.padding = '0';
-            elem.style.margin = '0';
-            elem.setAttribute('disabled', 'true');
-            elem.setAttribute('aria-hidden', 'true');
-            hidden = true;
-          }
-        });
-      });
-      
-      // Also try to find parent composer container
-      const allElements = el.shadowRoot.querySelectorAll('*');
-      allElements.forEach(elem => {
-        const className = elem.className?.toLowerCase() || '';
-        const id = elem.id?.toLowerCase() || '';
-        
-        if ((className.includes('composer') || 
-             className.includes('input') ||
-             id.includes('composer') ||
-             id.includes('input')) &&
-            !className.includes('message') && 
-            !id.includes('message')) {
-          elem.style.display = 'none';
-          elem.style.visibility = 'hidden';
-          elem.style.opacity = '0';
-          elem.style.height = '0';
-          elem.style.padding = '0';
-          elem.style.margin = '0';
-          hidden = true;
-        }
-      });
-      
-      return hidden;
-    };
-    
-    // Try multiple times with delays to catch ChatKit when it renders
-    const timeouts = [100, 300, 500, 1000, 2000, 3000];
-    timeouts.forEach(delay => {
-      setTimeout(() => {
-        const hidden = hideComposer();
-        if (hidden) {
-          console.log(`[ChatKit] ✅ Composer hidden successfully (delay: ${delay}ms)`);
-        }
-      }, delay);
-    });
-    
-    // Also use MutationObserver to catch dynamic additions
-    const el = document.querySelector('openai-chatkit');
-    if (el?.shadowRoot) {
-      const observer = new MutationObserver(() => {
-        hideComposer();
-      });
-      
-      observer.observe(el.shadowRoot, {
-        childList: true,
-        subtree: true,
-        attributes: false
-      });
-      
-      return () => {
-        observer.disconnect();
-      };
-    }
-  }, [sessionData?.sessionId]);
+  // Built-in composer is disabled; no DOM hiding needed
 
-  // CENTRALIZED MESSAGE SEND FUNCTION
-  // All messages must go through this function - no direct ChatKit API calls allowed
-  const sendUserPrompt = useCallback(async (event) => {
-    console.log('[ChatKit] 🚀🚀🚀 sendUserPrompt CALLED 🚀🚀🚀', { event, hasSessionId: !!sessionData?.sessionId });
+  // Custom send: use our own input and POST to server, then refresh ChatKit
+  const handleSend = useCallback(async () => {
     try {
-      // Prevent form submit or default key handling
-      event?.preventDefault?.();
-      event?.stopPropagation?.();
-
       if (!sessionData?.sessionId) {
         console.error('[ChatKit] ❌ Cannot send: no sessionId');
         return;
       }
 
-      // Get the input element from ChatKit's shadow DOM
-      const el = document.querySelector('openai-chatkit');
-      if (!el?.shadowRoot) {
-        console.error('[ChatKit] ❌ Cannot send: ChatKit element not found');
+      const text = (promptText || '').trim();
+      const stagedIds = fileStager.list();
+      if (!text && stagedIds.length === 0) {
         return;
       }
 
-      const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
-      if (!composerInput) {
-        console.error('[ChatKit] ❌ Cannot send: composer input not found');
-        return;
-      }
-
-      // Grab current input text
-      const userPrompt = composerInput.value?.trim() || 
-                         composerInput.textContent?.trim() || 
-                         '';
-
-      // Build content array: text + any staged files
-      const content = fileStager.toMessageContent(userPrompt);
-
-      if (content.length === 0) {
-        console.log('[ChatKit] ⚠️ No content to send (no text and no staged files) - RETURNING EARLY');
-        console.log('[ChatKit] Debug:', { userPrompt, contentLength: content.length, stagedCount: fileStager.list().length });
-        return;
-      }
-
-      console.log('[ChatKit] 📤 [SEND] Outgoing content:', content);
-      const debugFileIds = fileStager.list();
-      const debugFilesMeta = fileStager.listWithMetadata();
-      console.log('[ChatKit][DEBUG] staged_file_ids:', debugFileIds);
-      console.log('[ChatKit][DEBUG] staged_files:', debugFilesMeta);
-
-      // Send the user message to the current session via our controlled endpoint
-      const debugQuery = debugFileIds.length ? `?file_ids=${encodeURIComponent(debugFileIds.join(','))}` : '';
-      const url = `/api/chatkit/message${debugQuery}`;
       const payload = {
         session_id: sessionData.sessionId,
-        text: userPrompt || undefined,
-        staged_file_ids: fileStager.list(),
-        staged_files: fileStager.listWithMetadata()  // Send metadata for content type routing
+        text: text || undefined,
+        staged_file_ids: stagedIds,
+        staged_files: fileStager.listWithMetadata(),
       };
-      console.log('[ChatKit][NETWORK] About to POST:', { url, method: 'POST', payload });
-      console.log('[ChatKit][NETWORK] ⚡⚡⚡ FETCH CALL STARTING ⚡⚡⚡');
-      let resp;
-      try {
-        resp = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Debug-File-Ids': debugFileIds.join(','),
-            'X-Debug-File-Count': String(debugFileIds.length)
-          },
-          credentials: 'include',
-          body: JSON.stringify(payload)
-        });
-        console.log('[ChatKit][NETWORK] ✅ POST request completed, response status:', resp.status);
-      } catch (fetchError) {
-        console.error('[ChatKit][NETWORK] ❌ FETCH ERROR:', fetchError);
-        throw fetchError;
-      }
 
+      const resp = await fetch('/api/chatkit/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
       if (!resp.ok) {
-        const errorText = await resp.text();
-        console.error('[ChatKit] ❌ Message send failed:', errorText);
-        throw new Error(`Failed to send message: ${resp.status} ${errorText}`);
+        const t = await resp.text();
+        throw new Error(`Failed to send: ${resp.status} ${t}`);
       }
+      await resp.json();
 
-      const result = await resp.json();
-      console.log('[ChatKit] ✅ [SEND] Message sent successfully:', result);
-
-      // Clear the local input and staged files
-      composerInput.value = '';
-      if (composerInput.textContent) composerInput.textContent = '';
+      setPromptText('');
       fileStager.clear();
-
-      // Trigger input event so ChatKit UI updates
-      composerInput.dispatchEvent(new Event('input', { bubbles: true }));
-      
+      if (control?.fetchUpdates) {
+        control.fetchUpdates();
+      }
     } catch (err) {
-      console.error('[ChatKit] ❌ sendUserPrompt failed:', err);
+      console.error('[ChatKit] ❌ handleSend failed:', err);
     }
-  }, [sessionData?.sessionId]);
+  }, [promptText, sessionData?.sessionId, control]);
 
-  // Block all direct ChatKit message API calls - force everything through our controlled endpoint
-  useEffect(() => {
-    if (!sessionData?.sessionId) {
-      return;
-    }
+  // No fetch interception required when composer is disabled and we control send
 
-    console.log('[ChatKit] 🔒 Blocking direct ChatKit message API calls...');
-
-    const originalFetch = window.fetch;
-    let blockActive = true;
-
-    const blockingFetch = async (...args) => {
-      const [url, options = {}] = args;
-      
-      // Check if this is a ChatKit message creation request
-      const urlString = typeof url === 'string' ? url : url?.toString() || '';
-      const method = options.method || 'GET';
-      
-      // Log all POST/PUT requests to help debug what ChatKit is actually calling
-      if ((method === 'POST' || method === 'PUT') && blockActive) {
-        console.log('[ChatKit] 🔍 Checking fetch request:', { url: urlString, method });
-      }
-      
-      // Check for ChatKit API calls - be more permissive with URL patterns
-      const isChatKitMessageCreate = (urlString.includes('/chatkit') || 
-                                      urlString.includes('api.openai.com') ||
-                                      urlString.includes('openai.com')) && 
-                                     (urlString.includes('/messages') || 
-                                      urlString.includes('/conversation') ||
-                                      urlString.includes('/sessions') ||
-                                      urlString.includes('/responses')) &&
-                                     (method === 'POST' || method === 'PUT');
-      
-      if (isChatKitMessageCreate && blockActive) {
-        console.log('[ChatKit] 🔄 INTERCEPTED: ChatKit message send attempt');
-        console.log('[ChatKit] 🔄 URL:', urlString);
-        console.log('[ChatKit] 🔄 Method:', method);
-        
-        try {
-          // Extract the request body to get the message content
-          let requestBody = null;
-          if (options.body) {
-            if (typeof options.body === 'string') {
-              requestBody = JSON.parse(options.body);
-            } else if (options.body instanceof FormData) {
-              // Handle FormData if needed
-              console.log('[ChatKit] ⚠️ FormData body detected - may contain file attachments');
-              requestBody = options.body;
-            } else {
-              requestBody = options.body;
-            }
-          }
-          
-          console.log('[ChatKit] 🔄 Request body:', requestBody);
-          
-          // Extract text from the request
-          const text = requestBody?.input?.[0]?.content || 
-                      requestBody?.content || 
-                      requestBody?.text || 
-                      '';
-          
-          // Get staged files
-          const stagedFileIds = fileStager.list();
-          const stagedFiles = fileStager.listWithMetadata();
-          
-          console.log('[ChatKit] 🔄 Extracted text:', text);
-          console.log('[ChatKit] 🔄 Staged file IDs:', stagedFileIds);
-          console.log('[ChatKit] 🔄 Staged files:', stagedFiles);
-          
-          // Send through our controlled endpoint with staged files
-          const payload = {
-            session_id: sessionData.sessionId,
-            text: text || undefined,
-            staged_file_ids: stagedFileIds,
-            staged_files: stagedFiles
-          };
-          
-          console.log('[ChatKit] 🔄 Forwarding to /api/chatkit/message with payload:', payload);
-          
-          const response = await originalFetch('/api/chatkit/message', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify(payload)
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to send message: ${response.status} ${errorText}`);
-          }
-          
-          const result = await response.json();
-          console.log('[ChatKit] ✅ Message sent successfully through controlled endpoint:', result);
-          
-          // Clear staged files after successful send
-          fileStager.clear();
-          
-          // Return a mock response that ChatKit expects
-          return new Response(JSON.stringify(result), {
-            status: 200,
-            statusText: 'OK',
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          });
-          
-        } catch (error) {
-          console.error('[ChatKit] ❌ Error intercepting and forwarding message:', error);
-          return Promise.reject(error);
-        }
-      }
-
-      // Allow all other requests to proceed normally
-      return originalFetch.apply(window, args);
-    };
-    
-    // Also log all fetch calls to help debug (only in development)
-    if (process.env.NODE_ENV === 'development') {
-      const originalFetchWithLogging = originalFetch;
-      const loggedFetch = async (...args) => {
-        const [url, options = {}] = args;
-        const urlString = typeof url === 'string' ? url : url?.toString() || '';
-        const method = options.method || 'GET';
-        
-        // Log all POST requests to OpenAI domains
-        if ((method === 'POST' || method === 'PUT') && 
-            (urlString.includes('openai.com') || urlString.includes('/chatkit'))) {
-          console.log('[ChatKit] 🌐 Fetch call to OpenAI:', { url: urlString, method });
-        }
-        
-        return originalFetchWithLogging.apply(window, args);
-      };
-      
-      // Note: We're already overriding fetch above, so this is just for reference
-      // The actual interception happens in blockingFetch
-    }
-
-    // Override fetch
-    window.fetch = blockingFetch;
-
-    return () => {
-      window.fetch = originalFetch;
-      blockActive = false;
-      console.log('[ChatKit] 🧹 Message blocking removed');
-    };
-  }, [sessionData?.sessionId]);
-
-  // NOTE: ChatKit renders its composer inside an iframe (ck-iframe), which means we cannot
-  // access it via DOM from the parent page due to cross-origin restrictions. Instead, we rely
-  // on fetch blocking (see useEffect above) to prevent direct ChatKit API calls and force
-  // all messages to go through our controlled endpoint (/api/chatkit/message).
-  // 
-  // The fetch blocking should catch any message send attempts from ChatKit's iframe and
-  // prevent them, ensuring all messages are routed through sendUserPrompt().
-  useEffect(() => {
-    if (!sessionData?.sessionId) {
-      return;
-    }
-
-    // Log that we've detected the iframe structure
-    const checkStructure = () => {
-      const el = document.querySelector('openai-chatkit');
-      if (el?.shadowRoot) {
-        const iframe = el.shadowRoot.querySelector('iframe.ck-iframe');
-        if (iframe) {
-          console.log('[ChatKit] ℹ️ Composer is inside an iframe - DOM interception not possible. Relying on fetch blocking.');
-          console.log('[ChatKit] ℹ️ All message sends from ChatKit will be blocked and routed through /api/chatkit/message');
-        }
-      }
-    };
-
-    // Check after a short delay to allow ChatKit to render
-    const timeoutId = setTimeout(checkStructure, 1000);
-    
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [sessionData?.sessionId]);
+  // No iframe/composer interception needed
 
   // Log when component re-renders
   useEffect(() => {
@@ -943,6 +591,48 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         )}
       </div>
       
+      {/* Custom input + send */}
+      <div style={{
+        position: 'absolute',
+        left: '10px',
+        right: '10px',
+        bottom: '10px',
+        zIndex: 1000,
+        display: 'flex',
+        gap: '10px',
+        alignItems: 'center'
+      }}>
+        <input
+          type="text"
+          placeholder="Type your message"
+          value={promptText}
+          onChange={(e) => setPromptText(e.target.value)}
+          style={{
+            flex: 1,
+            padding: '10px 12px',
+            border: '1px solid #ddd',
+            borderRadius: '6px',
+            fontSize: '14px'
+          }}
+        />
+        <button
+          onClick={handleSend}
+          disabled={!promptText && fileStager.list().length === 0}
+          style={{
+            padding: '10px 16px',
+            backgroundColor: (!promptText && fileStager.list().length === 0) ? '#ccc' : '#0a66c2',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: (!promptText && fileStager.list().length === 0) ? 'not-allowed' : 'pointer',
+            fontSize: '14px',
+            fontWeight: 600
+          }}
+        >
+          Send
+        </button>
+      </div>
+
       <ChatKit 
         control={control}
         style={{ 

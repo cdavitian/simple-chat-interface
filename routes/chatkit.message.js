@@ -32,6 +32,8 @@ module.exports.chatkitMessage = async (req, res) => {
   try {
     const { text, staged_file_ids, staged_files } = req.body || {};
     const sessionId = req.session?.chatkitSessionId;
+    const vectorStoreId =
+      req.session?.vectorStoreId || req.session?.threadVectorStoreId || null;
     // We will attach files directly by file_id instead of using vector store ids
 
     if (!text || !sessionId) {
@@ -90,6 +92,9 @@ module.exports.chatkitMessage = async (req, res) => {
       session_id: sessionId,
       ...(tools.length ? { tools } : {}),
       input: [inputMessage],
+      ...(vectorStoreId
+        ? { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } }
+        : {}),
     };
 
     // Log the payload being sent to OpenAI (for debugging)
@@ -97,6 +102,9 @@ module.exports.chatkitMessage = async (req, res) => {
     console.log('[chatkit.message] 📤 Session ID:', sessionId);
     console.log('[chatkit.message] 📤 File IDs in attachments:', attachments.map(a => a.file_id));
     console.log('[chatkit.message] 📤 Tools:', tools);
+    if (vectorStoreId) {
+      console.log('[chatkit.message] 📤 tool_resources.file_search.vector_store_ids:', [vectorStoreId]);
+    }
     console.log('[chatkit.message] 📤 Input message:', JSON.stringify(inputMessage, null, 2));
 
     const reply = await openai.beta.chatkit.sessions.responses.create(payload);
