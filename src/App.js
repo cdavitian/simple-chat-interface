@@ -414,8 +414,10 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   
   const { control } = chatkit;
 
+  console.log('[ChatKit] 🔐 useChatKit hook returned:', chatkit);
   console.log('[ChatKit] 🔐 useChatKit hook returned control:', control);
   console.log('[ChatKit] 🔐 Control methods available:', control ? Object.keys(control) : 'control is null/undefined');
+  console.log('[ChatKit] 🔐 ChatKit methods available:', Object.keys(chatkit).filter(k => k !== 'control' && k !== 'ref'));
   
   // Log when control is first available
   useEffect(() => {
@@ -694,315 +696,37 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     };
   }, [sessionData?.sessionId]);
 
-  // DOM interceptors: capture all message send attempts and route through sendUserPrompt
+  // NOTE: ChatKit renders its composer inside an iframe (ck-iframe), which means we cannot
+  // access it via DOM from the parent page due to cross-origin restrictions. Instead, we rely
+  // on fetch blocking (see useEffect above) to prevent direct ChatKit API calls and force
+  // all messages to go through our controlled endpoint (/api/chatkit/message).
+  // 
+  // The fetch blocking should catch any message send attempts from ChatKit's iframe and
+  // prevent them, ensuring all messages are routed through sendUserPrompt().
   useEffect(() => {
     if (!sessionData?.sessionId) {
       return;
     }
 
-    const attachInterceptIfPossible = () => {
-      const el = document.querySelector('openai-chatkit');
-      console.log('[ChatKit] 🔍 Checking for ChatKit element:', { found: !!el, tagName: el?.tagName });
-      if (!el) {
-        console.log('[ChatKit] ⏳ ChatKit element not found yet');
-        return false;
-      }
-
-      console.log('[ChatKit] 🔍 Checking shadow root:', { hasShadowRoot: !!el.shadowRoot, shadowRootMode: el.shadowRoot?.mode });
-      if (!el.shadowRoot) {
-        console.log('[ChatKit] ⏳ ChatKit shadow root not available yet');
-        // Check if it's in an iframe
-        const iframe = el.closest('iframe');
-        if (iframe) {
-          console.warn('[ChatKit] ⚠️ ChatKit element is inside an iframe - cannot access shadow DOM from parent page');
-        }
-        return false;
-      }
-
-      // Find the composer input - try multiple selectors
-      let composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
-      
-      // If not found, try more specific selectors
-      if (!composerInput) {
-        composerInput = el.shadowRoot.querySelector('textarea[placeholder*="message" i], textarea[placeholder*="type" i], textarea[aria-label*="message" i]');
-      }
-      
-      // Try finding by role
-      if (!composerInput) {
-        composerInput = el.shadowRoot.querySelector('[role="textbox"]');
-      }
-      
-      console.log('[ChatKit] 🔍 Checking composer input:', { found: !!composerInput, tagName: composerInput?.tagName });
-      if (!composerInput) {
-        // Try to find any input-like elements for debugging
-        const allInputs = el.shadowRoot.querySelectorAll('*');
-        console.log('[ChatKit] 🔍 Shadow DOM contains', allInputs.length, 'elements');
-        
-        // Log all elements with their details for debugging
-        try {
-          const allElementsInfo = Array.from(allInputs).map(el => {
-            try {
-              const styles = window.getComputedStyle(el);
-              return {
-                tag: el.tagName,
-                id: el.id || '(no id)',
-                class: el.className || '(no class)',
-                type: el.type || '(no type)',
-                role: el.getAttribute('role') || '(no role)',
-                placeholder: el.getAttribute('placeholder') || '(no placeholder)',
-                ariaLabel: el.getAttribute('aria-label') || '(no aria-label)',
-                contentEditable: el.contentEditable || '(not editable)',
-                display: styles.display,
-                visibility: styles.visibility,
-                opacity: styles.opacity,
-                height: styles.height
-              };
-            } catch (styleError) {
-              return {
-                tag: el.tagName,
-                id: el.id || '(no id)',
-                class: el.className || '(no class)',
-                type: el.type || '(no type)',
-                role: el.getAttribute('role') || '(no role)',
-                placeholder: el.getAttribute('placeholder') || '(no placeholder)',
-                ariaLabel: el.getAttribute('aria-label') || '(no aria-label)',
-                contentEditable: el.contentEditable || '(not editable)',
-                styleError: String(styleError)
-              };
-            }
-          });
-          console.log('[ChatKit] 🔍 All shadow DOM elements:', allElementsInfo);
-        } catch (error) {
-          console.error('[ChatKit] ❌ Error logging shadow DOM elements:', error);
-          // Fallback: just log basic info
-          const basicInfo = Array.from(allInputs).map(el => ({
-            tag: el.tagName,
-            id: el.id || '(no id)',
-            class: el.className || '(no class)'
-          }));
-          console.log('[ChatKit] 🔍 Shadow DOM elements (basic):', basicInfo);
-        }
-        
-        const inputLike = Array.from(allInputs).filter(el => 
-          el.tagName === 'TEXTAREA' || 
-          el.tagName === 'INPUT' || 
-          el.contentEditable === 'true' ||
-          el.getAttribute('contenteditable') === 'true' ||
-          el.getAttribute('role') === 'textbox'
-        );
-        console.log('[ChatKit] 🔍 Found', inputLike.length, 'input-like elements:', inputLike.map(el => {
-          try {
-            const styles = window.getComputedStyle(el);
-            return { 
-              tag: el.tagName, 
-              id: el.id, 
-              class: el.className,
-              role: el.getAttribute('role'),
-              display: styles.display,
-              visibility: styles.visibility
-            };
-          } catch (e) {
-            return { 
-              tag: el.tagName, 
-              id: el.id, 
-              class: el.className,
-              role: el.getAttribute('role'),
-              error: String(e)
-            };
-          }
-        }));
-      }
-      if (!composerInput) {
-        console.log('[ChatKit] ⏳ Composer input not found');
-        return false;
-      }
-
-      // Avoid duplicate listeners
-      if (composerInput._fileStagerInterceptAttached) {
-        console.log('[ChatKit] ✅ Intercept already attached to this input');
-        return true;
-      }
-
-      console.log('[ChatKit] 🔧 Attaching intercept to composer input');
-
-      // Intercept Enter key - route through sendUserPrompt
-      const keydownHandler = async (evt) => {
-        if (evt.key === 'Enter' && !evt.shiftKey) {
-          console.log('[ChatKit] ⌨️ Enter pressed, routing through sendUserPrompt');
-          evt.preventDefault();
-          evt.stopPropagation();
-          evt.stopImmediatePropagation();
-          await sendUserPrompt(evt);
-        }
-      };
-
-      // Intercept send button clicks - route through sendUserPrompt
-      const clickHandler = async (evt) => {
-        const target = evt.target;
-        // Look for send button (common patterns)
-        if (target.closest('button[type="submit"]') || 
-            target.closest('button')?.ariaLabel?.toLowerCase().includes('send') ||
-            target.closest('[role="button"]')?.getAttribute('aria-label')?.toLowerCase().includes('send')) {
-          
-          console.log('[ChatKit] 🖱️ Send button clicked, routing through sendUserPrompt');
-          evt.preventDefault();
-          evt.stopPropagation();
-          evt.stopImmediatePropagation();
-          await sendUserPrompt(evt);
-        }
-      };
-
-      // Intercept form submissions - route through sendUserPrompt
-      const formSubmitHandler = async (evt) => {
-        if (evt.target.tagName === 'FORM' || evt.target.closest('form')) {
-          console.log('[ChatKit] 📝 Form submit intercepted, routing through sendUserPrompt');
-          evt.preventDefault();
-          evt.stopPropagation();
-          evt.stopImmediatePropagation();
-          await sendUserPrompt(evt);
-        }
-      };
-
-      // Attach all handlers
-      composerInput.addEventListener('keydown', keydownHandler, { capture: true, passive: false });
-      el.shadowRoot.addEventListener('click', clickHandler, { capture: true, passive: false });
-      el.shadowRoot.addEventListener('submit', formSubmitHandler, { capture: true, passive: false });
-      
-      // Also watch for any message sending events via MutationObserver (fallback)
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          // If ChatKit is trying to send a message, we want to intercept it
-          // This is a fallback in case our other intercepts miss it
-        });
-      });
-
-      // Observe the shadow root for changes
-      observer.observe(el.shadowRoot, {
-        childList: true,
-        subtree: true,
-        attributes: false
-      });
-
-      // Store observer for cleanup
-      composerInput._fileStagerObserver = observer;
-      composerInput._fileStagerInterceptAttached = true;
-      console.log('[ChatKit] ✅ Message intercept attached successfully');
-      return true;
-    };
-
-    // Try multiple times with increasing delays
-    const timeouts = [0, 300, 1000, 2000, 3000];
-    let attached = false;
-    const attempts = [];
-
-    timeouts.forEach((t) => {
-      const timeoutId = setTimeout(() => {
-        if (!attached) {
-          console.log(`[ChatKit] 🔄 Attempting to attach intercept (delay: ${t}ms)...`);
-          attached = attachInterceptIfPossible();
-          if (attached) {
-            console.log('[ChatKit] ✅ Intercept attached on attempt');
-          }
-        }
-      }, t);
-      attempts.push(timeoutId);
-    });
-
-    // Also use MutationObserver to watch for composer to appear
-    const el = document.querySelector('openai-chatkit');
-    if (el?.shadowRoot && !attached) {
-      const composerObserver = new MutationObserver(() => {
-        if (!attached) {
-          console.log('[ChatKit] 🔄 MutationObserver detected shadow DOM change, checking for composer...');
-          attached = attachInterceptIfPossible();
-          if (attached) {
-            console.log('[ChatKit] ✅ Intercept attached via MutationObserver');
-            composerObserver.disconnect();
-          }
-        }
-      });
-
-      composerObserver.observe(el.shadowRoot, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['contenteditable', 'role', 'placeholder']
-      });
-
-      // Disconnect after 10 seconds to avoid memory leaks
-      setTimeout(() => {
-        if (!attached) {
-          console.warn('[ChatKit] ⚠️ Composer not found after 10 seconds - intercept may not be attached');
-          composerObserver.disconnect();
-        }
-      }, 10000);
-
-      // Store observer for cleanup
-      attempts.push(composerObserver);
-    }
-
-    // Global intercept as last resort (catches events that bubble up)
-    const globalKeydownHandler = async (evt) => {
-      // Check if we're in the ChatKit context
-      const el = document.querySelector('openai-chatkit');
-      if (!el) return;
-
-      // Check if the event is coming from ChatKit's shadow DOM
-      // We can't use contains() for shadow DOM, so check if active element is in ChatKit
-      const activeEl = document.activeElement;
-      if (activeEl !== el && !el.contains(activeEl)) {
-        // Also check if event target might be from shadow DOM (event.composedPath)
-        const path = evt.composedPath?.() || [];
-        const isFromChatKit = path.some(node => node === el || (node?.host === el));
-        if (!isFromChatKit) return;
-      }
-
-      if (evt.key === 'Enter' && !evt.shiftKey) {
-        const shadowRoot = el.shadowRoot;
-        if (!shadowRoot) return;
-
-        const composerInput = shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
-        if (!composerInput) return;
-        
-        // Only use global intercept if shadow DOM intercept wasn't attached
-        if (!composerInput._fileStagerInterceptAttached) {
-          const text = composerInput?.value?.trim() || composerInput?.textContent?.trim() || '';
-          if (text || fileStager.list().length > 0) {
-            console.log('[ChatKit] 🌐 Global intercept triggered as fallback, routing through sendUserPrompt');
-            await sendUserPrompt(evt);
-          }
-        }
-      }
-    };
-
-    // Add global listener with high priority
-    window.addEventListener('keydown', globalKeydownHandler, { capture: true, passive: false });
-
-    return () => {
-      attempts.forEach(item => {
-        if (typeof item === 'number') {
-          clearTimeout(item);
-        } else if (item && typeof item.disconnect === 'function') {
-          item.disconnect();
-        }
-      });
-      window.removeEventListener('keydown', globalKeydownHandler, { capture: true });
-      
+    // Log that we've detected the iframe structure
+    const checkStructure = () => {
       const el = document.querySelector('openai-chatkit');
       if (el?.shadowRoot) {
-        const composerInput = el.shadowRoot.querySelector('textarea, input[type="text"], [contenteditable="true"]');
-        if (composerInput) {
-          if (composerInput._fileStagerObserver) {
-            composerInput._fileStagerObserver.disconnect();
-            delete composerInput._fileStagerObserver;
-          }
-          if (composerInput._fileStagerInterceptAttached) {
-            delete composerInput._fileStagerInterceptAttached;
-          }
+        const iframe = el.shadowRoot.querySelector('iframe.ck-iframe');
+        if (iframe) {
+          console.log('[ChatKit] ℹ️ Composer is inside an iframe - DOM interception not possible. Relying on fetch blocking.');
+          console.log('[ChatKit] ℹ️ All message sends from ChatKit will be blocked and routed through /api/chatkit/message');
         }
       }
     };
-  }, [sessionData?.sessionId, sendUserPrompt]);
+
+    // Check after a short delay to allow ChatKit to render
+    const timeoutId = setTimeout(checkStructure, 1000);
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [sessionData?.sessionId]);
 
   // Log when component re-renders
   useEffect(() => {
