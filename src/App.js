@@ -329,11 +329,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     }
   }, [handleFileUpload]);
   
-  // Disable ChatKit's built-in composer; use our own input + send
-  const composerConfig = useMemo(() => ({ enabled: false }), []);
-  
-  console.log('[ChatKit] Composer configuration:', JSON.stringify(composerConfig, null, 2));
-  
+  // Using a custom input + send; do not pass unsupported composer options to ChatKit
+
   // Log before useChatKit is called
   console.log('[ChatKit] 🔐 About to initialize useChatKit hook...');
   console.log('[ChatKit] 🔐 SessionData available for hook:', !!sessionData);
@@ -388,13 +385,11 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   }, [onSessionUpdate]);
 
   // getClientSecret: Always fetch a fresh token from server (never reuse stale tokens)
-  // Pass composer via options so it is applied through setOptions
-  // Get the send method directly from useChatKit
+  // Initialize ChatKit with only supported options
   const chatkit = useChatKit({
     api: {
       getClientSecret: getClientSecret
-    },
-    composer: composerConfig
+    }
   });
   
   const { control, sendUserMessage } = chatkit;
@@ -417,18 +412,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         handlersKeys: control.handlers ? Object.keys(control.handlers) : []
       });
       
-      // Try to update composer options via control API if available
-      if (typeof control.setOptions === 'function') {
-        console.log('[ChatKit] 🔧 Setting composer options via control API');
-        try {
-          control.setOptions({
-            composer: composerConfig
-          });
-        } catch (err) {
-          console.warn('[ChatKit] ⚠️ Failed to set composer options via control API:', err);
-        }
-      }
-      
+      // No composer options are passed; using custom input instead
+     
       // Set up event handlers to intercept message sends
       if (control.handlers) {
         const originalOnThreadChange = control.handlers.onThreadChange;
