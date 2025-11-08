@@ -131,16 +131,22 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         # --- minimal, robust call using Responses API with content parts ---
         print(f"[Python] OpenAI SDK version: {openai_version}")
 
+        NO_RETRIEVAL = os.getenv("DEBUG_NO_RETRIEVAL") == "1"
+        if not NO_RETRIEVAL:
+            print("[Python] Retrieval features active (DEBUG_NO_RETRIEVAL != 1)")
+        else:
+            print("[Python] Retrieval temporarily disabled for debugging")
 
-        # Build content parts and attachments as you already do
+        # Build content parts and attachments
         content_parts = [{"type": "input_text", "text": text}]
-        attachments = [
+
+        # When debugging, force no attachments and no tools/vector stores
+        attachments = [] if NO_RETRIEVAL else ([
             {"file_id": fid, "tools": [{"type": "file_search"}]}
             for fid in staged_file_ids
-        ] if staged_file_ids else []
+        ] if staged_file_ids else [])
 
-        # Decide if we should include the tool at all
-        use_file_search = bool(vector_store_id or attachments)
+        use_file_search = (not NO_RETRIEVAL) and bool(vector_store_id or attachments)
 
         base_args = dict(
             model=os.getenv("OPENAI_MODEL", "gpt-5"),
@@ -149,21 +155,23 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
                 "route": "python.chat.message",
                 "session_id": session_id,
                 "vector_store_id": vector_store_id or "",
+                "debug_no_retrieval": NO_RETRIEVAL,
             },
         )
+
         if use_file_search:
             base_args["tools"] = [{"type": "file_search"}]
 
         # Try modern-style vector store binding; on 400 unknown_parameter, retry without it
         extra = {}
-        if vector_store_id:
+        if not NO_RETRIEVAL and vector_store_id:
             extra["tool_resources"] = {"file_search": {"vector_store_ids": [vector_store_id]}}
 
         try:
             resp = client.responses.create(**base_args, extra_body=extra)
         except Exception as e:
-            if "Unknown parameter: 'tool_resources'" in str(e) or "unknown_parameter" in str(e):
-                # Retry without tool_resources (older API line)
+            if (not NO_RETRIEVAL) and ("Unknown parameter: 'tool_resources'" in str(e) or "unknown_parameter" in str(e)):
+                print("[Python] ℹ️ API rejects tool_resources; retrying without VS binding")
                 resp = client.responses.create(**base_args, extra_body={})
             else:
                 raise
