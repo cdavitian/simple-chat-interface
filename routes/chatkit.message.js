@@ -64,6 +64,14 @@ module.exports.chatkitMessage = async (req, res) => {
       try {
         const url = pythonUrl.replace(/\/$/, '') + '/chatkit/message';
         console.log('[chatkit.message] → Python proxy URL:', url);
+        console.log('[chatkit.message] → Python base URL:', pythonUrl);
+        console.log('[chatkit.message] → Request payload:', {
+          session_id: sessionId,
+          text_length: text?.length || 0,
+          staged_file_ids_count: allCandidateIds.length,
+          vector_store_id: vectorStoreId || null
+        });
+        
         const resp = await fetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -107,9 +115,19 @@ module.exports.chatkitMessage = async (req, res) => {
 
         return res.json({ success: true, text: out, response_id: data?.response_id });
       } catch (proxyErr) {
-        console.error('[/api/chatkit/message] Python proxy error:', proxyErr?.stack || proxyErr);
+        const errorDetails = {
+          message: proxyErr?.message,
+          code: proxyErr?.code,
+          cause: proxyErr?.cause?.message || proxyErr?.cause,
+          stack: proxyErr?.stack,
+          pythonUrl: pythonUrl,
+          attemptedUrl: pythonUrl.replace(/\/$/, '') + '/chatkit/message'
+        };
+        console.error('[/api/chatkit/message] Python proxy error:', JSON.stringify(errorDetails, null, 2));
+        console.error('[/api/chatkit/message] Python proxy error (raw):', proxyErr);
         return res.status(proxyErr?.status || 502).json({
           error: proxyErr?.message || 'python_proxy_error',
+          details: proxyErr?.code || proxyErr?.cause?.message || 'Unknown error',
         });
       }
     }
