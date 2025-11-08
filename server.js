@@ -3518,9 +3518,94 @@ app.get("*", (req, res) => {
 	res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
+/**
+ * Health check function for Python ChatKit service
+ * Checks if the Python service is reachable and healthy
+ */
+async function checkPythonServiceHealth() {
+    // Get Python service URL using the same logic as chatkit.message.js
+    let pythonUrl =
+        (process.env.PYTHON_CHATKIT_URL && String(process.env.PYTHON_CHATKIT_URL).trim()) ||
+        (process.env.PY_BACKEND_URL && String(process.env.PY_BACKEND_URL).trim()) ||
+        '';
+    
+    if (!pythonUrl) {
+        console.log('📋 [Python Health Check] ⚠️  No Python service URL configured (PYTHON_CHATKIT_URL or PY_BACKEND_URL)');
+        console.log('📋 [Python Health Check] ℹ️  Node SDK will be used directly (fallback mode)');
+        return;
+    }
+    
+    // Ensure URL has a protocol (http:// or https://)
+    if (pythonUrl && !pythonUrl.match(/^https?:\/\//i)) {
+        // Default to http:// for internal Railway domains (.railway.internal)
+        // or if no protocol specified
+        pythonUrl = pythonUrl.includes('.railway.internal') 
+            ? `http://${pythonUrl}`
+            : `https://${pythonUrl}`;
+    }
+    
+    const healthUrl = pythonUrl.replace(/\/$/, '') + '/health';
+    console.log('📋 [Python Health Check] 🔍 Checking Python service at:', healthUrl);
+    
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        
+        const resp = await fetch(healthUrl, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!resp.ok) {
+            console.error('📋 [Python Health Check] ❌ Health check failed:', {
+                status: resp.status,
+                statusText: resp.statusText,
+                url: healthUrl
+            });
+            return;
+        }
+        
+        const data = await resp.json();
+        console.log('📋 [Python Health Check] ✅ Python service is healthy:', {
+            ok: data.ok,
+            database: data.database || 'unknown',
+            url: healthUrl
+        });
+        
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            console.error('📋 [Python Health Check] ❌ Health check timed out after 10 seconds:', healthUrl);
+        } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
+            console.error('📋 [Python Health Check] ❌ Cannot reach Python service:', {
+                error: err.message,
+                code: err.code,
+                url: healthUrl,
+                hint: 'Check that PYTHON_CHATKIT_URL is correct and the Python service is running'
+            });
+        } else {
+            console.error('📋 [Python Health Check] ❌ Health check error:', {
+                error: err.message,
+                code: err.code,
+                url: healthUrl
+            });
+        }
+    }
+}
+
 // Start the server
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🚀 Chat interface server running on port ${PORT}`);
     console.log(`📱 Access your chat at: http://localhost:${PORT}`);
     console.log(`🔐 AWS Cognito authentication enabled for kyocare.com domain`);
+    
+    // Run Python service health check after server starts
+    // This is non-blocking - server will start even if check fails
+    setImmediate(() => {
+        checkPythonServiceHealth().catch(err => {
+            console.error('📋 [Python Health Check] Unexpected error:', err);
+        });
+    });
 });
