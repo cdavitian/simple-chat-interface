@@ -133,12 +133,30 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             ]
 
         # Newer Python SDKs expose top-level chatkit.responses.create (no thread juggling)
-        resp = client.beta.chatkit.responses.create(
-            session_id=session_id,
-            input=[input_message],
-            tools=tools if tools else None,
-            tool_resources=tool_resources if tool_resources else None,
-        )
+       from openai import __version__ as openai_version  # add near your imports
+
+        # ... inside /chatkit/message just before you call OpenAI ...
+        print(f"[Python] OpenAI SDK version: {openai_version}")
+
+        # --- replace your current call with this defensive try/except ---
+        try:
+            # Try the newer, top-level ChatKit responses route (if present)
+            resp = client.beta.chatkit.responses.create(
+                session_id=session_id,
+                input=[input_message],
+                tools=tools if tools else None,
+                tool_resources=tool_resources if tool_resources else None,
+            )
+        except AttributeError:
+            # Fallback: create a thread bound to the session and post the response there
+            th = client.beta.chatkit.threads.create(session_id=session_id)
+            resp = client.beta.chatkit.threads.responses.create(
+                thread_id=th.id,
+                input=[input_message],
+                tools=tools if tools else None,
+                tool_resources=tool_resources if tool_resources else None,
+            )
+
 
         # Some SDK versions expose to_dict; be defensive
         maybe_dict = None
