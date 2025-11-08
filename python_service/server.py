@@ -162,7 +162,8 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
                 "session_id": session_id,
                 # Do not include vector_store_id when retrieval is disabled
                 **({} if NO_RETRIEVAL else {"vector_store_id": vector_store_id or ""}),
-                "retrieval_disabled": NO_RETRIEVAL,
+                # OpenAI metadata values must be strings
+                "retrieval_disabled": "1" if NO_RETRIEVAL else "0",
             },
         )
 
