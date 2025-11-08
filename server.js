@@ -1758,8 +1758,17 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             if (typeof clientToken === 'string' && clientToken.startsWith('ek_')) {
                 const parts = clientToken.split('_');
                 const b64 = parts[parts.length - 1].replace(/[^A-Za-z0-9+/=]/g, '');
-                const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
-                expiresAtSeconds = payload.expires_at || payload.expiresAt;
+                if (b64 && b64.length > 0) {
+                    try {
+                        const decoded = Buffer.from(b64, 'base64').toString('utf8');
+                        if (decoded && decoded.trim().startsWith('{')) {
+                            const payload = JSON.parse(decoded);
+                            expiresAtSeconds = payload.expires_at || payload.expiresAt;
+                        }
+                    } catch (parseError) {
+                        // Silently skip invalid JSON - token format may have changed
+                    }
+                }
             }
             const serverNowIso = new Date().toISOString();
             const expiresIso = typeof expiresAtSeconds === 'number' ? new Date(expiresAtSeconds * 1000).toISOString() : 'unknown';
@@ -1973,8 +1982,17 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             if (typeof clientToken === 'string' && clientToken.startsWith('ek_')) {
                 const parts = clientToken.split('_');
                 const b64 = parts[parts.length - 1].replace(/[^A-Za-z0-9+/=]/g, '');
-                const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
-                expiresAtSeconds = payload.expires_at || payload.expiresAt;
+                if (b64 && b64.length > 0) {
+                    try {
+                        const decoded = Buffer.from(b64, 'base64').toString('utf8');
+                        if (decoded && decoded.trim().startsWith('{')) {
+                            const payload = JSON.parse(decoded);
+                            expiresAtSeconds = payload.expires_at || payload.expiresAt;
+                        }
+                    } catch (parseError) {
+                        // Silently skip invalid JSON - token format may have changed
+                    }
+                }
             }
             const serverNowIso = new Date().toISOString();
             const expiresIso = typeof expiresAtSeconds === 'number' ? new Date(expiresAtSeconds * 1000).toISOString() : 'unknown';

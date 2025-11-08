@@ -142,27 +142,51 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
                 {"file_id": fid, "tools": [{"type": "file_search"}]} for fid in staged_file_ids
             ]
 
-        # Newer Python SDKs expose top-level chatkit.responses.create (no thread juggling)
-        # ... inside /chatkit/message just before you call OpenAI ...
+        # --- replace your whole try/except call block with this 3-step fallback ---
         print(f"[Python] OpenAI SDK version: {openai_version}")
 
-        # --- replace your current call with this defensive try/except ---
+        resp = None
+        err_notes = []
+
+        # 1) Newest surface (if present on your SDK line)
         try:
-            # Try the newer, top-level ChatKit responses route (if present)
             resp = client.beta.chatkit.responses.create(
                 session_id=session_id,
                 input=[input_message],
-                tools=tools if tools else None,
-                tool_resources=tool_resources if tool_resources else None,
+                tools=tools or None,
+                tool_resources=tool_resources or None,
             )
-        except AttributeError:
-            # Fallback: create a thread bound to the session and post the response there
-            th = client.beta.chatkit.threads.create(session_id=session_id)
-            resp = client.beta.chatkit.threads.responses.create(
-                thread_id=th.id,
-                input=[input_message],
-                tools=tools if tools else None,
-                tool_resources=tool_resources if tool_resources else None,
+        except AttributeError as e:
+            err_notes.append(f"no chatkit.responses: {e}")
+
+        # 2) Threads surface (works on SDKs where `threads.create` is missing)
+        if resp is None:
+            try:
+                resp = client.beta.chatkit.threads.responses.create(
+                    session_id=session_id,                   # <- NOTE: session_id, not thread_id
+                    input=[input_message],
+                    tools=tools or None,
+                    tool_resources=tool_resources or None,
+                )
+            except AttributeError as e:
+                err_notes.append(f"no threads.responses: {e}")
+
+        # 3) Final fallback: plain Responses API (keeps you alive; not session-bound)
+        if resp is None:
+            # Keep file search working if you passed vector_store_id
+            r_tools = tools or None
+            r_tool_resources = tool_resources or None
+            resp = client.responses.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-5"),
+                input=[{
+                    "role": "user",
+                    "content": text or "",
+                    "attachments": input_message.get("attachments", [])  # keep your existing attachments list
+                }],
+                tools=r_tools,
+                tool_resources=r_tool_resources,
+                metadata={"route": "python.chatkit.message", "fallback": "responses.create",
+                          "errors": " | ".join(err_notes)},
             )
 
 
