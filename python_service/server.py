@@ -131,11 +131,12 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         # --- minimal, robust call using Responses API with content parts ---
         print(f"[Python] OpenAI SDK version: {openai_version}")
 
-        NO_RETRIEVAL = os.getenv("DEBUG_NO_RETRIEVAL") == "1"
+        # Honor either NO_RETRIEVAL or legacy DEBUG_NO_RETRIEVAL for convenience
+        NO_RETRIEVAL = (os.getenv("NO_RETRIEVAL") == "1") or (os.getenv("DEBUG_NO_RETRIEVAL") == "1")
         if not NO_RETRIEVAL:
-            print("[Python] Retrieval features active (DEBUG_NO_RETRIEVAL != 1)")
+            print("[Python] Retrieval features active (NO_RETRIEVAL != 1)")
         else:
-            print("[Python] Retrieval temporarily disabled for debugging")
+            print("[Python] Retrieval disabled (NO_RETRIEVAL=1)")
 
         # Build content parts and attachments
         content_parts = [{"type": "input_text", "text": text}]
@@ -154,8 +155,9 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             metadata={
                 "route": "python.chat.message",
                 "session_id": session_id,
-                "vector_store_id": vector_store_id or "",
-                "debug_no_retrieval": NO_RETRIEVAL,
+                # Do not include vector_store_id when retrieval is disabled
+                **({} if NO_RETRIEVAL else {"vector_store_id": vector_store_id or ""}),
+                "retrieval_disabled": NO_RETRIEVAL,
             },
         )
 
@@ -166,6 +168,13 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         extra = {}
         if not NO_RETRIEVAL and vector_store_id:
             extra["tool_resources"] = {"file_search": {"vector_store_ids": [vector_store_id]}}
+
+        # Log what we're about to send regarding retrieval
+        try:
+            sent_file_ids = [a.get("file_id") for a in attachments] if attachments else []
+            print(f"[Python] Retrieval config -> disabled={NO_RETRIEVAL}, vector_store_id={'<none>' if not vector_store_id else vector_store_id}, file_ids={sent_file_ids}")
+        except Exception:
+            pass
 
         try:
             resp = client.responses.create(**base_args, extra_body=extra)
@@ -195,10 +204,61 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         except Exception:
             pass
 
+        # Extract any file/vector-store IDs from response for logging
+        def _walk(obj):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    yield (k, v)
+                    yield from _walk(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    yield from _walk(item)
+
+        resp_file_ids: List[str] = []
+        resp_vector_store_ids: List[str] = []
+        try:
+            for k, v in _walk(maybe_dict or {}):
+                if k in ("file_id",) and isinstance(v, str):
+                    resp_file_ids.append(v)
+                elif k in ("file_ids", "vector_store_ids") and isinstance(v, list):
+                    for vv in v:
+                        if isinstance(vv, str):
+                            if k == "file_ids":
+                                resp_file_ids.append(vv)
+                            else:
+                                resp_vector_store_ids.append(vv)
+                elif k == "vector_store_id" and isinstance(v, str):
+                    resp_vector_store_ids.append(v)
+        except Exception:
+            pass
+
+        if resp_file_ids or resp_vector_store_ids:
+            print(f"[Python] Response retrieval IDs -> file_ids={resp_file_ids}, vector_store_ids={resp_vector_store_ids}")
+        else:
+            print("[Python] Response contains no retrieval IDs (or none detected)")
+
+        # Redact retrieval IDs from the outgoing payload when retrieval is disabled
+        def _redact(obj):
+            if obj is None:
+                return None
+            if isinstance(obj, dict):
+                cleaned = {}
+                for k, v in obj.items():
+                    if k in ("file_id", "file_ids", "vector_store_id", "vector_store_ids", "tool_resources"):
+                        # Drop these keys entirely when redacting
+                        continue
+                    cleaned[k] = _redact(v)
+                return cleaned
+            if isinstance(obj, list):
+                return [_redact(x) for x in obj]
+            return obj
+
+        outgoing_raw = maybe_dict if not NO_RETRIEVAL else _redact(maybe_dict)
+
         return {
             "text": out_text or "",
             "response_id": getattr(resp, "id", None),
-            "raw": maybe_dict,
+            "raw": outgoing_raw,
         }
 
     except HTTPException:
