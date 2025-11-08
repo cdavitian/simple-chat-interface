@@ -46,10 +46,20 @@ module.exports.chatkitMessage = async (req, res) => {
     const allCandidateIds = Array.from(new Set([ ...clientFileIds, ...sessionUnsent ]));
 
     // If a Python ChatKit service URL is configured, proxy the request there
-    const pythonUrl =
+    let pythonUrl =
       (process.env.PYTHON_CHATKIT_URL && String(process.env.PYTHON_CHATKIT_URL).trim()) ||
       (process.env.PY_BACKEND_URL && String(process.env.PY_BACKEND_URL).trim()) ||
       '';
+    
+    // Ensure URL has a protocol (http:// or https://)
+    if (pythonUrl && !pythonUrl.match(/^https?:\/\//i)) {
+      // Default to http:// for internal Railway domains (.railway.internal)
+      // or if no protocol specified
+      pythonUrl = pythonUrl.includes('.railway.internal') 
+        ? `http://${pythonUrl}`
+        : `https://${pythonUrl}`;
+    }
+    
     if (pythonUrl) {
       try {
         const url = pythonUrl.replace(/\/$/, '') + '/chatkit/message';

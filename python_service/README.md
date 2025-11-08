@@ -34,14 +34,14 @@ uvicorn server:app --host 0.0.0.0 --port 8000
 4. **Railway will auto-detect Python** and use the `Procfile`
 5. **Get the URL for your Node service:**
    - Go to Settings → Networking in your Python service
-   - **Recommended (internal network):** Use the private domain (e.g., `http://graceful-healing.railway.internal`)
+   - **Recommended (internal network):** Use the private domain (e.g., `http://python-chat.railway.internal`)
      - Faster, no egress costs, more secure
      - Only accessible from other Railway services
-   - **Alternative (public):** Use the public domain (e.g., `https://python-chatkit-xxxxx.up.railway.app`)
+   - **Alternative (public):** Use the public domain (e.g., `https://python-chat-staging.up.railway.app`)
      - Accessible from anywhere (useful for testing)
 6. **In your Node service**, set environment variable:
    ```
-   PYTHON_CHATKIT_URL=http://graceful-healing.railway.internal
+   PYTHON_CHATKIT_URL=http://python-chat.railway.internal
    ```
    (Use the private `.railway.internal` domain for internal communication, or public domain if needed)
 
