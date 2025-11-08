@@ -149,25 +149,33 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         r_tool_resources = {"file_search": {"vector_store_ids": [vector_store_id]}} if vector_store_id else None
 
         # Build content parts (input_text + optional file_search attachments)
+        # build parts as you already do
         content_parts = [{"type": "input_text", "text": text}]
-        # attachments belong on the message object, not inside content_parts
+
         attachments = [
             {"file_id": fid, "tools": [{"type": "file_search"}]}
             for fid in staged_file_ids
         ] if staged_file_ids else []
 
+        extra = {}
+        if vector_store_id:
+            extra["tool_resources"] = {
+                "file_search": {"vector_store_ids": [vector_store_id]}
+            }
+
         resp = client.responses.create(
             model=os.getenv("OPENAI_MODEL", "gpt-5"),
-            tools=r_tools,
-            tool_resources=r_tool_resources,
+            tools=[{"type": "file_search"}],
             input=[{
                 "role": "user",
                 "content": content_parts,
                 "attachments": attachments
             }],
+            # 👇 older SDKs: pass unsupported fields here
+            extra_body=extra,
             metadata={
                 "route": "python.chat.message",
-                "note": "chatkit bypass (SDK 2.7.1 lacks chatkit.responses/threads.create)",
+                "note": "tool_resources via extra_body (SDK 2.7.1)",
                 "session_id": session_id,
                 "vector_store_id": vector_store_id or ""
             },
