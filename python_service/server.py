@@ -142,66 +142,62 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
                 {"file_id": fid, "tools": [{"type": "file_search"}]} for fid in staged_file_ids
             ]
 
-        # --- replace your whole try/except call block with this 3-step fallback ---
+        # --- minimal, robust call using Responses API with content parts ---
         print(f"[Python] OpenAI SDK version: {openai_version}")
 
-        resp = None
-        err_notes = []
+        r_tools = [{"type": "file_search"}]
+        r_tool_resources = {"file_search": {"vector_store_ids": [vector_store_id]}} if vector_store_id else None
 
-        # 1) Newest surface (if present on your SDK line)
-        try:
-            resp = client.beta.chatkit.responses.create(
-                session_id=session_id,
-                input=[input_message],
-                tools=tools or None,
-                tool_resources=tool_resources or None,
-            )
-        except AttributeError as e:
-            err_notes.append(f"no chatkit.responses: {e}")
+        # Build content parts (input_text + optional file_search attachments)
+        content_parts = [{"type": "input_text", "text": text}]
+        # attachments belong on the message object, not inside content_parts
+        attachments = [
+            {"file_id": fid, "tools": [{"type": "file_search"}]}
+            for fid in staged_file_ids
+        ] if staged_file_ids else []
 
-        # 2) Threads surface (works on SDKs where `threads.create` is missing)
-        if resp is None:
+        resp = client.responses.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-5"),
+            tools=r_tools,
+            tool_resources=r_tool_resources,
+            input=[{
+                "role": "user",
+                "content": content_parts,
+                "attachments": attachments
+            }],
+            metadata={
+                "route": "python.chat.message",
+                "note": "chatkit bypass (SDK 2.7.1 lacks chatkit.responses/threads.create)",
+                "session_id": session_id,
+                "vector_store_id": vector_store_id or ""
+            },
+        )
+
+        # Extract text defensively
+        out_text = getattr(resp, "output_text", None)
+        if not out_text:
             try:
-                resp = client.beta.chatkit.threads.responses.create(
-                    session_id=session_id,                   # <- NOTE: session_id, not thread_id
-                    input=[input_message],
-                    tools=tools or None,
-                    tool_resources=tool_resources or None,
-                )
-            except AttributeError as e:
-                err_notes.append(f"no threads.responses: {e}")
+                first = (resp.output or [])[0]
+                for p in getattr(first, "content", []) or []:
+                    if getattr(p, "type", None) in ("output_text", "text"):
+                        out_text = getattr(p, "text", None)
+                        if out_text:
+                            break
+            except Exception:
+                out_text = None
 
-        # 3) Final fallback: plain Responses API (keeps you alive; not session-bound)
-        if resp is None:
-            # Keep file search working if you passed vector_store_id
-            r_tools = tools or None
-            r_tool_resources = tool_resources or None
-            resp = client.responses.create(
-                model=os.getenv("OPENAI_MODEL", "gpt-5"),
-                input=[{
-                    "role": "user",
-                    "content": text or "",
-                    "attachments": input_message.get("attachments", [])  # keep your existing attachments list
-                }],
-                tools=r_tools,
-                tool_resources=r_tool_resources,
-                metadata={"route": "python.chatkit.message", "fallback": "responses.create",
-                          "errors": " | ".join(err_notes)},
-            )
-
-
-        # Some SDK versions expose to_dict; be defensive
         maybe_dict = None
         try:
-            maybe_dict = resp.to_dict()  # type: ignore[attr-defined]
+            maybe_dict = resp.to_dict()
         except Exception:
-            maybe_dict = None
+            pass
 
         return {
-            "text": getattr(resp, "output_text", "") or "",
+            "text": out_text or "",
             "response_id": getattr(resp, "id", None),
             "raw": maybe_dict,
         }
+
     except HTTPException:
         raise
     except Exception as e:
