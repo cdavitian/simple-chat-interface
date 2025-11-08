@@ -149,9 +149,14 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
         use_file_search = (not NO_RETRIEVAL) and bool(vector_store_id or attachments)
 
+        # Build input message; omit 'attachments' key when disabled/empty
+        input_message = {"role": "user", "content": content_parts}
+        if (not NO_RETRIEVAL) and attachments:
+            input_message["attachments"] = attachments
+
         base_args = dict(
             model=os.getenv("OPENAI_MODEL", "gpt-5"),
-            input=[{"role": "user", "content": content_parts, "attachments": attachments}],
+            input=[input_message],
             metadata={
                 "route": "python.chat.message",
                 "session_id": session_id,
@@ -177,11 +182,14 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             pass
 
         try:
-            resp = client.responses.create(**base_args, extra_body=extra)
+            if extra:
+                resp = client.responses.create(**base_args, extra_body=extra)
+            else:
+                resp = client.responses.create(**base_args)
         except Exception as e:
             if (not NO_RETRIEVAL) and ("Unknown parameter: 'tool_resources'" in str(e) or "unknown_parameter" in str(e)):
                 print("[Python] ℹ️ API rejects tool_resources; retrying without VS binding")
-                resp = client.responses.create(**base_args, extra_body={})
+                resp = client.responses.create(**base_args)
             else:
                 raise
 
