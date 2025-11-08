@@ -128,58 +128,45 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         if not session_id or not text:
             raise HTTPException(status_code=400, detail="Missing required fields: session_id and text")
 
-        tools: List[Dict[str, Any]] = [{"type": "file_search"}]
-        tool_resources: Optional[Dict[str, Any]] = None
-        if vector_store_id:
-            tool_resources = {"file_search": {"vector_store_ids": [vector_store_id]}}
-
-        input_message: Dict[str, Any] = {
-            "role": "user",
-            "content": text,
-        }
-        if staged_file_ids:
-            input_message["attachments"] = [
-                {"file_id": fid, "tools": [{"type": "file_search"}]} for fid in staged_file_ids
-            ]
-
         # --- minimal, robust call using Responses API with content parts ---
         print(f"[Python] OpenAI SDK version: {openai_version}")
 
-        r_tools = [{"type": "file_search"}]
-        r_tool_resources = {"file_search": {"vector_store_ids": [vector_store_id]}} if vector_store_id else None
 
-        # Build content parts (input_text + optional file_search attachments)
-        # build parts as you already do
+        # Build content parts and attachments as you already do
         content_parts = [{"type": "input_text", "text": text}]
-
         attachments = [
             {"file_id": fid, "tools": [{"type": "file_search"}]}
             for fid in staged_file_ids
         ] if staged_file_ids else []
 
-        extra = {}
-        if vector_store_id:
-            extra["tool_resources"] = {
-                "file_search": {"vector_store_ids": [vector_store_id]}
-            }
+        # Decide if we should include the tool at all
+        use_file_search = bool(vector_store_id or attachments)
 
-        resp = client.responses.create(
+        base_args = dict(
             model=os.getenv("OPENAI_MODEL", "gpt-5"),
-            tools=[{"type": "file_search"}],
-            input=[{
-                "role": "user",
-                "content": content_parts,
-                "attachments": attachments
-            }],
-            # 👇 older SDKs: pass unsupported fields here
-            extra_body=extra,
+            input=[{"role": "user", "content": content_parts, "attachments": attachments}],
             metadata={
                 "route": "python.chat.message",
-                "note": "tool_resources via extra_body (SDK 2.7.1)",
                 "session_id": session_id,
-                "vector_store_id": vector_store_id or ""
+                "vector_store_id": vector_store_id or "",
             },
         )
+        if use_file_search:
+            base_args["tools"] = [{"type": "file_search"}]
+
+        # Try modern-style vector store binding; on 400 unknown_parameter, retry without it
+        extra = {}
+        if vector_store_id:
+            extra["tool_resources"] = {"file_search": {"vector_store_ids": [vector_store_id]}}
+
+        try:
+            resp = client.responses.create(**base_args, extra_body=extra)
+        except Exception as e:
+            if "Unknown parameter: 'tool_resources'" in str(e) or "unknown_parameter" in str(e):
+                # Retry without tool_resources (older API line)
+                resp = client.responses.create(**base_args, extra_body={})
+            else:
+                raise
 
         # Extract text defensively
         out_text = getattr(resp, "output_text", None)
