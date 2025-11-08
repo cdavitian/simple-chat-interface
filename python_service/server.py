@@ -132,12 +132,49 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
                 {"file_id": fid, "tools": [{"type": "file_search"}]} for fid in staged_file_ids
             ]
 
-        resp = client.beta.chatkit.sessions.responses.create(
-            session_id=session_id,
-            tools=tools,
-            tool_resources=tool_resources,
-            input=[input_message],
-        )
+        # Build payload dictionary matching Node.js structure
+        payload: Dict[str, Any] = {
+            "session_id": session_id,
+            "input": [input_message],
+        }
+        if tools:
+            payload["tools"] = tools
+        if tool_resources:
+            payload["tool_resources"] = tool_resources
+
+        # Try to access the responses API - the Python SDK structure may differ from Node.js
+        try:
+            # Try the expected path first: client.beta.chatkit.sessions.responses.create
+            sessions_obj = client.beta.chatkit.sessions
+            
+            if hasattr(sessions_obj, 'responses'):
+                # Standard path: sessions.responses.create
+                resp = sessions_obj.responses.create(**payload)
+            elif hasattr(sessions_obj, 'create_response'):
+                # Alternative: sessions.create_response
+                resp = sessions_obj.create_response(**payload)
+            elif hasattr(client.beta.chatkit, 'sessions_responses'):
+                # Alternative: client.beta.chatkit.sessions_responses.create
+                resp = client.beta.chatkit.sessions_responses.create(**payload)
+            else:
+                # Log available attributes for debugging
+                available_attrs = [attr for attr in dir(sessions_obj) if not attr.startswith('_')]
+                chatkit_attrs = [attr for attr in dir(client.beta.chatkit) if not attr.startswith('_')]
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"ChatKit Sessions API structure mismatch. "
+                           f"'sessions' object has no 'responses' attribute. "
+                           f"Sessions attributes: {', '.join(available_attrs[:10])}. "
+                           f"ChatKit attributes: {', '.join(chatkit_attrs[:10])}. "
+                           f"Please check OpenAI Python SDK version compatibility. "
+                           f"Expected: client.beta.chatkit.sessions.responses.create"
+                )
+        except AttributeError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"ChatKit API access error: {str(e)}. "
+                       "Expected: client.beta.chatkit.sessions.responses.create"
+            )
 
         # Some SDK versions expose to_dict; be defensive
         maybe_dict = None
