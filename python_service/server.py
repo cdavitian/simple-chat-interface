@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from typing import Any, Dict, List, Optional
 import os
+import sys
 
 app = FastAPI()
 
@@ -15,7 +16,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize OpenAI client with error handling
+_openai_api_key = os.getenv("OPENAI_API_KEY")
+if not _openai_api_key:
+    print("[Python] ⚠️  WARNING: OPENAI_API_KEY not set - service may fail on requests", file=sys.stderr)
+    client = None
+else:
+    try:
+        client = OpenAI(api_key=_openai_api_key)
+        print("[Python] ✅ OpenAI client initialized")
+    except Exception as e:
+        print(f"[Python] ❌ Failed to initialize OpenAI client: {e}", file=sys.stderr)
+        client = None
 
 # Optional PostgreSQL database connection (uses Railway variable names)
 # Only initialized if DB_HOST is set - service works without it
@@ -70,14 +82,33 @@ def return_db_connection(conn):
             pass
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Log startup information."""
+    port = os.getenv("PORT", "8000")
+    print(f"[Python] 🚀 FastAPI server starting on port {port}")
+    print(f"[Python] 📋 Health check available at /health")
+    if not client:
+        print("[Python] ⚠️  OPENAI_API_KEY not configured - service will fail on chat requests")
+
+
 @app.get("/health")
-def health() -> Dict[str, bool]:
+def health() -> Dict[str, Any]:
+    """Health check endpoint for Railway."""
     db_status = "available" if _db_pool else "not_configured"
-    return {"ok": True, "database": db_status}
+    openai_status = "configured" if client else "not_configured"
+    return {
+        "ok": True,
+        "database": db_status,
+        "openai": openai_status
+    }
 
 
 @app.post("/chatkit/message")
 def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    if not client:
+        raise HTTPException(status_code=500, detail="OpenAI client not initialized - check OPENAI_API_KEY")
+    
     try:
         session_id: str = payload.get("session_id")
         text: str = payload.get("text", "")
