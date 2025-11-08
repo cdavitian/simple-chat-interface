@@ -154,6 +154,11 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
+        # Log the full error for debugging
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[Python] ❌ Error in /chatkit/message: {e}", file=sys.stderr)
+        print(f"[Python] ❌ Traceback:\n{error_trace}", file=sys.stderr)
         # Ensure upstream returns JSON 500 instead of crashing the worker
         raise HTTPException(status_code=500, detail=str(e))
 

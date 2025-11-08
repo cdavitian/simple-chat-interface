@@ -3583,7 +3583,9 @@ async function checkPythonServiceHealth() {
                 error: err.message,
                 code: err.code,
                 url: healthUrl,
-                hint: 'Check that PYTHON_CHATKIT_URL is correct and the Python service is running'
+                hint: err.code === 'ENOTFOUND' 
+                    ? 'Service name might be incorrect. Check Railway → Python Service → Settings → Networking → Private Network domain'
+                    : 'Connection refused. Verify: 1) Both services are in the same Railway project, 2) Python service name matches PYTHON_CHATKIT_URL, 3) Try using public domain as fallback'
             });
         } else {
             console.error('📋 [Python Health Check] ❌ Health check error:', {

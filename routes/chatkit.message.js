@@ -91,7 +91,13 @@ module.exports.chatkitMessage = async (req, res) => {
 
         if (!resp.ok) {
           const detail = data?.detail || data?.error || data;
-          const err = new Error(`Python ChatKit service error (${resp.status}): ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`);
+          const errorMessage = typeof detail === 'string' ? detail : JSON.stringify(detail);
+          console.error('[chatkit.message] ← Python service error response:', {
+            status: resp.status,
+            detail: errorMessage,
+            fullResponse: data
+          });
+          const err = new Error(`Python ChatKit service error (${resp.status}): ${errorMessage}`);
           err.status = resp.status;
           throw err;
         }
