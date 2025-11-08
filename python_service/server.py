@@ -17,10 +17,63 @@ app.add_middleware(
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Optional PostgreSQL database connection (uses Railway variable names)
+# Only initialized if DB_HOST is set - service works without it
+_db_pool = None
+try:
+    db_host = os.getenv("DB_HOST")
+    if db_host:
+        import psycopg2
+        from psycopg2 import pool
+        
+        db_config = {
+            "host": db_host,
+            "port": int(os.getenv("DB_PORT", "5432")),
+            "database": os.getenv("DB_NAME", "railway"),
+            "user": os.getenv("DB_USER", "postgres"),
+            "password": os.getenv("DB_PASSWORD", ""),
+        }
+        
+        # Handle SSL if required
+        db_ssl = os.getenv("DB_SSL", "").lower()
+        if db_ssl in ("1", "true", "require", "required"):
+            db_config["sslmode"] = "require"
+        
+        _db_pool = psycopg2.pool.SimpleConnectionPool(1, 5, **db_config)
+        print(f"[Python] ✅ Database connection pool initialized (host: {db_host})")
+    else:
+        print("[Python] ℹ️  No DB_HOST set - database access disabled (optional)")
+except ImportError:
+    print("[Python] ℹ️  psycopg2 not installed - database access disabled (optional)")
+except Exception as e:
+    print(f"[Python] ⚠️  Database connection failed (non-fatal): {e}")
+    _db_pool = None
+
+
+def get_db_connection():
+    """Get a database connection from the pool (if available)."""
+    if _db_pool is None:
+        return None
+    try:
+        return _db_pool.getconn()
+    except Exception as e:
+        print(f"[Python] Database pool error: {e}")
+        return None
+
+
+def return_db_connection(conn):
+    """Return a database connection to the pool."""
+    if _db_pool and conn:
+        try:
+            _db_pool.putconn(conn)
+        except Exception:
+            pass
+
 
 @app.get("/health")
 def health() -> Dict[str, bool]:
-    return {"ok": True}
+    db_status = "available" if _db_pool else "not_configured"
+    return {"ok": True, "database": db_status}
 
 
 @app.post("/chatkit/message")
