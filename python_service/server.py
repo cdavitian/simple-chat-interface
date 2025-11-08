@@ -5,6 +5,16 @@ from typing import Any, Dict, List, Optional
 import os
 import sys
 
+# Get OpenAI version for logging
+try:
+    from openai import __version__ as openai_version
+except (ImportError, AttributeError):
+    try:
+        import importlib.metadata
+        openai_version = importlib.metadata.version("openai")
+    except Exception:
+        openai_version = "unknown"
+
 app = FastAPI()
 
 # Optional CORS for direct browser access; harmless if unused
@@ -133,8 +143,6 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             ]
 
         # Newer Python SDKs expose top-level chatkit.responses.create (no thread juggling)
-       from openai import __version__ as openai_version  # add near your imports
-
         # ... inside /chatkit/message just before you call OpenAI ...
         print(f"[Python] OpenAI SDK version: {openai_version}")
 
