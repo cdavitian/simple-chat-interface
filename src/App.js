@@ -493,17 +493,20 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       }
       setIsCustomSending(true);
 
-      const contentText = (customText || '').trim() || 'Please review the uploaded files.';
-      const attachments = ids.map(id => ({ file_id: id })); // only file_id, no tools/vector stores
+      const text = (customText || '').trim() || 'Please review the uploaded files.';
+      const input = [{ type: 'input_text', text }];
+      const attachments = ids.map(id => ({
+        file_id: id,
+        tools: [{ type: 'file_search' }],
+      }));
 
-      // ChatKit send: include attachments with just file_id
+      // ChatKit send: use input + attachments (matches threads.create schema)
       await sendUserMessage({
-        content: [{ type: 'input_text', text: contentText }],
-        attachments
+        input,
+        attachments,
       });
 
       setCustomText('');
-      // Keep files staged unless you want to clear: fileStager.clear();
     } catch (err) {
       console.error('[ChatKit] Custom send failed:', err);
       alert(err?.message || 'Failed to send');
@@ -566,7 +569,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
           </div>
         )}
 
-        {/* Minimal custom composer to send with attachments (file_id only) */}
+        {/* Minimal custom composer to send with attachments using file_id */}
         <div style={{
           backgroundColor: 'white',
           border: '1px solid #ddd',
