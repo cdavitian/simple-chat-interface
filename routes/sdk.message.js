@@ -1,5 +1,7 @@
 // routes/sdk.message.js
 const { openai } = require('../lib/openai');
+const { ThreadService } = require('../services/thread.service');
+const { AttachmentService } = require('../services/attachment.service');
 
 const ASSISTANT_ID = process.env.ASSISTANT_ID; // e.g., "asst_abc123"
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-5';
@@ -39,14 +41,18 @@ function extractAssistantText(msg) {
 
 module.exports.sdkMessage = async (req, res) => {
   try {
-    const { text } = req.body || {};
-    if (!text || typeof text !== 'string') {
+    const { text, staged_file_ids } = req.body || {};
+    if ((!text || typeof text !== 'string') && !Array.isArray(staged_file_ids)) {
       return res.status(400).json({ error: 'Missing text' });
     }
 
     const userId = req.session?.user?.id || 'anonymous';
-    const vectorStoreId =
-      req.session?.boundVectorStoreId || req.session?.vectorStoreId || null;
+
+    // Ensure or create per-user SDK thread record with a vector store we can add files to
+    // We intentionally separate this from OpenAI Threads API "threadId" used below
+    const sdkThreadId = `sdk:${userId}`;
+    const sdkThread = await ThreadService.ensureThread({ threadId: sdkThreadId, userId });
+    const vectorStoreId = sdkThread.vector_store_id || null;
 
     // Ensure session containers
     req.session.sdkTranscript = Array.isArray(req.session.sdkTranscript)
@@ -57,16 +63,44 @@ module.exports.sdkMessage = async (req, res) => {
       : [];
     req.session.chatHistory ||= [];
 
-    // Track user message in session
-    const userMessage = {
-      id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      role: 'user',
-      createdAt: new Date().toISOString(),
-      content: [{ type: 'input_text', text }],
-    };
-    req.session.sdkTranscript.push({ role: 'user', content: text });
-    req.session.sdkConversation.push(userMessage);
-    req.session.chatHistory.push({ role: 'user', content: [{ type: 'input_text', text }] });
+    // If files were staged on the client, attach them to the vector store now
+    const fileIds = Array.isArray(staged_file_ids) ? staged_file_ids.filter(id => typeof id === 'string' && id) : [];
+    if (fileIds.length > 0 && vectorStoreId) {
+      try {
+        const results = await AttachmentService.addFiles({ vectorStoreId, fileIds });
+        const failed = results.filter(r => !r.ok);
+        if (failed.length) {
+          console.warn('[sdk.message] Some files failed indexing:', failed);
+        }
+      } catch (attachErr) {
+        console.warn('[sdk.message] Failed to add files to vector store:', attachErr?.message || attachErr);
+      }
+    }
+
+    // Track user message in session (include note if no text but only files)
+    const createdAtIso = new Date().toISOString();
+    if (text && typeof text === 'string') {
+      const userMessage = {
+        id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        role: 'user',
+        createdAt: createdAtIso,
+        content: [{ type: 'input_text', text }],
+      };
+      req.session.sdkTranscript.push({ role: 'user', content: text });
+      req.session.sdkConversation.push(userMessage);
+      req.session.chatHistory.push({ role: 'user', content: [{ type: 'input_text', text }] });
+    } else if (fileIds.length > 0) {
+      const notice = '(Files uploaded — no text)';
+      const userMessage = {
+        id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        role: 'user',
+        createdAt: createdAtIso,
+        content: [{ type: 'input_text', text: notice }],
+      };
+      req.session.sdkTranscript.push({ role: 'user', content: notice });
+      req.session.sdkConversation.push(userMessage);
+      req.session.chatHistory.push({ role: 'user', content: [{ type: 'input_text', text: notice }] });
+    }
 
     // Ensure/create thread; replace if vector store changed
     let threadId = req.session?.threadId || null;
@@ -86,10 +120,19 @@ module.exports.sdkMessage = async (req, res) => {
       }
     }
 
-    // Add the user message to the thread (Threads prefers a string content)
+    // Add the user message to the OpenAI thread (Threads prefers a string content)
+    // If no text is provided but files were uploaded, prompt the model to review the files
+    const messageText = (text && typeof text === 'string' && text.trim())
+      ? text
+      : (fileIds.length > 0 ? 'Please review the uploaded files.' : '');
+
+    if (!messageText) {
+      return res.status(400).json({ error: 'No text or files provided' });
+    }
+
     await openai.beta.threads.messages.create(threadId, {
       role: 'user',
-      content: text,
+      content: messageText,
     });
 
     // Create a run
@@ -97,10 +140,23 @@ module.exports.sdkMessage = async (req, res) => {
     if (ASSISTANT_ID) {
       run = await openai.beta.threads.runs.create(threadId, { assistant_id: ASSISTANT_ID });
     } else {
-      run = await openai.beta.threads.runs.create(threadId, {
+      // Build tools and bind vector store when available
+      const tools = [];
+      if (vectorStoreId) {
+        tools.push({ type: 'file_search' });
+      }
+      if (fileIds.length > 0) {
+        // Optionally include code_interpreter when files are present
+        tools.push({ type: 'code_interpreter' });
+      }
+
+      const runRequest = {
         model: DEFAULT_MODEL,
-        tools: [{ type: 'file_search' }],
-      });
+        ...(tools.length ? { tools } : {}),
+        ...(vectorStoreId ? { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } } : {}),
+      };
+
+      run = await openai.beta.threads.runs.create(threadId, runRequest);
     }
 
     // Poll until complete
