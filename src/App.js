@@ -553,6 +553,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         bottom: '70px',
         left: '10px',
         right: '10px',
+        zIndex: 500, // ensure above ChatKit canvas
         overflowY: 'auto',
         padding: '8px 12px',
         display: 'flex',
