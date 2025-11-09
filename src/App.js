@@ -241,7 +241,6 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadedFileId, setUploadedFileId] = useState(null);
   const fileInputRef = useRef(null);
-  const [promptText, setPromptText] = useState('');
   
   // S3 upload handler following the guidance pattern
   const handleFileUpload = useCallback(async (file) => {
@@ -432,75 +431,9 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     }
   }, [control]);
   
-  // Built-in composer is disabled; no DOM hiding needed
+  // Using ChatKit's native composer
 
-  // Custom send: use our own input and POST to server, then refresh ChatKit
-  const handleSend = useCallback(async () => {
-    try {
-      if (!sessionData?.sessionId) {
-        console.error('[ChatKit] ❌ Cannot send: no sessionId');
-        return;
-      }
-
-      const text = (promptText || '').trim();
-      const stagedIds = fileStager.list();
-      if (!text && stagedIds.length === 0) {
-        return;
-      }
-
-      const payload = {
-        session_id: sessionData.sessionId,
-        text: text || undefined,
-        staged_file_ids: stagedIds,
-        staged_files: fileStager.listWithMetadata(),
-      };
-
-      const resp = await fetch('/api/chatkit/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      if (!resp.ok) {
-        const t = await resp.text();
-        throw new Error(`Failed to send: ${resp.status} ${t}`);
-      }
-      const responseData = await resp.json();
-      console.log('[ChatKit] ✅ Message sent successfully, response:', responseData);
-
-      setPromptText('');
-      fileStager.clear();
-      
-      // Wait for the backend to process, then refresh ChatKit multiple times
-      // ChatKit needs time to sync the new message from the session
-      // The Python service creates responses via the Responses API, so ChatKit
-      // needs to be explicitly told to refresh to see the new messages
-      const refreshChatKit = () => {
-        if (control?.fetchUpdates) {
-          console.log('[ChatKit] 🔄 Calling fetchUpdates to refresh messages...');
-          try {
-            control.fetchUpdates();
-            console.log('[ChatKit] ✅ fetchUpdates called successfully');
-          } catch (fetchErr) {
-            console.error('[ChatKit] ❌ fetchUpdates failed:', fetchErr);
-          }
-        } else {
-          console.warn('[ChatKit] ⚠️ control.fetchUpdates not available');
-        }
-      };
-      
-      // Try refreshing immediately, then again after delays
-      // This ensures ChatKit picks up the new messages even if there's latency
-      refreshChatKit();
-      setTimeout(refreshChatKit, 500);
-      setTimeout(refreshChatKit, 1500);
-      setTimeout(refreshChatKit, 3000);
-    } catch (err) {
-      console.error('[ChatKit] ❌ handleSend failed:', err);
-    }
-  }, [promptText, sessionData?.sessionId, control]);
-
-  // No fetch interception required when composer is disabled and we control send
+  // No fetch interception required when using native composer
 
   // No iframe/composer interception needed
 
@@ -600,48 +533,6 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         )}
       </div>
       
-      {/* Custom input + send */}
-      <div style={{
-        position: 'absolute',
-        left: '10px',
-        right: '10px',
-        bottom: '10px',
-        zIndex: 1000,
-        display: 'flex',
-        gap: '10px',
-        alignItems: 'center'
-      }}>
-        <input
-          type="text"
-          placeholder="Type your message"
-          value={promptText}
-          onChange={(e) => setPromptText(e.target.value)}
-          style={{
-            flex: 1,
-            padding: '10px 12px',
-            border: '1px solid #ddd',
-            borderRadius: '6px',
-            fontSize: '14px'
-          }}
-        />
-        <button
-          onClick={handleSend}
-          disabled={!promptText && fileStager.list().length === 0}
-          style={{
-            padding: '10px 16px',
-            backgroundColor: (!promptText && fileStager.list().length === 0) ? '#ccc' : '#0a66c2',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: (!promptText && fileStager.list().length === 0) ? 'not-allowed' : 'pointer',
-            fontSize: '14px',
-            fontWeight: 600
-          }}
-        >
-          Send
-        </button>
-      </div>
-
       <ChatKit 
         control={control}
         style={{ 
