@@ -154,16 +154,19 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         if (not NO_RETRIEVAL) and attachments:
             input_message["attachments"] = attachments
 
+        # Ensure all metadata values are strings (OpenAI API requirement)
+        retrieval_disabled_str = "1" if NO_RETRIEVAL else "0"
+        
         base_args = dict(
             model=os.getenv("OPENAI_MODEL", "gpt-5"),
             input=[input_message],
             metadata={
                 "route": "python.chat.message",
-                "session_id": session_id,
+                "session_id": str(session_id),
                 # Do not include vector_store_id when retrieval is disabled
-                **({} if NO_RETRIEVAL else {"vector_store_id": vector_store_id or ""}),
+                **({} if NO_RETRIEVAL else {"vector_store_id": str(vector_store_id or "")}),
                 # OpenAI metadata values must be strings
-                "retrieval_disabled": "1" if NO_RETRIEVAL else "0",
+                "retrieval_disabled": retrieval_disabled_str,
             },
         )
 
