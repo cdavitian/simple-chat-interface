@@ -1660,8 +1660,20 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    // Allow broad file types; adjust as needed
-                    accept: ['*/*']
+                    enabled: true,
+                    // Accept file types matching frontend configuration
+                    accept: [
+                        "application/pdf",
+                        "text/csv",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "application/vnd.ms-excel",
+                        "image/png",
+                        "image/jpeg",
+                        "image/jpg",
+                        "text/plain",
+                        "application/json"
+                    ]
+                    // Optional: max_bytes: 100 * 1024 * 1024, // 100MB (matches frontend)
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
@@ -1907,8 +1919,20 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    // Allow broad file types; adjust as needed
-                    accept: ['*/*']
+                    enabled: true,
+                    // Accept file types matching frontend configuration
+                    accept: [
+                        "application/pdf",
+                        "text/csv",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "application/vnd.ms-excel",
+                        "image/png",
+                        "image/jpeg",
+                        "image/jpg",
+                        "text/plain",
+                        "application/json"
+                    ]
+                    // Optional: max_bytes: 100 * 1024 * 1024, // 100MB (matches frontend)
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
@@ -2141,22 +2165,31 @@ app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
         }
         
         // STEP 2: Create session with thread linking to vector store (if available)
+        // Re-enable native file upload UI in ChatKit via chatkit_configuration.file_upload
         const sessionConfig = {
             user: userId,
             workflow: {
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,
+            },
+            chatkit_configuration: {
+                file_upload: {
+                    enabled: true,
+                    // Accept file types matching frontend configuration
+                    accept: [
+                        "application/pdf",
+                        "text/csv",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "application/vnd.ms-excel",
+                        "image/png",
+                        "image/jpeg",
+                        "image/jpg",
+                        "text/plain",
+                        "application/json"
+                    ]
+                    // Optional: max_bytes: 100 * 1024 * 1024, // 100MB (matches frontend)
+                }
             }
         };
-        
-        // Clean up session config
-        if (sessionConfig.chatkit_configuration) {
-            if (sessionConfig.chatkit_configuration.file_upload) {
-                delete sessionConfig.chatkit_configuration.file_upload;
-            }
-            if (Object.keys(sessionConfig.chatkit_configuration).length === 0) {
-                delete sessionConfig.chatkit_configuration;
-            }
-        }
         
         if (sessionConfig.thread) {
             console.warn("⚠️ Removing unexpected sessionConfig.thread before create()");
