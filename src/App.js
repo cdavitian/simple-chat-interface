@@ -242,6 +242,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   const [uploadedFileId, setUploadedFileId] = useState(null);
   const fileInputRef = useRef(null);
   const [promptText, setPromptText] = useState('');
+  const [localMessages, setLocalMessages] = useState([]);
   
   // S3 upload handler following the guidance pattern
   const handleFileUpload = useCallback(async (file) => {
@@ -448,6 +449,15 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         return;
       }
 
+      // optimistic local user echo (since Python path doesn't update ChatKit feed)
+      const userMsg = {
+        id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        role: 'user',
+        text,
+        createdAt: new Date().toISOString(),
+      };
+      setLocalMessages(prev => [...prev, userMsg]);
+
       const payload = {
         session_id: sessionData.sessionId,
         text: text || undefined,
@@ -465,7 +475,17 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         const t = await resp.text();
         throw new Error(`Failed to send: ${resp.status} ${t}`);
       }
-      await resp.json();
+      const data = await resp.json();
+
+      // normalize assistant text from response payload
+      const assistantText = data?.message?.text ?? data?.text ?? data?.output_text ?? '';
+      const assistantMsg = {
+        id: data?.message?.id || data?.responseId || data?.response_id || `asst_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        role: 'assistant',
+        text: assistantText,
+        createdAt: data?.message?.createdAt || new Date().toISOString(),
+      };
+      setLocalMessages(prev => [...prev, assistantMsg]);
 
       setPromptText('');
       fileStager.clear();
@@ -474,6 +494,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       }
     } catch (err) {
       console.error('[ChatKit] ❌ handleSend failed:', err);
+      // roll back optimistic user message on failure
+      setLocalMessages(prev => prev.filter(m => m.role !== 'user' || m.text !== (promptText || '').trim()));
     }
   }, [promptText, sessionData?.sessionId, control]);
 
@@ -524,6 +546,37 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
 
   return (
     <div style={{ width: '100%', height: '600px', display: 'block', position: 'relative' }}>
+      {/* Lightweight local transcript overlay to reflect Python Responses API replies */}
+      <div style={{
+        position: 'absolute',
+        top: '60px',
+        bottom: '70px',
+        left: '10px',
+        right: '10px',
+        overflowY: 'auto',
+        padding: '8px 12px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        pointerEvents: 'none' // ensure ChatKit remains interactive
+      }}>
+        {localMessages.map(m => (
+          <div key={m.id} style={{
+            alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+            background: m.role === 'user' ? '#1f2433' : '#151823',
+            color: 'white',
+            border: '1px solid #2b3147',
+            borderRadius: '10px',
+            padding: '8px 10px',
+            maxWidth: '70%',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word'
+          }}>
+            {m.text}
+          </div>
+        ))}
+      </div>
+
       {/* Custom file upload UI */}
       <div style={{ 
         position: 'absolute', 

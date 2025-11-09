@@ -132,7 +132,22 @@ module.exports.chatkitMessage = async (req, res) => {
           console.warn('[chatkit.message] (python proxy) Failed to update sent/unsent tracking:', trackErr?.message);
         }
 
-        const responsePayload = { success: true, text: out, response_id: data?.response_id };
+        const createdAtIso = new Date().toISOString();
+        const message = {
+          id: data?.response_id || `asst_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          role: 'assistant',
+          text: out || '',
+          createdAt: createdAtIso,
+        };
+
+        const responsePayload = {
+          success: true,
+          text: out || '',
+          output_text: out || '',
+          response_id: data?.response_id,
+          responseId: data?.response_id,
+          message,
+        };
         console.log('[chatkit.message] → Sending response to client:', {
           success: responsePayload.success,
           text_length: responsePayload.text?.length || 0,
