@@ -1710,24 +1710,7 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         console.log("session.create payload keys (attempt 1):", Object.keys(sessionConfig));
         console.log("session.create payload (attempt 1):", JSON.stringify(sessionConfig, null, 2));
 
-        let session;
-        try {
-            session = await client.beta.chatkit.sessions.create(sessionConfig);
-        } catch (e) {
-            const msg = e?.response?.data || e?.message || String(e);
-            console.warn('ChatKit session create failed with file_upload enabled; retrying without it:', msg);
-            // Retry without file_upload if API rejects it
-            try {
-                if (sessionConfig?.chatkit_configuration) {
-                    delete sessionConfig.chatkit_configuration;
-                }
-                console.log("session.create payload keys (retry):", Object.keys(sessionConfig));
-                console.log("session.create payload (retry):", JSON.stringify(sessionConfig, null, 2));
-                session = await client.beta.chatkit.sessions.create(sessionConfig);
-            } catch (e2) {
-                throw e2;
-            }
-        }
+        const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
         console.log('Session created successfully:', {
             hasClientToken: Boolean(session.clientToken),
@@ -1954,21 +1937,7 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         // Do not send tools/tool_resources to ChatKit Sessions API (unsupported)
         // Vector store binding will be handled at message/response time.
 
-        let session;
-        try {
-            session = await client.beta.chatkit.sessions.create(sessionConfig);
-        } catch (e) {
-            const msg = e?.response?.data || e?.message || String(e);
-            console.warn('ChatKit session create (POST) failed with file_upload enabled; retrying without it:', msg);
-            try {
-                if (sessionConfig?.chatkit_configuration) {
-                    delete sessionConfig.chatkit_configuration;
-                }
-                session = await client.beta.chatkit.sessions.create(sessionConfig);
-            } catch (e2) {
-                throw e2;
-            }
-        }
+        const session = await client.beta.chatkit.sessions.create(sessionConfig);
         
         console.log('Session created successfully:', {
             hasClientToken: Boolean(session.clientToken),
