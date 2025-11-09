@@ -1651,32 +1651,22 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         }
         
         // STEP 2: Create session with thread linking to vector store (if available)
-        // Note: Removed chatkit_configuration.file_upload as it causes 400 errors
-        // File uploads are handled by our custom endpoints, not ChatKit's built-in upload
+        // Re-enable native file upload UI in ChatKit via chatkit_configuration.file_upload
         const sessionConfig = {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
                 // optional: state_variables: { user_id: userId }
+            },
+            chatkit_configuration: {
+                file_upload: {
+                    // Allow broad file types; adjust as needed
+                    accept: ['*/*']
+                }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
-            // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
-       
-        
-        // Explicitly remove chatkit_configuration.file_upload.accept if it exists (causes 400 errors)
-        // This parameter doesn't configure uploads server-side and only causes failed attempts
-        if (sessionConfig.chatkit_configuration) {
-            if (sessionConfig.chatkit_configuration.file_upload) {
-                delete sessionConfig.chatkit_configuration.file_upload;
-            }
-            // If chatkit_configuration is now empty, remove it entirely
-            if (Object.keys(sessionConfig.chatkit_configuration).length === 0) {
-                delete sessionConfig.chatkit_configuration;
-            }
-        }
-        // No session-level chatkit_configuration binding; retrieval uses message-level attachments
         // ---- harden the payload & prove what's being sent ----
         if (sessionConfig.thread) {
             console.warn("⚠️ Removing unexpected sessionConfig.thread before create()");
@@ -1705,10 +1695,27 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         // Vector store binding will be handled at message/response time.
 
         // Log exactly what we send (keys + pretty JSON)
-        console.log("session.create payload keys:", Object.keys(sessionConfig));
-        console.log("session.create payload:", JSON.stringify(sessionConfig, null, 2));
-        
-        const session = await client.beta.chatkit.sessions.create(sessionConfig);
+        console.log("session.create payload keys (attempt 1):", Object.keys(sessionConfig));
+        console.log("session.create payload (attempt 1):", JSON.stringify(sessionConfig, null, 2));
+
+        let session;
+        try {
+            session = await client.beta.chatkit.sessions.create(sessionConfig);
+        } catch (e) {
+            const msg = e?.response?.data || e?.message || String(e);
+            console.warn('ChatKit session create failed with file_upload enabled; retrying without it:', msg);
+            // Retry without file_upload if API rejects it
+            try {
+                if (sessionConfig?.chatkit_configuration) {
+                    delete sessionConfig.chatkit_configuration;
+                }
+                console.log("session.create payload keys (retry):", Object.keys(sessionConfig));
+                console.log("session.create payload (retry):", JSON.stringify(sessionConfig, null, 2));
+                session = await client.beta.chatkit.sessions.create(sessionConfig);
+            } catch (e2) {
+                throw e2;
+            }
+        }
         
         console.log('Session created successfully:', {
             hasClientToken: Boolean(session.clientToken),
@@ -1891,34 +1898,25 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         }
         
         // STEP 2: Create session with thread linking to vector store (if available)
-        // Note: Removed chatkit_configuration.file_upload as it causes 400 errors
-        // File uploads are handled by our custom endpoints, not ChatKit's built-in upload
+        // Re-enable native file upload UI in ChatKit via chatkit_configuration.file_upload
         const sessionConfig = {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
                 id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
                 // optional: state_variables: { user_id: userId }
+            },
+            chatkit_configuration: {
+                file_upload: {
+                    // Allow broad file types; adjust as needed
+                    accept: ['*/*']
+                }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
-            // NOTE: Removed chatkit_configuration.file_upload - it's not supported and causes 400 errors
         };
         
         
         
         
-        // Explicitly remove chatkit_configuration.file_upload.accept if it exists (causes 400 errors)
-        // This parameter doesn't configure uploads server-side and only causes failed attempts
-        if (sessionConfig.chatkit_configuration) {
-            if (sessionConfig.chatkit_configuration.file_upload) {
-                delete sessionConfig.chatkit_configuration.file_upload;
-            }
-            // If chatkit_configuration is now empty, remove it entirely
-            if (Object.keys(sessionConfig.chatkit_configuration).length === 0) {
-                delete sessionConfig.chatkit_configuration;
-            }
-        }
-        
-        // No session-level chatkit_configuration binding; retrieval uses message-level attachments
         // --- add this block BEFORE create() ---
         // Use the existing vectorStoreId variable (already declared above).
         // Update it from session if it wasn't set, otherwise use the one from STEP 1
@@ -1932,7 +1930,21 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         // Do not send tools/tool_resources to ChatKit Sessions API (unsupported)
         // Vector store binding will be handled at message/response time.
 
-        const session = await client.beta.chatkit.sessions.create(sessionConfig);
+        let session;
+        try {
+            session = await client.beta.chatkit.sessions.create(sessionConfig);
+        } catch (e) {
+            const msg = e?.response?.data || e?.message || String(e);
+            console.warn('ChatKit session create (POST) failed with file_upload enabled; retrying without it:', msg);
+            try {
+                if (sessionConfig?.chatkit_configuration) {
+                    delete sessionConfig.chatkit_configuration;
+                }
+                session = await client.beta.chatkit.sessions.create(sessionConfig);
+            } catch (e2) {
+                throw e2;
+            }
+        }
         
         console.log('Session created successfully:', {
             hasClientToken: Boolean(session.clientToken),
