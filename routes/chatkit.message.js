@@ -83,11 +83,21 @@ module.exports.chatkitMessage = async (req, res) => {
           }),
         });
         console.log('[chatkit.message] ← Python proxy status:', resp.status);
+        console.log('[chatkit.message] ← Python proxy headers:', Object.fromEntries(resp.headers.entries()));
 
-        const data = await resp.json().catch(async () => {
-          const asText = await resp.text().catch(() => '');
-          return { error: asText || 'invalid_json' };
-        });
+        // Read response body as text first, then parse JSON
+        // This allows us to log the raw response if JSON parsing fails
+        const responseText = await resp.text();
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('[chatkit.message] ← Python response is not valid JSON. Raw text:', responseText);
+          console.error('[chatkit.message] ← JSON parse error:', parseError);
+          data = { error: responseText || 'invalid_json' };
+        }
+
+        console.log('[chatkit.message] ← Python response data:', JSON.stringify(data, null, 2));
 
         if (!resp.ok) {
           const detail = data?.detail || data?.error || data;
@@ -103,6 +113,9 @@ module.exports.chatkitMessage = async (req, res) => {
         }
 
         const out = data?.text || data?.output_text || '';
+        console.log('[chatkit.message] ← Extracted text length:', out?.length || 0);
+        console.log('[chatkit.message] ← Extracted text preview:', out?.substring(0, 100) || '(empty)');
+        console.log('[chatkit.message] ← Response ID:', data?.response_id || '(none)');
 
         // Update sent/unsent tracking in session
         try {
@@ -119,7 +132,13 @@ module.exports.chatkitMessage = async (req, res) => {
           console.warn('[chatkit.message] (python proxy) Failed to update sent/unsent tracking:', trackErr?.message);
         }
 
-        return res.json({ success: true, text: out, response_id: data?.response_id });
+        const responsePayload = { success: true, text: out, response_id: data?.response_id };
+        console.log('[chatkit.message] → Sending response to client:', {
+          success: responsePayload.success,
+          text_length: responsePayload.text?.length || 0,
+          response_id: responsePayload.response_id || '(none)'
+        });
+        return res.json(responsePayload);
       } catch (proxyErr) {
         const errorDetails = {
           message: proxyErr?.message,
