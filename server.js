@@ -1660,17 +1660,8 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true,
-                    accept: [
-                        "application/pdf",
-                        "image/jpeg",
-                        "image/png",
-                        "image/webp",
-                        "text/csv",
-                        "application/vnd.ms-excel",
-                        "application/octet-stream" // fallback for browsers that don't send correct mime type
-                    ],
-                    max_bytes: 50 * 1024 * 1024
+                    enabled: true
+                    // Optional: max_bytes: 100 * 1024 * 1024, // 100MB (matches frontend)
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
@@ -1899,17 +1890,8 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true,
-                    accept: [
-                        "application/pdf",
-                        "image/jpeg",
-                        "image/png",
-                        "image/webp",
-                        "text/csv",
-                        "application/vnd.ms-excel",
-                        "application/octet-stream" // fallback for browsers that don't send correct mime type
-                    ],
-                    max_bytes: 50 * 1024 * 1024
+                    enabled: true
+                    // Optional: max_bytes: 100 * 1024 * 1024, // 100MB (matches frontend)
                 }
             }
             // NOTE: do NOT include `model` here - it's defined by the workflow
@@ -2136,17 +2118,8 @@ app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true,
-                    accept: [
-                        "application/pdf",
-                        "image/jpeg",
-                        "image/png",
-                        "image/webp",
-                        "text/csv",
-                        "application/vnd.ms-excel",
-                        "application/octet-stream" // fallback for browsers that don't send correct mime type
-                    ],
-                    max_bytes: 50 * 1024 * 1024
+                    enabled: true
+                    // Optional: max_bytes: 100 * 1024 * 1024, // 100MB (matches frontend)
                 }
             }
         };
