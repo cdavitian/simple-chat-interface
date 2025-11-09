@@ -241,6 +241,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadedFileId, setUploadedFileId] = useState(null);
   const fileInputRef = useRef(null);
+  const [customText, setCustomText] = useState('');
+  const [isCustomSending, setIsCustomSending] = useState(false);
   
   // S3 upload handler following the guidance pattern
   const handleFileUpload = useCallback(async (file) => {
@@ -478,6 +480,38 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
     );
   }
 
+  const handleCustomSend = useCallback(async () => {
+    try {
+      const ids = fileStager.list();
+      if (!Array.isArray(ids) || ids.length === 0) {
+        alert('No staged files to attach.');
+        return;
+      }
+      if (typeof sendUserMessage !== 'function') {
+        alert('Send not available yet. Please wait for the chat to initialize.');
+        return;
+      }
+      setIsCustomSending(true);
+
+      const contentText = (customText || '').trim() || 'Please review the uploaded files.';
+      const attachments = ids.map(id => ({ file_id: id })); // only file_id, no tools/vector stores
+
+      // ChatKit send: include attachments with just file_id
+      await sendUserMessage({
+        content: [{ type: 'input_text', text: contentText }],
+        attachments
+      });
+
+      setCustomText('');
+      // Keep files staged unless you want to clear: fileStager.clear();
+    } catch (err) {
+      console.error('[ChatKit] Custom send failed:', err);
+      alert(err?.message || 'Failed to send');
+    } finally {
+      setIsCustomSending(false);
+    }
+  }, [customText, sendUserMessage]);
+
   return (
     <div style={{ width: '100%', height: '600px', display: 'block', position: 'relative' }}>
       
@@ -531,6 +565,53 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
             {uploadStatus}
           </div>
         )}
+
+        {/* Minimal custom composer to send with attachments (file_id only) */}
+        <div style={{
+          backgroundColor: 'white',
+          border: '1px solid #ddd',
+          borderRadius: '6px',
+          padding: '8px',
+          width: '320px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.08)'
+        }}>
+          <div style={{ fontSize: 12, marginBottom: 6, color: '#333' }}>
+            Send with staged attachments
+          </div>
+          <textarea
+            value={customText}
+            onChange={(e) => setCustomText(e.target.value)}
+            placeholder="Optional message (defaults to review files)"
+            rows={2}
+            style={{
+              width: '100%',
+              resize: 'none',
+              border: '1px solid #ccc',
+              borderRadius: '4px',
+              padding: '6px',
+              marginBottom: '6px'
+            }}
+          />
+          <button
+            onClick={handleCustomSend}
+            disabled={isCustomSending}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: isCustomSending ? '#ccc' : '#0a7',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: isCustomSending ? 'not-allowed' : 'pointer',
+              fontSize: '13px',
+              fontWeight: 600
+            }}
+          >
+            {isCustomSending ? 'Sending…' : 'Send with attachments'}
+          </button>
+          <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+            Staged: {fileStager.list().length}
+          </div>
+        </div>
       </div>
       
       <ChatKit 
