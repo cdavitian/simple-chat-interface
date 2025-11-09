@@ -1660,19 +1660,7 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true,
-                    // Accept file types matching frontend configuration
-                    accept: [
-                        "application/pdf",
-                        "text/csv",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        "application/vnd.ms-excel",
-                        "image/png",
-                        "image/jpeg",
-                        "image/jpg",
-                        "text/plain",
-                        "application/json"
-                    ]
+                    enabled: true
                     // Optional: max_bytes: 100 * 1024 * 1024, // 100MB (matches frontend)
                 }
             }
@@ -1902,19 +1890,7 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true,
-                    // Accept file types matching frontend configuration
-                    accept: [
-                        "application/pdf",
-                        "text/csv",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        "application/vnd.ms-excel",
-                        "image/png",
-                        "image/jpeg",
-                        "image/jpg",
-                        "text/plain",
-                        "application/json"
-                    ]
+                    enabled: true
                     // Optional: max_bytes: 100 * 1024 * 1024, // 100MB (matches frontend)
                 }
             }
@@ -2142,19 +2118,7 @@ app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
             },
             chatkit_configuration: {
                 file_upload: {
-                    enabled: true,
-                    // Accept file types matching frontend configuration
-                    accept: [
-                        "application/pdf",
-                        "text/csv",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        "application/vnd.ms-excel",
-                        "image/png",
-                        "image/jpeg",
-                        "image/jpg",
-                        "text/plain",
-                        "application/json"
-                    ]
+                    enabled: true
                     // Optional: max_bytes: 100 * 1024 * 1024, // 100MB (matches frontend)
                 }
             }
