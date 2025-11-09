@@ -2426,20 +2426,20 @@ function onCustomToolS3UploadSuccess(_x) {
  * Optional: for debugging/inspecting staged file_ids
  */
 function _onCustomToolS3UploadSuccess() {
-  _onCustomToolS3UploadSuccess = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee6(_ref) {
+  _onCustomToolS3UploadSuccess = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee5(_ref) {
     var key, filename, bucket, _yield$registerUpload, file_id, content_type, category;
-    return App_regenerator().w(function (_context6) {
-      while (1) switch (_context6.n) {
+    return App_regenerator().w(function (_context5) {
+      while (1) switch (_context5.n) {
         case 0:
           key = _ref.key, filename = _ref.filename, bucket = _ref.bucket;
-          _context6.n = 1;
+          _context5.n = 1;
           return registerUploadedS3Object({
             key: key,
             filename: filename,
             bucket: bucket
           });
         case 1:
-          _yield$registerUpload = _context6.v;
+          _yield$registerUpload = _context5.v;
           file_id = _yield$registerUpload.file_id;
           content_type = _yield$registerUpload.content_type;
           category = _yield$registerUpload.category;
@@ -2448,9 +2448,9 @@ function _onCustomToolS3UploadSuccess() {
             filename: filename,
             category: category
           }); // quietly stage it with metadata
-          return _context6.a(2, file_id);
+          return _context5.a(2, file_id);
       }
-    }, _callee6);
+    }, _callee5);
   }));
   return _onCustomToolS3UploadSuccess.apply(this, arguments);
 }
@@ -2464,12 +2464,12 @@ function fetchChatKitSession() {
   return _fetchChatKitSession.apply(this, arguments);
 } // Optional: Check token expiry (decodes ek_... token to check expires_at)
 function _fetchChatKitSession() {
-  _fetchChatKitSession = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee7() {
+  _fetchChatKitSession = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee6() {
     var response, errorText, sessionData;
-    return App_regenerator().w(function (_context7) {
-      while (1) switch (_context7.n) {
+    return App_regenerator().w(function (_context6) {
+      while (1) switch (_context6.n) {
         case 0:
-          _context7.n = 1;
+          _context6.n = 1;
           return fetch('/api/chatkit/session', {
             method: 'GET',
             cache: 'no-store',
@@ -2479,24 +2479,24 @@ function _fetchChatKitSession() {
             credentials: 'include' // Ensure cookies are sent
           });
         case 1:
-          response = _context7.v;
+          response = _context6.v;
           if (response.ok) {
-            _context7.n = 3;
+            _context6.n = 3;
             break;
           }
-          _context7.n = 2;
+          _context6.n = 2;
           return response.text();
         case 2:
-          errorText = _context7.v;
+          errorText = _context6.v;
           throw new Error("Session error: ".concat(response.status, " - ").concat(errorText));
         case 3:
-          _context7.n = 4;
+          _context6.n = 4;
           return response.json();
         case 4:
-          sessionData = _context7.v;
-          return _context7.a(2, sessionData);
+          sessionData = _context6.v;
+          return _context6.a(2, sessionData);
       }
-    }, _callee7);
+    }, _callee6);
   }));
   return _fetchChatKitSession.apply(this, arguments);
 }
@@ -2517,51 +2517,51 @@ function withTokenRefresh(_x2, _x3) {
   return _withTokenRefresh.apply(this, arguments);
 }
 function _withTokenRefresh() {
-  _withTokenRefresh = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee8(getTokenFn, operationFn) {
+  _withTokenRefresh = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee7(getTokenFn, operationFn) {
     var retries,
       isUnauthorized,
-      _args8 = arguments,
+      _args7 = arguments,
+      _t5,
       _t6,
-      _t7,
-      _t8;
-    return App_regenerator().w(function (_context8) {
-      while (1) switch (_context8.p = _context8.n) {
+      _t7;
+    return App_regenerator().w(function (_context7) {
+      while (1) switch (_context7.p = _context7.n) {
         case 0:
-          retries = _args8.length > 2 && _args8[2] !== undefined ? _args8[2] : 1;
-          _context8.p = 1;
-          _t6 = operationFn;
-          _context8.n = 2;
+          retries = _args7.length > 2 && _args7[2] !== undefined ? _args7[2] : 1;
+          _context7.p = 1;
+          _t5 = operationFn;
+          _context7.n = 2;
           return getTokenFn();
         case 2:
-          _context8.n = 3;
-          return _t6(_context8.v);
+          _context7.n = 3;
+          return _t5(_context7.v);
         case 3:
-          return _context8.a(2, _context8.v);
+          return _context7.a(2, _context7.v);
         case 4:
-          _context8.p = 4;
-          _t7 = _context8.v;
+          _context7.p = 4;
+          _t6 = _context7.v;
           // Detect 401 or unauthorized errors
-          isUnauthorized = (_t7 === null || _t7 === void 0 ? void 0 : _t7.status) === 401 || (_t7 === null || _t7 === void 0 ? void 0 : _t7.statusCode) === 401 || /unauthorized/i.test(String(_t7)) || /401/i.test(String(_t7));
+          isUnauthorized = (_t6 === null || _t6 === void 0 ? void 0 : _t6.status) === 401 || (_t6 === null || _t6 === void 0 ? void 0 : _t6.statusCode) === 401 || /unauthorized/i.test(String(_t6)) || /401/i.test(String(_t6));
           if (!(isUnauthorized && retries > 0)) {
-            _context8.n = 7;
+            _context7.n = 7;
             break;
           }
           console.log('[ChatKit] 🔄 401 detected, refreshing token and retrying...');
           // Refresh token and retry once
-          _t8 = operationFn;
-          _context8.n = 5;
+          _t7 = operationFn;
+          _context7.n = 5;
           return getTokenFn();
         case 5:
-          _context8.n = 6;
-          return _t8(_context8.v);
+          _context7.n = 6;
+          return _t7(_context7.v);
         case 6:
-          return _context8.a(2, _context8.v);
+          return _context7.a(2, _context7.v);
         case 7:
-          throw _t7;
+          throw _t6;
         case 8:
-          return _context8.a(2);
+          return _context7.a(2);
       }
-    }, _callee8, null, [[1, 4]]);
+    }, _callee7, null, [[1, 4]]);
   }));
   return _withTokenRefresh.apply(this, arguments);
 }
@@ -2784,10 +2784,6 @@ function ChatKitComponent(_ref4) {
     uploadedFileId = _useState14[0],
     setUploadedFileId = _useState14[1];
   var fileInputRef = (0,react.useRef)(null);
-  var _useState15 = (0,react.useState)(''),
-    _useState16 = App_slicedToArray(_useState15, 2),
-    promptText = _useState16[0],
-    setPromptText = _useState16[1];
 
   // S3 upload handler following the guidance pattern
   var handleFileUpload = (0,react.useCallback)(/*#__PURE__*/function () {
@@ -3034,78 +3030,9 @@ function ChatKitComponent(_ref4) {
     }
   }, [control]);
 
-  // Built-in composer is disabled; no DOM hiding needed
+  // Using ChatKit's native composer
 
-  // Custom send: use our own input and POST to server, then refresh ChatKit
-  var handleSend = (0,react.useCallback)(/*#__PURE__*/App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee5() {
-    var text, stagedIds, payload, resp, t, _t5;
-    return App_regenerator().w(function (_context5) {
-      while (1) switch (_context5.p = _context5.n) {
-        case 0:
-          _context5.p = 0;
-          if (sessionData !== null && sessionData !== void 0 && sessionData.sessionId) {
-            _context5.n = 1;
-            break;
-          }
-          console.error('[ChatKit] ❌ Cannot send: no sessionId');
-          return _context5.a(2);
-        case 1:
-          text = (promptText || '').trim();
-          stagedIds = fileStager.list();
-          if (!(!text && stagedIds.length === 0)) {
-            _context5.n = 2;
-            break;
-          }
-          return _context5.a(2);
-        case 2:
-          payload = {
-            session_id: sessionData.sessionId,
-            text: text || undefined,
-            staged_file_ids: stagedIds,
-            staged_files: fileStager.listWithMetadata()
-          };
-          _context5.n = 3;
-          return fetch('/api/chatkit/message', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            credentials: 'include',
-            body: JSON.stringify(payload)
-          });
-        case 3:
-          resp = _context5.v;
-          if (resp.ok) {
-            _context5.n = 5;
-            break;
-          }
-          _context5.n = 4;
-          return resp.text();
-        case 4:
-          t = _context5.v;
-          throw new Error("Failed to send: ".concat(resp.status, " ").concat(t));
-        case 5:
-          _context5.n = 6;
-          return resp.json();
-        case 6:
-          setPromptText('');
-          fileStager.clear();
-          if (control !== null && control !== void 0 && control.fetchUpdates) {
-            control.fetchUpdates();
-          }
-          _context5.n = 8;
-          break;
-        case 7:
-          _context5.p = 7;
-          _t5 = _context5.v;
-          console.error('[ChatKit] ❌ handleSend failed:', _t5);
-        case 8:
-          return _context5.a(2);
-      }
-    }, _callee5, null, [[0, 7]]);
-  })), [promptText, sessionData === null || sessionData === void 0 ? void 0 : sessionData.sessionId, control]);
-
-  // No fetch interception required when composer is disabled and we control send
+  // No fetch interception required when using native composer
 
   // No iframe/composer interception needed
 
@@ -3209,45 +3136,7 @@ function ChatKitComponent(_ref4) {
       boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
       wordBreak: 'break-word'
     }
-  }, uploadStatus)), /*#__PURE__*/react.createElement("div", {
-    style: {
-      position: 'absolute',
-      left: '10px',
-      right: '10px',
-      bottom: '10px',
-      zIndex: 1000,
-      display: 'flex',
-      gap: '10px',
-      alignItems: 'center'
-    }
-  }, /*#__PURE__*/react.createElement("input", {
-    type: "text",
-    placeholder: "Type your message",
-    value: promptText,
-    onChange: function onChange(e) {
-      return setPromptText(e.target.value);
-    },
-    style: {
-      flex: 1,
-      padding: '10px 12px',
-      border: '1px solid #ddd',
-      borderRadius: '6px',
-      fontSize: '14px'
-    }
-  }), /*#__PURE__*/react.createElement("button", {
-    onClick: handleSend,
-    disabled: !promptText && fileStager.list().length === 0,
-    style: {
-      padding: '10px 16px',
-      backgroundColor: !promptText && fileStager.list().length === 0 ? '#ccc' : '#0a66c2',
-      color: 'white',
-      border: 'none',
-      borderRadius: '6px',
-      cursor: !promptText && fileStager.list().length === 0 ? 'not-allowed' : 'pointer',
-      fontSize: '14px',
-      fontWeight: 600
-    }
-  }, "Send")), /*#__PURE__*/react.createElement(ChatKit, {
+  }, uploadStatus)), /*#__PURE__*/react.createElement(ChatKit, {
     control: control,
     style: {
       height: '600px',
