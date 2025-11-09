@@ -141,17 +141,26 @@ def send(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         # Build content parts and attachments
         content_parts = [{"type": "input_text", "text": text}]
 
-        # When debugging, force no attachments and no tools/vector stores
-        attachments = [] if NO_RETRIEVAL else ([
-            {"file_id": fid, "tools": [{"type": "file_search"}]}
-            for fid in staged_file_ids
-        ] if staged_file_ids else [])
+        # Reintroduce attachments in all modes:
+        # - When retrieval is disabled (NO_RETRIEVAL), include only file_id (no tools/vector stores)
+        # - When retrieval is enabled, include file_id with file_search tool to enable retrieval
+        if staged_file_ids:
+            if NO_RETRIEVAL:
+                attachments = [{"file_id": fid} for fid in staged_file_ids]
+            else:
+                attachments = [
+                    {"file_id": fid, "tools": [{"type": "file_search"}]}
+                    for fid in staged_file_ids
+                ]
+        else:
+            attachments = []
 
         use_file_search = (not NO_RETRIEVAL) and bool(vector_store_id or attachments)
 
         # Build input message; omit 'attachments' key when disabled/empty
         input_message = {"role": "user", "content": content_parts}
-        if (not NO_RETRIEVAL) and attachments:
+        # Always include attachments when present, even if retrieval is disabled
+        if attachments:
             input_message["attachments"] = attachments
 
         # Ensure all metadata values are strings (OpenAI API requirement)
