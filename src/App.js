@@ -388,6 +388,23 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   const chatkit = useChatKit({
     api: {
       getClientSecret: getClientSecret
+    },
+    composer: {
+      attachments: {
+        enabled: true,
+        // Accept a broad but safe set of types/extensions
+        accept: {
+          'application/pdf': ['.pdf'],
+          'image/*': ['.png', '.jpg', '.jpeg'],
+          'text/plain': ['.txt', '.md', '.csv'],
+          'text/csv': ['.csv'],
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+          'application/vnd.ms-excel': ['.xls'],
+          'application/json': ['.json']
+        },
+        maxSize: 100 * 1024 * 1024, // 100MB
+        maxCount: 10
+      }
     }
   });
   
