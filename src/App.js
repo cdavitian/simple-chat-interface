@@ -465,13 +465,36 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         const t = await resp.text();
         throw new Error(`Failed to send: ${resp.status} ${t}`);
       }
-      await resp.json();
+      const responseData = await resp.json();
+      console.log('[ChatKit] ✅ Message sent successfully, response:', responseData);
 
       setPromptText('');
       fileStager.clear();
-      if (control?.fetchUpdates) {
-        control.fetchUpdates();
-      }
+      
+      // Wait for the backend to process, then refresh ChatKit multiple times
+      // ChatKit needs time to sync the new message from the session
+      // The Python service creates responses via the Responses API, so ChatKit
+      // needs to be explicitly told to refresh to see the new messages
+      const refreshChatKit = () => {
+        if (control?.fetchUpdates) {
+          console.log('[ChatKit] 🔄 Calling fetchUpdates to refresh messages...');
+          try {
+            control.fetchUpdates();
+            console.log('[ChatKit] ✅ fetchUpdates called successfully');
+          } catch (fetchErr) {
+            console.error('[ChatKit] ❌ fetchUpdates failed:', fetchErr);
+          }
+        } else {
+          console.warn('[ChatKit] ⚠️ control.fetchUpdates not available');
+        }
+      };
+      
+      // Try refreshing immediately, then again after delays
+      // This ensures ChatKit picks up the new messages even if there's latency
+      refreshChatKit();
+      setTimeout(refreshChatKit, 500);
+      setTimeout(refreshChatKit, 1500);
+      setTimeout(refreshChatKit, 3000);
     } catch (err) {
       console.error('[ChatKit] ❌ handleSend failed:', err);
     }
