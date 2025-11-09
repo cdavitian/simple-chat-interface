@@ -1067,22 +1067,8 @@ openai-chatkit::part(assistant-message) {
     color: #333333;
 }
 
-/* Hide composer - place in your app's CSS loaded after the component */
-openai-chatkit::part(composer) { 
-    display: none !important; 
-}
-
-/* Hide composer input and send button */
-openai-chatkit::part(input),
-openai-chatkit::part(send-button) {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-    height: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    pointer-events: none !important;
-}
+/* Composer is now visible to show native attachment button */
+/* Removed CSS that was hiding the composer */
 
 /* Scrollbar styling for ChatKit */
 openai-chatkit::part(messages-container) {
