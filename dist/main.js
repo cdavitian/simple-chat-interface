@@ -3096,27 +3096,31 @@ function ChatKitComponent(_ref4) {
       flexDirection: 'column',
       position: 'relative'
     }
+  }, /*#__PURE__*/react.createElement("div", {
+    style: {
+      flex: '1 1 0',
+      minHeight: '0',
+      overflow: 'hidden'
+    }
   }, /*#__PURE__*/react.createElement(ChatKit, {
     control: control,
     style: {
-      flex: '1 1 0',
       width: '100%',
+      height: '100%',
       display: 'block',
-      minHeight: '0',
-      minWidth: '360px',
-      overflow: 'hidden'
+      minWidth: '360px'
     }
-  }), /*#__PURE__*/react.createElement("div", {
+  })), /*#__PURE__*/react.createElement("div", {
     style: {
       display: 'flex',
       gap: '12px',
       alignItems: 'center',
-      padding: '16px',
+      padding: '16px 16px 20px 16px',
       backgroundColor: '#ffffff',
       borderTop: '1px solid rgba(148, 163, 184, 0.2)',
       zIndex: 100,
-      minHeight: '60px',
-      flexShrink: 0
+      flexShrink: 0,
+      boxSizing: 'border-box'
     }
   }, /*#__PURE__*/react.createElement("input", {
     ref: fileInputRef,

@@ -499,29 +499,29 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-      <ChatKit 
-        control={control}
-        style={{ 
-          flex: '1 1 0',
-          width: '100%', 
-          display: 'block',
-          minHeight: '0',
-          minWidth: '360px',
-          overflow: 'hidden'
-        }}
-      />
+      <div style={{ flex: '1 1 0', minHeight: '0', overflow: 'hidden' }}>
+        <ChatKit 
+          control={control}
+          style={{ 
+            width: '100%', 
+            height: '100%',
+            display: 'block',
+            minWidth: '360px'
+          }}
+        />
+      </div>
       
       {/* Buttons below composer bar */}
       <div style={{ 
         display: 'flex',
         gap: '12px',
         alignItems: 'center',
-        padding: '16px',
+        padding: '16px 16px 20px 16px',
         backgroundColor: '#ffffff',
         borderTop: '1px solid rgba(148, 163, 184, 0.2)',
         zIndex: 100,
-        minHeight: '60px',
-        flexShrink: 0
+        flexShrink: 0,
+        boxSizing: 'border-box'
       }}>
         <input
           ref={fileInputRef}
