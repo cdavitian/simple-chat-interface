@@ -2412,20 +2412,20 @@ function onCustomToolS3UploadSuccess(_x) {
  * Optional: for debugging/inspecting staged file_ids
  */
 function _onCustomToolS3UploadSuccess() {
-  _onCustomToolS3UploadSuccess = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee5(_ref) {
+  _onCustomToolS3UploadSuccess = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee6(_ref) {
     var key, filename, bucket, _yield$registerUpload, file_id, content_type, category;
-    return App_regenerator().w(function (_context5) {
-      while (1) switch (_context5.n) {
+    return App_regenerator().w(function (_context6) {
+      while (1) switch (_context6.n) {
         case 0:
           key = _ref.key, filename = _ref.filename, bucket = _ref.bucket;
-          _context5.n = 1;
+          _context6.n = 1;
           return registerUploadedS3Object({
             key: key,
             filename: filename,
             bucket: bucket
           });
         case 1:
-          _yield$registerUpload = _context5.v;
+          _yield$registerUpload = _context6.v;
           file_id = _yield$registerUpload.file_id;
           content_type = _yield$registerUpload.content_type;
           category = _yield$registerUpload.category;
@@ -2434,9 +2434,9 @@ function _onCustomToolS3UploadSuccess() {
             filename: filename,
             category: category
           }); // quietly stage it with metadata
-          return _context5.a(2, file_id);
+          return _context6.a(2, file_id);
       }
-    }, _callee5);
+    }, _callee6);
   }));
   return _onCustomToolS3UploadSuccess.apply(this, arguments);
 }
@@ -2450,12 +2450,12 @@ function fetchChatKitSession() {
   return _fetchChatKitSession.apply(this, arguments);
 } // Optional: Check token expiry (decodes ek_... token to check expires_at)
 function _fetchChatKitSession() {
-  _fetchChatKitSession = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee6() {
+  _fetchChatKitSession = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee7() {
     var response, errorText, sessionData;
-    return App_regenerator().w(function (_context6) {
-      while (1) switch (_context6.n) {
+    return App_regenerator().w(function (_context7) {
+      while (1) switch (_context7.n) {
         case 0:
-          _context6.n = 1;
+          _context7.n = 1;
           return fetch('/api/chatkit/session', {
             method: 'GET',
             cache: 'no-store',
@@ -2465,24 +2465,24 @@ function _fetchChatKitSession() {
             credentials: 'include' // Ensure cookies are sent
           });
         case 1:
-          response = _context6.v;
+          response = _context7.v;
           if (response.ok) {
-            _context6.n = 3;
+            _context7.n = 3;
             break;
           }
-          _context6.n = 2;
+          _context7.n = 2;
           return response.text();
         case 2:
-          errorText = _context6.v;
+          errorText = _context7.v;
           throw new Error("Session error: ".concat(response.status, " - ").concat(errorText));
         case 3:
-          _context6.n = 4;
+          _context7.n = 4;
           return response.json();
         case 4:
-          sessionData = _context6.v;
-          return _context6.a(2, sessionData);
+          sessionData = _context7.v;
+          return _context7.a(2, sessionData);
       }
-    }, _callee6);
+    }, _callee7);
   }));
   return _fetchChatKitSession.apply(this, arguments);
 }
@@ -2503,51 +2503,51 @@ function withTokenRefresh(_x2, _x3) {
   return _withTokenRefresh.apply(this, arguments);
 }
 function _withTokenRefresh() {
-  _withTokenRefresh = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee7(getTokenFn, operationFn) {
+  _withTokenRefresh = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee8(getTokenFn, operationFn) {
     var retries,
       isUnauthorized,
-      _args7 = arguments,
-      _t5,
+      _args8 = arguments,
       _t6,
-      _t7;
-    return App_regenerator().w(function (_context7) {
-      while (1) switch (_context7.p = _context7.n) {
+      _t7,
+      _t8;
+    return App_regenerator().w(function (_context8) {
+      while (1) switch (_context8.p = _context8.n) {
         case 0:
-          retries = _args7.length > 2 && _args7[2] !== undefined ? _args7[2] : 1;
-          _context7.p = 1;
-          _t5 = operationFn;
-          _context7.n = 2;
+          retries = _args8.length > 2 && _args8[2] !== undefined ? _args8[2] : 1;
+          _context8.p = 1;
+          _t6 = operationFn;
+          _context8.n = 2;
           return getTokenFn();
         case 2:
-          _context7.n = 3;
-          return _t5(_context7.v);
+          _context8.n = 3;
+          return _t6(_context8.v);
         case 3:
-          return _context7.a(2, _context7.v);
+          return _context8.a(2, _context8.v);
         case 4:
-          _context7.p = 4;
-          _t6 = _context7.v;
+          _context8.p = 4;
+          _t7 = _context8.v;
           // Detect 401 or unauthorized errors
-          isUnauthorized = (_t6 === null || _t6 === void 0 ? void 0 : _t6.status) === 401 || (_t6 === null || _t6 === void 0 ? void 0 : _t6.statusCode) === 401 || /unauthorized/i.test(String(_t6)) || /401/i.test(String(_t6));
+          isUnauthorized = (_t7 === null || _t7 === void 0 ? void 0 : _t7.status) === 401 || (_t7 === null || _t7 === void 0 ? void 0 : _t7.statusCode) === 401 || /unauthorized/i.test(String(_t7)) || /401/i.test(String(_t7));
           if (!(isUnauthorized && retries > 0)) {
-            _context7.n = 7;
+            _context8.n = 7;
             break;
           }
           console.log('[ChatKit] 🔄 401 detected, refreshing token and retrying...');
           // Refresh token and retry once
-          _t7 = operationFn;
-          _context7.n = 5;
+          _t8 = operationFn;
+          _context8.n = 5;
           return getTokenFn();
         case 5:
-          _context7.n = 6;
-          return _t7(_context7.v);
+          _context8.n = 6;
+          return _t8(_context8.v);
         case 6:
-          return _context7.a(2, _context7.v);
+          return _context8.a(2, _context8.v);
         case 7:
-          throw _t6;
+          throw _t7;
         case 8:
-          return _context7.a(2);
+          return _context8.a(2);
       }
-    }, _callee7, null, [[1, 4]]);
+    }, _callee8, null, [[1, 4]]);
   }));
   return _withTokenRefresh.apply(this, arguments);
 }
@@ -2727,8 +2727,10 @@ function App_App() {
       width: '100%',
       height: '600px',
       minHeight: '600px',
-      display: 'block',
-      position: 'relative'
+      display: 'flex',
+      flexDirection: 'column',
+      position: 'relative',
+      overflow: 'hidden'
     }
   }, !chatkitInitialized ? /*#__PURE__*/react.createElement("div", {
     className: "loading"
@@ -2769,6 +2771,10 @@ function ChatKitComponent(_ref4) {
     _useState14 = App_slicedToArray(_useState13, 2),
     uploadedFileId = _useState14[0],
     setUploadedFileId = _useState14[1];
+  var _useState15 = (0,react.useState)(false),
+    _useState16 = App_slicedToArray(_useState15, 2),
+    isResetting = _useState16[0],
+    setIsResetting = _useState16[1];
   var fileInputRef = (0,react.useRef)(null);
 
   // S3 upload handler following the guidance pattern
@@ -2891,6 +2897,72 @@ function ChatKitComponent(_ref4) {
     }
   }, [handleFileUpload]);
 
+  // Handler for resetting the ChatKit session
+  var handleReset = (0,react.useCallback)(/*#__PURE__*/App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee4() {
+    var response, errorText, data, _t4;
+    return App_regenerator().w(function (_context4) {
+      while (1) switch (_context4.p = _context4.n) {
+        case 0:
+          if (!isResetting) {
+            _context4.n = 1;
+            break;
+          }
+          return _context4.a(2);
+        case 1:
+          _context4.p = 1;
+          setIsResetting(true);
+          console.log('[ChatKit] Resetting session...');
+          _context4.n = 2;
+          return fetch('/api/chatkit/session/reset', {
+            method: 'POST',
+            credentials: 'include'
+          });
+        case 2:
+          response = _context4.v;
+          if (response.ok) {
+            _context4.n = 4;
+            break;
+          }
+          _context4.n = 3;
+          return response.text();
+        case 3:
+          errorText = _context4.v;
+          throw new Error(errorText || "Failed to reset session (".concat(response.status, ")"));
+        case 4:
+          _context4.n = 5;
+          return response.json();
+        case 5:
+          data = _context4.v;
+          console.log('[ChatKit] Session reset successful:', data);
+
+          // Update session data with the new session
+          if (onSessionUpdate) {
+            onSessionUpdate(data);
+          }
+
+          // Clear upload status
+          setUploadStatus('');
+          setUploadingFile(null);
+          _context4.n = 7;
+          break;
+        case 6:
+          _context4.p = 6;
+          _t4 = _context4.v;
+          console.error('[ChatKit] Failed to reset session:', _t4);
+          setUploadStatus("\u2717 Error: ".concat(_t4.message || 'Failed to reset session'));
+          setTimeout(function () {
+            setUploadStatus('');
+          }, 5000);
+        case 7:
+          _context4.p = 7;
+          setIsResetting(false);
+          return _context4.f(7);
+        case 8:
+          return _context4.a(2);
+      }
+    }, _callee4, null, [[1, 6, 7, 8]]);
+  })), [isResetting, onSessionUpdate]);
+
   // Using a custom input + send; do not pass unsupported composer options to ChatKit
 
   // Log before useChatKit is called
@@ -2901,10 +2973,10 @@ function ChatKitComponent(_ref4) {
   // This function is called whenever ChatKit needs a token - we always fetch fresh
   var getClientSecret = (0,react.useMemo)(function () {
     return /*#__PURE__*/function () {
-      var _ref6 = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee4(currentClientSecret) {
-        var freshSession, expiry, expiryDate, now, _t4;
-        return App_regenerator().w(function (_context4) {
-          while (1) switch (_context4.p = _context4.n) {
+      var _ref7 = App_asyncToGenerator(/*#__PURE__*/App_regenerator().m(function _callee5(currentClientSecret) {
+        var freshSession, expiry, expiryDate, now, _t5;
+        return App_regenerator().w(function (_context5) {
+          while (1) switch (_context5.p = _context5.n) {
             case 0:
               console.log('[ChatKit] ========================================');
               console.log('[ChatKit] 🔐🔐🔐 getClientSecret CALLED! 🔐🔐🔐');
@@ -2912,14 +2984,14 @@ function ChatKitComponent(_ref4) {
 
               // ALWAYS fetch fresh token from server - don't reuse sessionData
               // This ensures we never use stale/expired tokens
-              _context4.p = 1;
+              _context5.p = 1;
               console.log('[ChatKit] 🔐 Fetching fresh token from server...');
-              _context4.n = 2;
+              _context5.n = 2;
               return fetchChatKitSession();
             case 2:
-              freshSession = _context4.v;
+              freshSession = _context5.v;
               if (freshSession !== null && freshSession !== void 0 && freshSession.clientToken) {
-                _context4.n = 3;
+                _context5.n = 3;
                 break;
               }
               console.error('[ChatKit] ❌ ERROR: No clientToken in fresh session!');
@@ -2947,19 +3019,19 @@ function ChatKitComponent(_ref4) {
                 suffix: freshSession.clientToken.substring(freshSession.clientToken.length - 10)
               });
               console.log('[ChatKit] ========================================');
-              return _context4.a(2, freshSession.clientToken);
+              return _context5.a(2, freshSession.clientToken);
             case 4:
-              _context4.p = 4;
-              _t4 = _context4.v;
-              console.error('[ChatKit] ❌ Failed to fetch fresh token:', _t4);
-              throw _t4;
+              _context5.p = 4;
+              _t5 = _context5.v;
+              console.error('[ChatKit] ❌ Failed to fetch fresh token:', _t5);
+              throw _t5;
             case 5:
-              return _context4.a(2);
+              return _context5.a(2);
           }
-        }, _callee4, null, [[1, 4]]);
+        }, _callee5, null, [[1, 4]]);
       }));
       return function (_x5) {
-        return _ref6.apply(this, arguments);
+        return _ref7.apply(this, arguments);
       };
     }();
   }, [onSessionUpdate]);
@@ -3089,20 +3161,30 @@ function ChatKitComponent(_ref4) {
   return /*#__PURE__*/react.createElement("div", {
     style: {
       width: '100%',
-      height: '600px',
-      display: 'block',
-      position: 'relative'
-    }
-  }, /*#__PURE__*/react.createElement("div", {
-    style: {
-      position: 'absolute',
-      top: '10px',
-      right: '10px',
-      zIndex: 1000,
+      height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      gap: '10px',
-      alignItems: 'flex-end'
+      position: 'relative'
+    }
+  }, /*#__PURE__*/react.createElement(ChatKit, {
+    control: control,
+    style: {
+      flex: '1 1 0',
+      width: '100%',
+      display: 'block',
+      minHeight: '0',
+      minWidth: '360px',
+      overflow: 'hidden'
+    }
+  }), /*#__PURE__*/react.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: '12px',
+      alignItems: 'center',
+      padding: '12px 16px',
+      backgroundColor: '#ffffff',
+      borderTop: '1px solid rgba(148, 163, 184, 0.2)',
+      zIndex: 100
     }
   }, /*#__PURE__*/react.createElement("input", {
     ref: fileInputRef,
@@ -3117,39 +3199,53 @@ function ChatKitComponent(_ref4) {
       var _fileInputRef$current;
       return (_fileInputRef$current = fileInputRef.current) === null || _fileInputRef$current === void 0 ? void 0 : _fileInputRef$current.click();
     },
-    disabled: !!uploadingFile,
+    disabled: !!uploadingFile || isResetting,
+    className: "icon-button",
     style: {
-      padding: '10px 20px',
-      backgroundColor: uploadingFile ? '#ccc' : '#0066cc',
-      color: 'white',
-      border: 'none',
-      borderRadius: '5px',
-      cursor: uploadingFile ? 'not-allowed' : 'pointer',
+      padding: '12px 18px',
       fontSize: '14px',
-      fontWeight: '500',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-    }
-  }, uploadingFile ? '📤 Uploading...' : '📎 Upload File'), uploadStatus && /*#__PURE__*/react.createElement("div", {
+      fontWeight: '600'
+    },
+    title: "Attach a file"
+  }, "\uD83D\uDCCE"), /*#__PURE__*/react.createElement("button", {
+    className: "reset-button",
+    type: "button",
+    onClick: handleReset,
+    disabled: isResetting,
+    title: "Start new conversation"
+  }, /*#__PURE__*/react.createElement("svg", {
+    width: "20",
+    height: "20",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    xmlns: "http://www.w3.org/2000/svg"
+  }, /*#__PURE__*/react.createElement("rect", {
+    x: "3",
+    y: "3",
+    width: "18",
+    height: "18",
+    rx: "3",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    fill: "none"
+  }), /*#__PURE__*/react.createElement("path", {
+    d: "M8 14L14 8M14 8L11 8M14 8L14 11",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }))), uploadStatus && /*#__PURE__*/react.createElement("div", {
     style: {
+      marginLeft: 'auto',
       padding: '10px 15px',
-      backgroundColor: 'white',
-      border: '1px solid #ddd',
-      borderRadius: '5px',
-      fontSize: '12px',
+      backgroundColor: 'rgba(102, 126, 234, 0.1)',
+      border: '1px solid rgba(102, 126, 234, 0.2)',
+      borderRadius: '12px',
+      fontSize: '13px',
       maxWidth: '300px',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
       wordBreak: 'break-word'
     }
-  }, uploadStatus)), /*#__PURE__*/react.createElement(ChatKit, {
-    control: control,
-    style: {
-      height: '600px',
-      width: '100%',
-      display: 'block',
-      minHeight: '600px',
-      minWidth: '360px'
-    }
-  }));
+  }, uploadStatus)));
 }
 /* harmony default export */ const src_App_0 = (App_App);
 ;// ./src/index.js
