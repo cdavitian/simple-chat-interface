@@ -242,7 +242,6 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   const [uploadingFile, setUploadingFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadedFileId, setUploadedFileId] = useState(null);
-  const [isResetting, setIsResetting] = useState(false);
   const fileInputRef = useRef(null);
   
   // S3 upload handler following the guidance pattern
@@ -330,48 +329,6 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
       fileInputRef.current.value = '';
     }
   }, [handleFileUpload]);
-
-  // Handler for resetting the ChatKit session
-  const handleReset = useCallback(async () => {
-    if (isResetting) {
-      return;
-    }
-
-    try {
-      setIsResetting(true);
-      console.log('[ChatKit] Resetting session...');
-
-      const response = await fetch('/api/chatkit/session/reset', {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `Failed to reset session (${response.status})`);
-      }
-
-      const data = await response.json();
-      console.log('[ChatKit] Session reset successful:', data);
-
-      // Update session data with the new session
-      if (onSessionUpdate) {
-        onSessionUpdate(data);
-      }
-
-      // Clear upload status
-      setUploadStatus('');
-      setUploadingFile(null);
-    } catch (err) {
-      console.error('[ChatKit] Failed to reset session:', err);
-      setUploadStatus(`✗ Error: ${err.message || 'Failed to reset session'}`);
-      setTimeout(() => {
-        setUploadStatus('');
-      }, 5000);
-    } finally {
-      setIsResetting(false);
-    }
-  }, [isResetting, onSessionUpdate]);
   
   // Using a custom input + send; do not pass unsupported composer options to ChatKit
 
@@ -559,10 +516,12 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         display: 'flex',
         gap: '12px',
         alignItems: 'center',
-        padding: '12px 16px',
+        padding: '16px',
         backgroundColor: '#ffffff',
         borderTop: '1px solid rgba(148, 163, 184, 0.2)',
-        zIndex: 100
+        zIndex: 100,
+        minHeight: '60px',
+        flexShrink: 0
       }}>
         <input
           ref={fileInputRef}
@@ -573,7 +532,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         />
         <button
           onClick={() => fileInputRef.current?.click()}
-          disabled={!!uploadingFile || isResetting}
+          disabled={!!uploadingFile}
           className="icon-button"
           style={{
             padding: '12px 18px',
@@ -583,18 +542,6 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
           title="Attach a file"
         >
           📎
-        </button>
-        <button 
-          className="reset-button" 
-          type="button" 
-          onClick={handleReset} 
-          disabled={isResetting}
-          title="Start new conversation"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" fill="none"/>
-            <path d="M8 14L14 8M14 8L11 8M14 8L14 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
         </button>
         {uploadStatus && (
           <div style={{
