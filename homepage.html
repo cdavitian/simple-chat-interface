@@ -279,8 +279,8 @@
         
         <div class="homepage-content">
             <h2 class="homepage-title">Kyo Chat Tools</h2>
-            <button class="mcp-test-btn" onclick="openChatKitInterface()">
-                Test MCP - ChatKit
+            <button class="mcp-test-btn" id="chatbotButton" onclick="openChatKitInterface()">
+                Loading...
             </button>
         </div>
         
@@ -343,6 +343,34 @@
             window.location.href = '/chatkit';
         }
 
+        // Load active chatbot name
+        async function loadChatbotName() {
+            try {
+                const response = await fetch('/api/chatbot/active');
+                const data = await response.json();
+                
+                if (data.success && data.chatbot && data.chatbot.chatbot_name) {
+                    const button = document.getElementById('chatbotButton');
+                    if (button) {
+                        button.textContent = data.chatbot.chatbot_name;
+                    }
+                } else {
+                    // Fallback if no chatbot found
+                    const button = document.getElementById('chatbotButton');
+                    if (button) {
+                        button.textContent = 'ChatBot';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load chatbot name:', error);
+                // Fallback on error
+                const button = document.getElementById('chatbotButton');
+                if (button) {
+                    button.textContent = 'ChatBot';
+                }
+            }
+        }
+
         // Initialize the page
         function initPage() {
             // Create menu bar
@@ -356,6 +384,9 @@
                     updateMenuBarUserInfo(user);
                 }
             });
+            
+            // Load chatbot name
+            loadChatbotName();
         }
 
         // Load menu-bar.js and then initialize

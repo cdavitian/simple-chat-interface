@@ -160,40 +160,15 @@ const runChatbotsMigration = async () => {
             
             console.log('✅ Chatbots migration completed successfully');
             
-            // Insert initial chatbot if OPENAI_CHATKIT_WORKFLOW_ID is set
+            // Insert initial chatbot if OPENAI_CHATKIT_WORKFLOW_ID is set (backward compatibility)
+            // This allows migration from old env var to new database structure
             if (process.env.OPENAI_CHATKIT_WORKFLOW_ID) {
                 try {
-                    const insertSQL = `
-                        INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status)
-                        VALUES ($1, $2, $3, $4)
-                    `;
-                    await loggingConfig.logger.pool.query(insertSQL, [
-                        'Test MCP - ChatKit',
-                        process.env.OPENAI_CHATKIT_WORKFLOW_ID,
-                        null,
-                        'Prod'
-                    ]);
-                    console.log('✅ Initial chatbot "Test MCP - ChatKit" inserted successfully');
-                } catch (error) {
-                    console.warn('Warning: Could not insert initial chatbot:', error.message);
-                }
-            }
-        } else {
-            console.log('✅ Chatbots table already exists, migration not needed');
-            
-            // Check if initial chatbot exists, if not insert it
-            if (process.env.OPENAI_CHATKIT_WORKFLOW_ID) {
-                try {
-                    const checkChatbotSQL = `
-                        SELECT chatbot_id FROM chatbots 
-                        WHERE chatbot_name = $1 AND workflow_id = $2
-                    `;
-                    const existing = await loggingConfig.logger.pool.query(checkChatbotSQL, [
-                        'Test MCP - ChatKit',
-                        process.env.OPENAI_CHATKIT_WORKFLOW_ID
-                    ]);
+                    // Check if any chatbot already exists
+                    const checkExistingSQL = `SELECT COUNT(*) as count FROM chatbots`;
+                    const existing = await loggingConfig.logger.pool.query(checkExistingSQL);
                     
-                    if (existing.rows.length === 0) {
+                    if (parseInt(existing.rows[0].count) === 0) {
                         const insertSQL = `
                             INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status)
                             VALUES ($1, $2, $3, $4)
@@ -204,12 +179,14 @@ const runChatbotsMigration = async () => {
                             null,
                             'Prod'
                         ]);
-                        console.log('✅ Initial chatbot "Test MCP - ChatKit" inserted successfully');
+                        console.log('✅ Initial chatbot "Test MCP - ChatKit" inserted successfully (migrated from OPENAI_CHATKIT_WORKFLOW_ID)');
                     }
                 } catch (error) {
-                    console.warn('Warning: Could not check/insert initial chatbot:', error.message);
+                    console.warn('Warning: Could not insert initial chatbot:', error.message);
                 }
             }
+        } else {
+            console.log('✅ Chatbots table already exists, migration not needed');
         }
     } catch (error) {
         console.error('Chatbots migration check failed (non-critical):', error.message);
@@ -222,6 +199,50 @@ const runChatbotsMigration = async () => {
 runChatbotsMigration().catch(err => {
     console.error('Chatbots migration failed to start (non-critical):', err.message);
 });
+
+// Helper function to get active chatbot from database
+const getActiveChatbot = async () => {
+    try {
+        // Only work with PostgreSQL logger
+        if (loggingConfig.loggerType !== 'postgresql') {
+            return null;
+        }
+
+        if (!loggingConfig.logger || !loggingConfig.logger.pool) {
+            return null;
+        }
+
+        // Get the first active chatbot with status 'Prod' or 'Test' (preferring 'Prod')
+        const querySQL = `
+            SELECT 
+                chatbot_id,
+                chatbot_name,
+                workflow_id,
+                workflow_version,
+                status
+            FROM chatbots
+            WHERE status IN ('Prod', 'Test')
+            ORDER BY 
+                CASE status 
+                    WHEN 'Prod' THEN 1 
+                    WHEN 'Test' THEN 2 
+                END,
+                chatbot_id ASC
+            LIMIT 1
+        `;
+
+        const result = await loggingConfig.logger.pool.query(querySQL);
+        
+        if (result.rows.length > 0) {
+            return result.rows[0];
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Failed to get active chatbot:', error);
+        return null;
+    }
+};
 
 // Configure AWS
 AWS.config.update({
@@ -1644,24 +1665,10 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         res.set('Pragma', 'no-cache');
         res.set('Expires', '0');
         
-        // 👇 sanity logs (remove after it works)
-        console.log("ENV sanity", {
-            hasApiKey: Boolean(process.env.OPENAI_API_KEY),
-            workflowId: process.env.OPENAI_CHATKIT_WORKFLOW_ID,
-            publicKey: process.env.OPENAI_CHATKIT_PUBLIC_KEY ? 'SET' : 'NOT SET'
-        });
-        
         if (!process.env.OPENAI_API_KEY) {
             console.log('ERROR: OpenAI API Key not configured');
             return res.status(500).json({ 
                 error: 'OpenAI API Key not configured' 
-            });
-        }
-        
-        if (!process.env.OPENAI_CHATKIT_WORKFLOW_ID) {
-            console.log('ERROR: ChatKit Workflow ID not configured');
-            return res.status(500).json({ 
-                error: 'ChatKit Workflow ID not configured' 
             });
         }
 
@@ -1669,6 +1676,15 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             console.log('ERROR: OpenAI ChatKit Public Key not configured');
             return res.status(500).json({ 
                 error: 'OpenAI ChatKit Public Key not configured' 
+            });
+        }
+
+        // Get active chatbot from database
+        const activeChatbot = await getActiveChatbot();
+        if (!activeChatbot || !activeChatbot.workflow_id) {
+            console.log('ERROR: No active chatbot found in database');
+            return res.status(500).json({ 
+                error: 'No active chatbot configured. Please configure a chatbot in the admin panel.' 
             });
         }
 
@@ -1682,7 +1698,10 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             });
         }
         
-        console.log('Creating ChatKit session...');
+        console.log('Creating ChatKit session...', {
+            chatbotName: activeChatbot.chatbot_name,
+            workflowId: activeChatbot.workflow_id.substring(0, 20) + '...'
+        });
         
         // Get or create a stable user ID for this session
         let userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1717,7 +1736,7 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
         const sessionConfig = {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
-                id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
+                id: activeChatbot.workflow_id,  // <-- from database
                 // optional: state_variables: { user_id: userId }
             },
             chatkit_configuration: {
@@ -1874,24 +1893,10 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         res.set('Pragma', 'no-cache');
         res.set('Expires', '0');
         
-        // 👇 sanity logs (remove after it works)
-        console.log("ENV sanity", {
-            hasApiKey: Boolean(process.env.OPENAI_API_KEY),
-            workflowId: process.env.OPENAI_CHATKIT_WORKFLOW_ID,
-            publicKey: process.env.OPENAI_CHATKIT_PUBLIC_KEY ? 'SET' : 'NOT SET'
-        });
-        
         if (!process.env.OPENAI_API_KEY) {
             console.log('ERROR: OpenAI API Key not configured');
             return res.status(500).json({ 
                 error: 'OpenAI API Key not configured' 
-            });
-        }
-        
-        if (!process.env.OPENAI_CHATKIT_WORKFLOW_ID) {
-            console.log('ERROR: ChatKit Workflow ID not configured');
-            return res.status(500).json({ 
-                error: 'ChatKit Workflow ID not configured' 
             });
         }
 
@@ -1899,6 +1904,15 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             console.log('ERROR: OpenAI ChatKit Public Key not configured');
             return res.status(500).json({ 
                 error: 'OpenAI ChatKit Public Key not configured' 
+            });
+        }
+
+        // Get active chatbot from database
+        const activeChatbot = await getActiveChatbot();
+        if (!activeChatbot || !activeChatbot.workflow_id) {
+            console.log('ERROR: No active chatbot found in database');
+            return res.status(500).json({ 
+                error: 'No active chatbot configured. Please configure a chatbot in the admin panel.' 
             });
         }
 
@@ -1912,7 +1926,10 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             });
         }
         
-        console.log('Creating ChatKit session...');
+        console.log('Creating ChatKit session...', {
+            chatbotName: activeChatbot.chatbot_name,
+            workflowId: activeChatbot.workflow_id.substring(0, 20) + '...'
+        });
         
         // Get or create a stable user ID for this session
         let userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1947,7 +1964,7 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
         const sessionConfig = {
             user: userId,  // <-- REQUIRED parameter (string)
             workflow: {   // <-- must be an object, not a string
-                id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,  // <-- must be string
+                id: activeChatbot.workflow_id,  // <-- from database
                 // optional: state_variables: { user_id: userId }
             },
             chatkit_configuration: {
@@ -2122,16 +2139,18 @@ app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
                 error: 'OpenAI API Key not configured' 
             });
         }
-        
-        if (!process.env.OPENAI_CHATKIT_WORKFLOW_ID) {
-            return res.status(500).json({ 
-                error: 'ChatKit Workflow ID not configured' 
-            });
-        }
 
         if (!process.env.OPENAI_CHATKIT_PUBLIC_KEY) {
             return res.status(500).json({ 
                 error: 'OpenAI ChatKit Public Key not configured' 
+            });
+        }
+
+        // Get active chatbot from database
+        const activeChatbot = await getActiveChatbot();
+        if (!activeChatbot || !activeChatbot.workflow_id) {
+            return res.status(500).json({ 
+                error: 'No active chatbot configured. Please configure a chatbot in the admin panel.' 
             });
         }
 
@@ -2144,7 +2163,10 @@ app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
             });
         }
         
-        console.log('Creating new ChatKit session after reset...');
+        console.log('Creating new ChatKit session after reset...', {
+            chatbotName: activeChatbot.chatbot_name,
+            workflowId: activeChatbot.workflow_id.substring(0, 20) + '...'
+        });
         
         // Get or create a stable user ID for this session
         let userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -2176,7 +2198,7 @@ app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
         const sessionConfig = {
             user: userId,
             workflow: {
-                id: process.env.OPENAI_CHATKIT_WORKFLOW_ID,
+                id: activeChatbot.workflow_id,  // <-- from database
             },
             chatkit_configuration: {
                 file_upload: {
@@ -3101,6 +3123,36 @@ app.get('/api/admin/version', requireAuth, checkUserPermissions, requireAdmin, a
         res.status(500).json({ 
             success: false,
             error: 'Failed to get version', 
+            details: error.message 
+        });
+    }
+});
+
+// Get active chatbot (public endpoint for homepage)
+app.get('/api/chatbot/active', requireAuth, async (req, res) => {
+    try {
+        const activeChatbot = await getActiveChatbot();
+        
+        if (!activeChatbot) {
+            return res.json({
+                success: false,
+                chatbot: null
+            });
+        }
+        
+        res.json({
+            success: true,
+            chatbot: {
+                chatbot_id: activeChatbot.chatbot_id,
+                chatbot_name: activeChatbot.chatbot_name,
+                status: activeChatbot.status
+            }
+        });
+    } catch (error) {
+        console.error('Failed to get active chatbot:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to retrieve active chatbot',
             details: error.message 
         });
     }
