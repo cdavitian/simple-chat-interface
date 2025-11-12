@@ -184,6 +184,14 @@
                     Browse objects in the configured S3 bucket
                 </div>
             </div>
+
+            <div class="menu-item" onclick="navigateToChatbots()">
+                <div class="menu-icon">🤖</div>
+                <div class="menu-title">Chatbots</div>
+                <div class="menu-description">
+                    Manage chatbots and their workflow configurations
+                </div>
+            </div>
         </div>
         
         <div class="version-footer">
@@ -230,6 +238,10 @@
 
         function navigateToS3() {
             window.location.href = '/admin/s3';
+        }
+
+        function navigateToChatbots() {
+            window.location.href = '/admin/chatbots';
         }
 
         // Load and display version

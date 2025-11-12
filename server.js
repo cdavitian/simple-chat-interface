@@ -98,6 +98,131 @@ runMigration().catch(err => {
     console.error('Migration failed to start (non-critical):', err.message);
 });
 
+// Run database migration for chatbots table (non-blocking)
+const runChatbotsMigration = async () => {
+    try {
+        // Only run migration if using PostgreSQL logger
+        if (loggingConfig.loggerType !== 'postgresql') {
+            console.log('Skipping chatbots migration - not using PostgreSQL logger');
+            return;
+        }
+
+        // Check if logger has pool property (PostgreSQL logger)
+        if (!loggingConfig.logger || !loggingConfig.logger.pool) {
+            console.log('Logger not ready for chatbots migration, skipping...');
+            return;
+        }
+
+        console.log('Checking for chatbots table migration...');
+        
+        // Check if the chatbots table exists
+        const checkTableSQL = `
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'chatbots'
+            );
+        `;
+        
+        const tableExists = await loggingConfig.logger.pool.query(checkTableSQL);
+        
+        if (!tableExists.rows[0].exists) {
+            console.log('Chatbots table missing, creating...');
+            
+            // Create chatbots table
+            const createTableSQL = `
+                CREATE TABLE IF NOT EXISTS chatbots (
+                    chatbot_id SERIAL PRIMARY KEY,
+                    chatbot_name VARCHAR(255) NOT NULL,
+                    workflow_id VARCHAR(255) NOT NULL,
+                    workflow_version VARCHAR(255) DEFAULT NULL,
+                    created TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    status VARCHAR(50) NOT NULL CHECK (status IN ('Prod', 'Test', 'Inactive'))
+                );
+            `;
+
+            await loggingConfig.logger.pool.query(createTableSQL);
+            console.log('✅ Chatbots table created successfully');
+
+            // Create indexes
+            const indexSQL = [
+                'CREATE INDEX IF NOT EXISTS idx_chatbots_status ON chatbots(status)',
+                'CREATE INDEX IF NOT EXISTS idx_chatbots_created ON chatbots(created)'
+            ];
+
+            for (const sql of indexSQL) {
+                try {
+                    await loggingConfig.logger.pool.query(sql);
+                } catch (error) {
+                    console.warn(`Warning: Could not create index: ${sql}`, error.message);
+                }
+            }
+            
+            console.log('✅ Chatbots migration completed successfully');
+            
+            // Insert initial chatbot if OPENAI_CHATKIT_WORKFLOW_ID is set
+            if (process.env.OPENAI_CHATKIT_WORKFLOW_ID) {
+                try {
+                    const insertSQL = `
+                        INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status)
+                        VALUES ($1, $2, $3, $4)
+                    `;
+                    await loggingConfig.logger.pool.query(insertSQL, [
+                        'Test MCP - ChatKit',
+                        process.env.OPENAI_CHATKIT_WORKFLOW_ID,
+                        null,
+                        'Prod'
+                    ]);
+                    console.log('✅ Initial chatbot "Test MCP - ChatKit" inserted successfully');
+                } catch (error) {
+                    console.warn('Warning: Could not insert initial chatbot:', error.message);
+                }
+            }
+        } else {
+            console.log('✅ Chatbots table already exists, migration not needed');
+            
+            // Check if initial chatbot exists, if not insert it
+            if (process.env.OPENAI_CHATKIT_WORKFLOW_ID) {
+                try {
+                    const checkChatbotSQL = `
+                        SELECT chatbot_id FROM chatbots 
+                        WHERE chatbot_name = $1 AND workflow_id = $2
+                    `;
+                    const existing = await loggingConfig.logger.pool.query(checkChatbotSQL, [
+                        'Test MCP - ChatKit',
+                        process.env.OPENAI_CHATKIT_WORKFLOW_ID
+                    ]);
+                    
+                    if (existing.rows.length === 0) {
+                        const insertSQL = `
+                            INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status)
+                            VALUES ($1, $2, $3, $4)
+                        `;
+                        await loggingConfig.logger.pool.query(insertSQL, [
+                            'Test MCP - ChatKit',
+                            process.env.OPENAI_CHATKIT_WORKFLOW_ID,
+                            null,
+                            'Prod'
+                        ]);
+                        console.log('✅ Initial chatbot "Test MCP - ChatKit" inserted successfully');
+                    }
+                } catch (error) {
+                    console.warn('Warning: Could not check/insert initial chatbot:', error.message);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Chatbots migration check failed (non-critical):', error.message);
+        console.error('Stack:', error.stack);
+        // Don't fail the app startup if migration fails
+    }
+};
+
+// Run chatbots migration on startup (non-blocking - don't await)
+runChatbotsMigration().catch(err => {
+    console.error('Chatbots migration failed to start (non-critical):', err.message);
+});
+
 // Configure AWS
 AWS.config.update({
     region: process.env.AWS_REGION || 'us-east-1',
@@ -2981,6 +3106,52 @@ app.get('/api/admin/version', requireAuth, checkUserPermissions, requireAdmin, a
     }
 });
 
+// Get chatbots (admin only)
+app.get('/api/admin/chatbots', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        // Only work with PostgreSQL logger
+        if (loggingConfig.loggerType !== 'postgresql') {
+            return res.status(500).json({ 
+                success: false,
+                error: 'Chatbots feature requires PostgreSQL database' 
+            });
+        }
+
+        if (!loggingConfig.logger || !loggingConfig.logger.pool) {
+            return res.status(500).json({ 
+                success: false,
+                error: 'Database connection not available' 
+            });
+        }
+
+        const querySQL = `
+            SELECT 
+                chatbot_id,
+                chatbot_name,
+                workflow_id,
+                workflow_version,
+                created,
+                status
+            FROM chatbots
+            ORDER BY chatbot_id ASC
+        `;
+
+        const result = await loggingConfig.logger.pool.query(querySQL);
+        
+        res.json({
+            success: true,
+            chatbots: result.rows
+        });
+    } catch (error) {
+        console.error('Failed to get chatbots:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to retrieve chatbots',
+            details: error.message 
+        });
+    }
+});
+
 // Increment version (admin only)
 app.post('/api/admin/version/increment', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
     try {
@@ -3260,6 +3431,11 @@ app.get('/admin/users', requireAuth, checkUserPermissions, requireAdmin, (req, r
 // Admin S3 route - require admin access
 app.get('/admin/s3', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, 'admin-s3.html'));
+});
+
+// Admin chatbots route - require admin access
+app.get('/admin/chatbots', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-chatbots.html'));
 });
 
 // New User Home route - for users with 'New' type
