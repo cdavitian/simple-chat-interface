@@ -279,13 +279,7 @@
         
         <div class="homepage-content">
             <h2 class="homepage-title">Kyo Chat Tools</h2>
-            <button class="mcp-test-btn" onclick="openChatInterface()">
-                MCP Test
-            </button>
-            <button class="mcp-test-btn" onclick="openChatSDKInterface()" style="margin-top: 16px;">
-                MCP Test - SDK
-            </button>
-            <button class="mcp-test-btn" onclick="openChatKitInterface()" style="margin-top: 16px;">
+            <button class="mcp-test-btn" onclick="openChatKitInterface()">
                 Test MCP - ChatKit
             </button>
         </div>
@@ -342,17 +336,6 @@
         function hideLoading() {
             document.getElementById('loading').style.display = 'none';
             document.querySelector('.homepage-content').style.display = 'flex';
-        }
-
-        function openChatInterface() {
-            // Navigate to the chat interface in the same tab
-            window.location.href = '/chat';
-        }
-
-        function openChatSDKInterface() {
-            // Navigate to the SDK chat interface in the same tab
-            // Add query parameter to indicate navigation from homepage
-            window.location.href = '/chat-sdk?from=homepage';
         }
 
         function openChatKitInterface() {

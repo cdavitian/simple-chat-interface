@@ -5,8 +5,6 @@ const cors = require('cors');
 const AWS = require('aws-sdk');
 const OpenAI = require('openai');
 const { chatkitMessage } = require('./routes/chatkit.message');
-const { sdkMessage } = require('./routes/sdk.message');
-const { sdkMessageStream } = require('./routes/sdk.message.stream');
 const { getFileConfig, prepareMessageParts } = require('./services/fileHandler.service');
 const crypto = require('crypto');
 const mime = require('mime-types');
@@ -157,62 +155,6 @@ const getOpenAIClient = () => {
     return openaiClient;
 };
 
-/**
- * Get or create a conversation ID for the session
- * Creates a durable conversation with OpenAI once per session
- * @param {Request} req - Express request object with session
- * @returns {Promise<string>} - The conversation ID
- */
-async function getOrCreateConversationId(req) {
-    // If we already have a valid conversationId in session, return it
-    if (req.session.sdkConversationId) {
-        // Validate it's not locally-generated (old pattern)
-        const conversationId = req.session.sdkConversationId;
-        const isLocallyGenerated = /^conv_\d+_[a-z0-9]+$/i.test(conversationId);
-        if (!isLocallyGenerated) {
-            return conversationId;
-        }
-        // If it's locally-generated, clear it and create a new one below
-        console.warn('⚠️ SDK: Clearing locally-generated conversationId, creating new one');
-        req.session.sdkConversationId = null;
-    }
-
-    // Create a new durable conversation with OpenAI
-    const client = getOpenAIClient();
-    if (!client) {
-        throw new Error('OpenAI client not available');
-    }
-
-    try {
-        const { id } = await client.conversations.create({});
-        req.session.sdkConversationId = id;
-        
-        // Save session to persist the conversationId
-        await new Promise((resolve, reject) => {
-            req.session.save((err) => {
-                if (err) reject(err);
-                else resolve();
-            });
-        });
-
-        console.log('✅ SDK: Created new conversation with OpenAI:', {
-            conversationId: id,
-            userId: req.session.user?.id || 'unknown',
-            userEmail: req.session.user?.email || 'unknown',
-            sessionId: req.sessionID,
-            timestamp: new Date().toISOString()
-        });
-
-        return id;
-    } catch (error) {
-        console.error('❌ SDK: Failed to create conversation:', {
-            error: error?.message,
-            status: error?.status,
-            code: error?.code
-        });
-        throw error;
-    }
-}
 
 // Session configuration
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
@@ -259,11 +201,6 @@ app.use(session({
     proxy: isProduction // Trust the reverse proxy when setting secure cookies
 }));
 
-// Ensure a per-browser-session chat transcript exists
-app.use((req, _res, next) => {
-    if (!req.session.sdkTranscript) req.session.sdkTranscript = []; // [{role, content}]
-    next();
-});
 
 // Middleware to log session lifecycle (initiation and termination)
 app.use(async (req, res, next) => {
@@ -2441,41 +2378,12 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
                 });
             }
 
-            // 2) If none set yet, try conversation-based store (used by SDK flows); also mirror into session for consistency
-            if (!vectorStoreId) {
-                let conversationId = null;
-                try {
-                    conversationId = await getOrCreateConversationId(req);
-                } catch (convError) {
-                    console.warn('⚠️ ingest-s3: Failed to get/create conversationId:', convError?.message);
-                }
-
-                if (conversationId) {
-                    try {
-                        vectorStoreId = await getOrCreateVectorStoreForConversation(client, conversationId, req.session);
-                        // Mirror to session so future ChatKit sessions bind to the same store
-                        try { req.session.vectorStoreId = vectorStoreId; } catch (_) {}
-                        console.log('✅ ingest-s3: Using conversation-based vector store:', {
-                            vectorStoreId: vectorStoreId.substring(0, 20) + '...',
-                            conversationId: conversationId.substring(0, 20) + '...',
-                            file_id: uploaded.id
-                        });
-                    } catch (vsError) {
-                        console.error('❌ ingest-s3: Failed to get conversation-based vector store:', {
-                            error: vsError?.message,
-                            conversationId: conversationId.substring(0, 20) + '...',
-                            file_id: uploaded.id
-                        });
-                    }
-                }
-            }
-
-            // 3) If still none, create (or get) a session-based vector store and persist it
+            // 2) If still none, create (or get) a session-based vector store and persist it
             if (!vectorStoreId) {
                 const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                const sdkSessionId = `sdk_${userId}_${req.sessionID}`;
+                const sessionId = `session_${userId}_${req.sessionID}`;
                 try {
-                    vectorStoreId = await getOrCreateVectorStore(client, req.session, sdkSessionId, userId);
+                    vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
                     console.log('✅ ingest-s3: Using session-based vector store (created):', {
                         vectorStoreId: vectorStoreId.substring(0, 20) + '...',
                         file_id: uploaded.id
@@ -2788,69 +2696,6 @@ app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
 // Send message to ChatKit thread using Responses API
 app.post('/api/chatkit/message', requireAuth, chatkitMessage);
 
-app.get('/api/sdk/conversation', requireAuth, checkUserPermissions, async (req, res) => {
-    try {
-        if (!Array.isArray(req.session.sdkConversation)) {
-            req.session.sdkConversation = [];
-        }
-
-        // CRITICAL: Don't reset conversation unless explicitly requested via /api/sdk/conversation/reset
-        // This ensures continuity - one conversation per session, one vector store per conversation
-        // Only the /api/sdk/conversation/reset endpoint should clear conversationId
-
-        // Get or create conversation ID - ensures we have a durable conversation once per session
-        const conversationId = await getOrCreateConversationId(req);
-
-        res.json({
-            conversation: req.session.sdkConversation,
-            conversationId: conversationId,
-        });
-    } catch (error) {
-        console.error('Failed to load SDK conversation:', error);
-        res.status(500).json({ 
-            error: 'Failed to load conversation history',
-            details: error?.message || String(error)
-        });
-    }
-});
-
-app.post('/api/sdk/conversation/reset', requireAuth, checkUserPermissions, async (req, res) => {
-    try {
-        // Store old conversation ID for logging
-        const oldConversationId = req.session.sdkConversationId;
-        
-        // Clear conversation history
-        req.session.sdkConversation = [];
-        
-        // Clear old conversationId and create a new one immediately
-        req.session.sdkConversationId = null;
-        const newConversationId = await getOrCreateConversationId(req);
-        
-        // Log the reset to deployment logs
-        console.log('🔄 SDK: Conversation reset - new conversation created', {
-            oldConversationId: oldConversationId || 'none',
-            newConversationId: newConversationId,
-            userId: req.session.user?.id || 'unknown',
-            userEmail: req.session.user?.email || 'unknown',
-            sessionId: req.sessionID,
-            timestamp: new Date().toISOString()
-        });
-        
-        res.json({ 
-            success: true,
-            conversationId: newConversationId
-        });
-    } catch (error) {
-        console.error('Failed to reset SDK conversation:', error);
-        res.status(500).json({ 
-            error: 'Failed to reset conversation history',
-            details: error?.message || String(error)
-        });
-    }
-});
-
-app.post('/api/sdk/message', requireAuth, checkUserPermissions, sdkMessage);
-// app.post('/api/sdk/message/stream', requireAuth, checkUserPermissions, sdkMessageStream);
 
 // ============ Access Log API Endpoints ============
 // Get access logs for a specific user (admin only)
@@ -3454,22 +3299,7 @@ app.get('/simple', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist-simple', 'index.html'));
 });
 
-// Chat interface route - serve React app (restricted to Admin and Standard users)
-app.get('/chat', requireAuth, checkUserPermissions, (req, res) => {
-    const userType = req.session.user.userType || req.session.userType;
-    
-    // Block New users from accessing chat
-    if (userType === 'New') {
-        return res.redirect('/new-user-home');
-    }
-    
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
-
-// ChatKit alias route - same as /chat
+// ChatKit interface route - serve React app (restricted to Admin and Standard users)
 app.get('/chatkit', requireAuth, checkUserPermissions, (req, res) => {
     const userType = req.session.user.userType || req.session.userType;
     
@@ -3482,21 +3312,6 @@ app.get('/chatkit', requireAuth, checkUserPermissions, (req, res) => {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
-
-// Chat SDK interface route - serve React SDK app (restricted to Admin and Standard users)
-app.get('/chat-sdk', requireAuth, checkUserPermissions, (req, res) => {
-    const userType = req.session.user.userType || req.session.userType;
-    
-    // Block New users from accessing chat
-    if (userType === 'New') {
-        return res.redirect('/new-user-home');
-    }
-    
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.sendFile(path.join(__dirname, 'dist', 'indexSDK.html'));
 });
 
 // ============ Root Route (Must be LAST) ============

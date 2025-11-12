@@ -3,8 +3,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
   entry: {
-    main: './src/index.js',
-    sdk: './src/indexSDK.js'
+    main: './src/index.js'
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -35,12 +34,6 @@ module.exports = {
       template: './src/index.html',
       filename: 'index.html',
       chunks: ['main'],
-      inject: false,
-    }),
-    new HtmlWebpackPlugin({
-      template: './src/indexSDK.html',
-      filename: 'indexSDK.html',
-      chunks: ['sdk'],
       inject: false,
     }),
   ],
