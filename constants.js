@@ -55,6 +55,56 @@ function getUserTypeDisplayName(userType) {
     return displayNames[userType] || userType;
 }
 
+/**
+ * Chatbot Status Constants
+ * 
+ * These constants define the available chatbot statuses in the system.
+ * They correspond to the status field in the chatbots table.
+ */
+const CHATBOT_STATUS = {
+    PROD: 'Prod',
+    TEST: 'Test',
+    INACTIVE: 'Inactive'
+};
+
+/**
+ * Chatbot Status Options
+ * 
+ * Array of all available chatbot statuses for easy iteration and validation
+ */
+const CHATBOT_STATUS_OPTIONS = [
+    CHATBOT_STATUS.PROD,
+    CHATBOT_STATUS.TEST,
+    CHATBOT_STATUS.INACTIVE
+];
+
+/**
+ * Chatbot Status Validation
+ * 
+ * Helper function to validate if a given value is a valid chatbot status
+ * @param {string} status - The chatbot status to validate
+ * @returns {boolean} - True if valid, false otherwise
+ */
+function isValidChatbotStatus(status) {
+    return CHATBOT_STATUS_OPTIONS.includes(status);
+}
+
+/**
+ * Get Chatbot Status Display Name
+ * 
+ * Helper function to get a display-friendly name for chatbot statuses
+ * @param {string} status - The chatbot status
+ * @returns {string} - Display name for the chatbot status
+ */
+function getChatbotStatusDisplayName(status) {
+    const displayNames = {
+        [CHATBOT_STATUS.PROD]: 'Production',
+        [CHATBOT_STATUS.TEST]: 'Test',
+        [CHATBOT_STATUS.INACTIVE]: 'Inactive'
+    };
+    return displayNames[status] || status;
+}
+
 // Export constants for both CommonJS and ES6 module systems
 if (typeof module !== 'undefined' && module.exports) {
     // CommonJS (Node.js)
@@ -62,7 +112,11 @@ if (typeof module !== 'undefined' && module.exports) {
         USER_TYPE,
         USER_TYPE_OPTIONS,
         isValidUserType,
-        getUserTypeDisplayName
+        getUserTypeDisplayName,
+        CHATBOT_STATUS,
+        CHATBOT_STATUS_OPTIONS,
+        isValidChatbotStatus,
+        getChatbotStatusDisplayName
     };
 } else {
     // Browser/ES6 modules
@@ -70,6 +124,10 @@ if (typeof module !== 'undefined' && module.exports) {
         USER_TYPE,
         USER_TYPE_OPTIONS,
         isValidUserType,
-        getUserTypeDisplayName
+        getUserTypeDisplayName,
+        CHATBOT_STATUS,
+        CHATBOT_STATUS_OPTIONS,
+        isValidChatbotStatus,
+        getChatbotStatusDisplayName
     };
 }

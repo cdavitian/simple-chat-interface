@@ -112,6 +112,79 @@
             background: #f8d7da;
             color: #721c24;
         }
+        
+        /* Edit mode styles */
+        .edit-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        
+        .edit-controls button {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        
+        .edit-controls button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .edit-controls button:disabled:hover {
+            background: #ccc;
+        }
+        
+        .save-btn {
+            background: #28a745;
+        }
+        
+        .save-btn:hover {
+            background: #218838;
+        }
+        
+        .cancel-btn {
+            background: #dc3545;
+        }
+        
+        .cancel-btn:hover {
+            background: #c82333;
+        }
+        
+        /* Editable table styles */
+        .chatbots-table.editable td {
+            position: relative;
+        }
+        
+        .editable-field {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 4px 8px;
+            background: white;
+            width: 100%;
+            font-size: 14px;
+        }
+        
+        .editable-field:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+        
+        .change-indicator {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 8px;
+            height: 8px;
+            background: #28a745;
+            border-radius: 50%;
+            display: none;
+        }
+        
+        .change-indicator.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -128,12 +201,24 @@
             </div>
         </div>
 
+        <div id="editControls" class="edit-controls" style="display: none;">
+            <button id="editBtn" onclick="toggleEditMode()">Edit</button>
+            <button id="saveBtn" class="save-btn" onclick="saveChanges()" style="display: none;">Save</button>
+            <button id="cancelBtn" class="cancel-btn" onclick="cancelEdit()" style="display: none;">Cancel</button>
+        </div>
+
         <div id="chatbotsContainer">
             <div class="loading">Click "Load Chatbots" to view chatbots</div>
         </div>
     </div>
 
+    <script src="/constants.js"></script>
     <script>
+        // Edit mode state
+        let isEditMode = false;
+        let originalChatbotData = [];
+        let currentChatbotData = [];
+
         async function loadChatbots() {
             try {
                 const response = await fetch('/api/admin/chatbots');
@@ -154,11 +239,19 @@
             
             if (chatbots.length === 0) {
                 container.innerHTML = '<div class="no-data">No chatbots found</div>';
+                document.getElementById('editControls').style.display = 'none';
                 return;
             }
 
+            // Store chatbot data for edit mode
+            currentChatbotData = chatbots.map(chatbot => ({ ...chatbot }));
+            originalChatbotData = chatbots.map(chatbot => ({ ...chatbot }));
+
+            // Show edit controls
+            document.getElementById('editControls').style.display = 'flex';
+
             const table = `
-                <table class="chatbots-table">
+                <table class="chatbots-table ${isEditMode ? 'editable' : ''}">
                     <thead>
                         <tr>
                             <th>Chatbot ID</th>
@@ -170,16 +263,43 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${chatbots.map(chatbot => `
-                            <tr>
+                        ${chatbots.map((chatbot, index) => `
+                            <tr data-chatbot-index="${index}">
                                 <td>${chatbot.chatbot_id}</td>
-                                <td>${chatbot.chatbot_name || 'N/A'}</td>
-                                <td>${chatbot.workflow_id || 'N/A'}</td>
-                                <td>${chatbot.workflow_version || 'N/A'}</td>
                                 <td>
-                                    <span class="status-badge status-${chatbot.status.toLowerCase()}">
-                                        ${chatbot.status || 'N/A'}
-                                    </span>
+                                    ${isEditMode ? 
+                                        `<input type="text" class="editable-field" value="${(chatbot.chatbot_name || '').replace(/"/g, '&quot;')}" onchange="markFieldChanged(${index}, 'chatbot_name', this.value)" data-field="chatbot_name">` : 
+                                        (chatbot.chatbot_name || 'N/A')
+                                    }
+                                    ${isEditMode ? '<div class="change-indicator" id="indicator-' + index + '-chatbot_name"></div>' : ''}
+                                </td>
+                                <td>
+                                    ${isEditMode ? 
+                                        `<input type="text" class="editable-field" value="${(chatbot.workflow_id || '').replace(/"/g, '&quot;')}" onchange="markFieldChanged(${index}, 'workflow_id', this.value)" data-field="workflow_id">` : 
+                                        (chatbot.workflow_id || 'N/A')
+                                    }
+                                    ${isEditMode ? '<div class="change-indicator" id="indicator-' + index + '-workflow_id"></div>' : ''}
+                                </td>
+                                <td>
+                                    ${isEditMode ? 
+                                        `<input type="text" class="editable-field" value="${(chatbot.workflow_version || '').replace(/"/g, '&quot;')}" onchange="markFieldChanged(${index}, 'workflow_version', this.value)" data-field="workflow_version" placeholder="Optional">` : 
+                                        (chatbot.workflow_version || 'N/A')
+                                    }
+                                    ${isEditMode ? '<div class="change-indicator" id="indicator-' + index + '-workflow_version"></div>' : ''}
+                                </td>
+                                <td>
+                                    ${isEditMode ? 
+                                        `<select class="editable-field" onchange="markFieldChanged(${index}, 'status', this.value)" data-field="status">
+                                            <option value="">Select Status</option>
+                                            ${CHATBOT_STATUS_OPTIONS.map(status => 
+                                                `<option value="${status}" ${chatbot.status === status ? 'selected' : ''}>${getChatbotStatusDisplayName(status)}</option>`
+                                            ).join('')}
+                                        </select>` : 
+                                        `<span class="status-badge status-${(chatbot.status || '').toLowerCase()}">
+                                            ${chatbot.status || 'N/A'}
+                                        </span>`
+                                    }
+                                    ${isEditMode ? '<div class="change-indicator" id="indicator-' + index + '-status"></div>' : ''}
                                 </td>
                                 <td>${chatbot.created ? new Date(chatbot.created).toLocaleString() : 'N/A'}</td>
                             </tr>
@@ -194,6 +314,132 @@
         function showError(message) {
             const container = document.getElementById('chatbotsContainer');
             container.innerHTML = `<div class="error">${message}</div>`;
+            document.getElementById('editControls').style.display = 'none';
+        }
+
+        // Edit mode functions
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            
+            if (isEditMode) {
+                // Enter edit mode
+                document.getElementById('editBtn').disabled = true;
+                document.getElementById('editBtn').textContent = 'Edit';
+                document.getElementById('saveBtn').style.display = 'inline-block';
+                document.getElementById('cancelBtn').style.display = 'inline-block';
+                
+                // Re-render the table in edit mode
+                displayChatbots(currentChatbotData);
+            } else {
+                // Exit edit mode
+                document.getElementById('editBtn').disabled = false;
+                document.getElementById('saveBtn').style.display = 'none';
+                document.getElementById('cancelBtn').style.display = 'none';
+                
+                // Re-render the table in normal mode
+                displayChatbots(currentChatbotData);
+            }
+        }
+
+        function exitEditMode() {
+            isEditMode = false;
+            document.getElementById('editBtn').disabled = false;
+            document.getElementById('saveBtn').style.display = 'none';
+            document.getElementById('cancelBtn').style.display = 'none';
+            
+            // Re-render the table in normal mode
+            displayChatbots(currentChatbotData);
+        }
+
+        function markFieldChanged(chatbotIndex, fieldName, newValue) {
+            // Update the current chatbot data
+            currentChatbotData[chatbotIndex][fieldName] = newValue;
+            
+            // Show change indicator
+            const indicator = document.getElementById(`indicator-${chatbotIndex}-${fieldName}`);
+            if (indicator) {
+                indicator.classList.add('visible');
+            }
+        }
+
+        async function saveChanges() {
+            try {
+                // Find chatbots that have been changed
+                const changedChatbots = [];
+                for (let i = 0; i < currentChatbotData.length; i++) {
+                    const current = currentChatbotData[i];
+                    const original = originalChatbotData[i];
+                    
+                    const changes = {};
+                    let hasChanges = false;
+                    
+                    if (current.chatbot_name !== original.chatbot_name) {
+                        changes.chatbot_name = current.chatbot_name;
+                        hasChanges = true;
+                    }
+                    
+                    if (current.workflow_id !== original.workflow_id) {
+                        changes.workflow_id = current.workflow_id;
+                        hasChanges = true;
+                    }
+                    
+                    if (current.workflow_version !== original.workflow_version) {
+                        changes.workflow_version = current.workflow_version || null;
+                        hasChanges = true;
+                    }
+                    
+                    if (current.status !== original.status) {
+                        changes.status = current.status;
+                        hasChanges = true;
+                    }
+                    
+                    if (hasChanges) {
+                        changedChatbots.push({
+                            chatbot_id: current.chatbot_id,
+                            ...changes
+                        });
+                    }
+                }
+
+                if (changedChatbots.length === 0) {
+                    alert('No changes to save.');
+                    return;
+                }
+
+                // Send update request to server
+                const response = await fetch('/api/admin/chatbots/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ chatbots: changedChatbots })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`Successfully updated ${changedChatbots.length} chatbot(s).`);
+                    // Exit edit mode and reload data
+                    exitEditMode();
+                    loadChatbots();
+                } else {
+                    alert('Failed to save changes: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error saving changes:', error);
+                alert('Error saving changes: ' + error.message);
+            }
+        }
+
+        function cancelEdit() {
+            // Reset to original data
+            currentChatbotData = originalChatbotData.map(chatbot => ({ ...chatbot }));
+            
+            // Show helpful dialog
+            alert('Canceled all changes');
+            
+            // Exit edit mode
+            exitEditMode();
         }
 
         // Initialize menu bar

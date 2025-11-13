@@ -3204,6 +3204,130 @@ app.get('/api/admin/chatbots', requireAuth, checkUserPermissions, requireAdmin, 
     }
 });
 
+// Update chatbots (admin only)
+app.post('/api/admin/chatbots/update', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        const { chatbots } = req.body;
+        
+        if (!chatbots || !Array.isArray(chatbots)) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Invalid request: chatbots array required' 
+            });
+        }
+
+        // Only work with PostgreSQL logger
+        if (loggingConfig.loggerType !== 'postgresql') {
+            return res.status(500).json({ 
+                success: false,
+                error: 'Chatbots feature requires PostgreSQL database' 
+            });
+        }
+
+        if (!loggingConfig.logger || !loggingConfig.logger.pool) {
+            return res.status(500).json({ 
+                success: false,
+                error: 'Database connection not available' 
+            });
+        }
+
+        // Validate chatbot status using constants
+        const { isValidChatbotStatus } = require('./constants.js');
+
+        const updatePromises = chatbots.map(async (chatbotUpdate) => {
+            const { chatbot_id, chatbot_name, workflow_id, workflow_version, status } = chatbotUpdate;
+            
+            if (!chatbot_id) {
+                throw new Error('chatbot_id is required for each chatbot update');
+            }
+
+            // Build update query dynamically based on what fields are provided
+            const updateFields = [];
+            const updateValues = [];
+            let paramIndex = 1;
+
+            if (chatbot_name !== undefined) {
+                if (!chatbot_name || chatbot_name.trim() === '') {
+                    throw new Error('chatbot_name cannot be empty');
+                }
+                updateFields.push(`chatbot_name = $${paramIndex++}`);
+                updateValues.push(chatbot_name.trim());
+            }
+
+            if (workflow_id !== undefined) {
+                if (!workflow_id || workflow_id.trim() === '') {
+                    throw new Error('workflow_id cannot be empty');
+                }
+                updateFields.push(`workflow_id = $${paramIndex++}`);
+                updateValues.push(workflow_id.trim());
+            }
+
+            if (workflow_version !== undefined) {
+                // workflow_version can be null or empty string (which becomes null)
+                updateFields.push(`workflow_version = $${paramIndex++}`);
+                updateValues.push(workflow_version && workflow_version.trim() !== '' ? workflow_version.trim() : null);
+            }
+
+            if (status !== undefined) {
+                if (!isValidChatbotStatus(status)) {
+                    throw new Error(`Invalid chatbot status: ${status}. Must be one of: Prod, Test, Inactive`);
+                }
+                updateFields.push(`status = $${paramIndex++}`);
+                updateValues.push(status);
+            }
+
+            if (updateFields.length === 0) {
+                throw new Error('At least one field must be provided for update');
+            }
+
+            // Add chatbot_id as the last parameter
+            updateValues.push(chatbot_id);
+
+            const updateSQL = `
+                UPDATE chatbots 
+                SET ${updateFields.join(', ')}
+                WHERE chatbot_id = $${paramIndex}
+            `;
+
+            const result = await loggingConfig.logger.pool.query(updateSQL, updateValues);
+            
+            return {
+                chatbot_id,
+                rowsAffected: result.rowCount,
+                updatedFields: updateFields.length
+            };
+        });
+        
+        const results = await Promise.all(updatePromises);
+        
+        // Log the admin action
+        const clientInfo = getClientInfo(req);
+        await loggingConfig.logAccess({
+            userId: req.session.user.id,
+            email: req.session.user.email,
+            eventType: 'admin_chatbot_update',
+            metadata: {
+                chatbotsUpdated: results.length,
+                chatbotIds: results.map(r => r.chatbot_id)
+            },
+            ...clientInfo
+        });
+        
+        res.json({
+            success: true,
+            message: `Successfully updated ${results.length} chatbot(s)`,
+            results: results
+        });
+    } catch (error) {
+        console.error('Failed to update chatbots:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to update chatbots',
+            details: error.message 
+        });
+    }
+});
+
 // Increment version (admin only)
 app.post('/api/admin/version/increment', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
     try {
