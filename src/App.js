@@ -203,13 +203,14 @@ function App() {
       
       <div className="chatkit-container" style={{ 
         width: '100%', 
-        height: '600px', 
-        minHeight: '600px',
+        height: '628px', 
+        minHeight: '628px',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
         overflow: 'visible',
-        zIndex: 1
+        zIndex: 1,
+        marginTop: '-28px' // Negative margin to show top of ChatKit including reset button
       }}>
         {!chatkitInitialized ? (
           <div className="loading">
@@ -500,7 +501,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'visible', zIndex: 1 }}>
-      <div style={{ flex: '1 1 0', minHeight: '0', position: 'relative', overflow: 'visible', zIndex: 1 }}>
+      <div style={{ flex: '1 1 0', minHeight: '0', position: 'relative', overflow: 'visible', zIndex: 1, paddingTop: '0' }}>
         <ChatKit 
           control={control}
           style={{ 
@@ -510,7 +511,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
             minWidth: '360px',
             overflow: 'visible',
             position: 'relative',
-            zIndex: 1
+            zIndex: 1,
+            marginTop: '0'
           }}
         />
       </div>
