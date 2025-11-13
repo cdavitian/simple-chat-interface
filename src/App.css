@@ -8,8 +8,8 @@
 openai-chatkit {
     display: block !important;
     width: 100% !important;
-    height: 700px !important; /* Full height since MenuBar is removed */
-    min-height: 700px !important;
+    height: 628px !important; /* Adjusted to show full ChatKit including header */
+    min-height: 628px !important;
     visibility: visible !important;
     opacity: 1 !important;
     margin-top: 0 !important;
@@ -37,7 +37,7 @@ body {
     flex-direction: column;
     overflow-y: auto; /* Allow vertical overflow for reset button visibility */
     overflow-x: hidden; /* Keep horizontal clipping */
-    padding-top: 0; /* Removed padding since MenuBar is hidden */
+    padding-top: 72px; /* Ensure content starts below fixed menu bar */
 }
 
 .app-header {
@@ -144,13 +144,14 @@ body {
     flex: 1;
     display: block;
     overflow: visible; /* Allow reset button to be visible */
-    min-height: 700px; /* Full height since MenuBar is removed */
-    height: 700px; /* Full height since MenuBar is removed */
+    min-height: 628px; /* Adjusted to accommodate header/reset button */
+    height: 628px; /* Adjusted to accommodate header/reset button */
     width: 100%;
     position: relative;
     /* Ensure ChatKit reset button and header are not clipped */
     z-index: 1;
-    margin-top: 0; /* Reset margin since MenuBar is removed */
+    /* Negative margin to pull ChatKit up and show the top including reset button */
+    margin-top: -28px;
 }
 
 /* Loading styles */
@@ -244,6 +245,18 @@ openai-chatkit {
     position: relative !important;
     /* Ensure it can extend beyond container bounds for reset button */
     contain: none !important;
+}
+
+/* Ensure ChatKit composer bar is visible and not hidden */
+openai-chatkit::part(composer),
+openai-chatkit::part(composer-bar),
+openai-chatkit::part(input-container) {
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 50 !important; /* Higher than custom buttons but lower than reset button */
+    position: relative !important;
+    display: block !important;
+    overflow: visible !important;
 }
 
 /* Target ChatKit shadow DOM parts */

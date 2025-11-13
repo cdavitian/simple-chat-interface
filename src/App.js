@@ -199,19 +199,18 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* MenuBar temporarily removed to test reset button visibility */}
-      {/* <MenuBar user={user} /> */}
+      <MenuBar user={user} />
       
       <div className="chatkit-container" style={{ 
         width: '100%', 
-        height: '700px', 
-        minHeight: '700px',
+        height: '628px', 
+        minHeight: '628px',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
         overflow: 'visible',
         zIndex: 1,
-        marginTop: '0' // Reset margin since MenuBar is removed
+        marginTop: '-28px' // Negative margin to show top of ChatKit including reset button
       }}>
         {!chatkitInitialized ? (
           <div className="loading">
@@ -502,7 +501,7 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'visible', zIndex: 1 }}>
-      <div style={{ flex: '1 1 0', minHeight: '0', position: 'relative', overflow: 'visible', zIndex: 1, paddingTop: '0' }}>
+      <div style={{ flex: '1 1 0', minHeight: '0', position: 'relative', overflow: 'visible', zIndex: 1, paddingTop: '0', paddingBottom: '0' }}>
         <ChatKit 
           control={control}
           style={{ 
@@ -513,22 +512,24 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
             overflow: 'visible',
             position: 'relative',
             zIndex: 1,
-            marginTop: '0'
+            marginTop: '0',
+            marginBottom: '0'
           }}
         />
       </div>
       
-      {/* Buttons below composer bar */}
+      {/* Custom attachment button - positioned to not overlap composer */}
       <div style={{ 
         display: 'flex',
         gap: '12px',
         alignItems: 'center',
-        padding: '16px 16px 20px 16px',
+        padding: '12px 16px',
         backgroundColor: '#ffffff',
         borderTop: '1px solid rgba(148, 163, 184, 0.2)',
-        zIndex: 100,
+        zIndex: 10, /* Lower than composer bar */
         flexShrink: 0,
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        position: 'relative'
       }}>
         <input
           ref={fileInputRef}
