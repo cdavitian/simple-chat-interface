@@ -199,18 +199,19 @@ function App() {
 
   return (
     <div className="app-container">
-      <MenuBar user={user} />
+      {/* MenuBar temporarily removed to test reset button visibility */}
+      {/* <MenuBar user={user} /> */}
       
       <div className="chatkit-container" style={{ 
         width: '100%', 
-        height: '628px', 
-        minHeight: '628px',
+        height: '700px', 
+        minHeight: '700px',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
         overflow: 'visible',
         zIndex: 1,
-        marginTop: '-28px' // Negative margin to show top of ChatKit including reset button
+        marginTop: '0' // Reset margin since MenuBar is removed
       }}>
         {!chatkitInitialized ? (
           <div className="loading">
