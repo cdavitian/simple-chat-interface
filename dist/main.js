@@ -867,12 +867,14 @@ ___CSS_LOADER_EXPORT___.push([module.id, `* {
 openai-chatkit {
     display: block !important;
     width: 100% !important;
-    height: 628px !important; /* Adjusted to show full ChatKit including header */
-    min-height: 628px !important;
+    height: 100% !important; /* Use 100% to fill container */
+    min-height: 0 !important;
     visibility: visible !important;
     opacity: 1 !important;
     margin-top: 0 !important;
     padding-top: 0 !important;
+    /* Ensure adequate buffer from top for MenuBar */
+    padding-bottom: 0 !important;
 }
 
 body {
@@ -1003,14 +1005,16 @@ body {
     flex: 1;
     display: block;
     overflow: visible; /* Allow reset button to be visible */
-    min-height: 628px; /* Adjusted to accommodate header/reset button */
-    height: 628px; /* Adjusted to accommodate header/reset button */
     width: 100%;
     position: relative;
     /* Ensure ChatKit reset button and header are not clipped */
     z-index: 1;
-    /* Negative margin to pull ChatKit up and show the top including reset button */
-    margin-top: -28px;
+    /* Proper spacing from MenuBar at top */
+    margin-top: 0;
+    /* Space for attachment icon at bottom */
+    margin-bottom: 60px;
+    /* Ensure adequate buffer from top for MenuBar */
+    padding-top: 0;
 }
 
 /* Loading styles */
@@ -2788,14 +2792,18 @@ function App_App() {
     className: "chatkit-container",
     style: {
       width: '100%',
-      height: '628px',
-      minHeight: '628px',
+      height: 'calc(100% - 72px - 60px)',
+      // Account for MenuBar (72px) and attachment icon (60px)
+      minHeight: 'calc(700px - 72px - 60px)',
+      maxHeight: 'calc(700px - 72px - 60px)',
       display: 'flex',
       flexDirection: 'column',
       position: 'relative',
       overflow: 'visible',
       zIndex: 1,
-      marginTop: '-28px' // Negative margin to show top of ChatKit including reset button
+      marginTop: '0',
+      // No negative margin - proper spacing from MenuBar
+      marginBottom: '60px' // Space for attachment icon at bottom
     }
   }, !chatkitInitialized ? /*#__PURE__*/react.createElement("div", {
     className: "loading"
@@ -3153,7 +3161,7 @@ function ChatKitComponent(_ref4) {
       }
     }, /*#__PURE__*/react.createElement("p", null, "Loading ChatKit configuration..."));
   }
-  return /*#__PURE__*/react.createElement("div", {
+  return /*#__PURE__*/react.createElement(react.Fragment, null, /*#__PURE__*/react.createElement("div", {
     style: {
       width: '100%',
       height: '100%',
@@ -3186,19 +3194,18 @@ function ChatKitComponent(_ref4) {
       marginTop: '0',
       marginBottom: '0'
     }
-  })), /*#__PURE__*/react.createElement("div", {
+  }))), /*#__PURE__*/react.createElement("div", {
     style: {
+      position: 'fixed',
+      bottom: '20px',
+      left: '20px',
       display: 'flex',
-      gap: '12px',
-      alignItems: 'center',
-      padding: '12px 16px',
-      backgroundColor: '#ffffff',
-      borderTop: '1px solid rgba(148, 163, 184, 0.2)',
-      zIndex: 10,
-      /* Lower than composer bar */
-      flexShrink: 0,
-      boxSizing: 'border-box',
-      position: 'relative'
+      flexDirection: 'column',
+      gap: '8px',
+      alignItems: 'flex-start',
+      zIndex: 10000,
+      /* Above everything including MenuBar */
+      pointerEvents: 'auto'
     }
   }, /*#__PURE__*/react.createElement("input", {
     ref: fileInputRef,
@@ -3218,19 +3225,23 @@ function ChatKitComponent(_ref4) {
     style: {
       padding: '12px 18px',
       fontSize: '14px',
-      fontWeight: '600'
+      fontWeight: '600',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+      borderRadius: '12px',
+      backgroundColor: '#ffffff',
+      border: '1px solid rgba(148, 163, 184, 0.2)'
     },
     title: "Attach a file"
   }, "\uD83D\uDCCE"), uploadStatus && /*#__PURE__*/react.createElement("div", {
     style: {
-      marginLeft: 'auto',
       padding: '10px 15px',
       backgroundColor: 'rgba(102, 126, 234, 0.1)',
       border: '1px solid rgba(102, 126, 234, 0.2)',
       borderRadius: '12px',
       fontSize: '13px',
       maxWidth: '300px',
-      wordBreak: 'break-word'
+      wordBreak: 'break-word',
+      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
     }
   }, uploadStatus)));
 }

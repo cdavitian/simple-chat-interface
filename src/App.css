@@ -8,12 +8,14 @@
 openai-chatkit {
     display: block !important;
     width: 100% !important;
-    height: 628px !important; /* Adjusted to show full ChatKit including header */
-    min-height: 628px !important;
+    height: 100% !important; /* Use 100% to fill container */
+    min-height: 0 !important;
     visibility: visible !important;
     opacity: 1 !important;
     margin-top: 0 !important;
     padding-top: 0 !important;
+    /* Ensure adequate buffer from top for MenuBar */
+    padding-bottom: 0 !important;
 }
 
 body {
@@ -144,14 +146,16 @@ body {
     flex: 1;
     display: block;
     overflow: visible; /* Allow reset button to be visible */
-    min-height: 628px; /* Adjusted to accommodate header/reset button */
-    height: 628px; /* Adjusted to accommodate header/reset button */
     width: 100%;
     position: relative;
     /* Ensure ChatKit reset button and header are not clipped */
     z-index: 1;
-    /* Negative margin to pull ChatKit up and show the top including reset button */
-    margin-top: -28px;
+    /* Proper spacing from MenuBar at top */
+    margin-top: 0;
+    /* Space for attachment icon at bottom */
+    margin-bottom: 60px;
+    /* Ensure adequate buffer from top for MenuBar */
+    padding-top: 0;
 }
 
 /* Loading styles */

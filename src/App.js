@@ -203,14 +203,16 @@ function App() {
       
       <div className="chatkit-container" style={{ 
         width: '100%', 
-        height: '628px', 
-        minHeight: '628px',
+        height: 'calc(100% - 72px - 60px)', // Account for MenuBar (72px) and attachment icon (60px)
+        minHeight: 'calc(700px - 72px - 60px)',
+        maxHeight: 'calc(700px - 72px - 60px)',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
         overflow: 'visible',
         zIndex: 1,
-        marginTop: '-28px' // Negative margin to show top of ChatKit including reset button
+        marginTop: '0', // No negative margin - proper spacing from MenuBar
+        marginBottom: '60px' // Space for attachment icon at bottom
       }}>
         {!chatkitInitialized ? (
           <div className="loading">
@@ -500,36 +502,37 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   }
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'visible', zIndex: 1 }}>
-      <div style={{ flex: '1 1 0', minHeight: '0', position: 'relative', overflow: 'visible', zIndex: 1, paddingTop: '0', paddingBottom: '0' }}>
-        <ChatKit 
-          control={control}
-          style={{ 
-            width: '100%', 
-            height: '100%',
-            display: 'block',
-            minWidth: '360px',
-            overflow: 'visible',
-            position: 'relative',
-            zIndex: 1,
-            marginTop: '0',
-            marginBottom: '0'
-          }}
-        />
+    <>
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'visible', zIndex: 1 }}>
+        <div style={{ flex: '1 1 0', minHeight: '0', position: 'relative', overflow: 'visible', zIndex: 1, paddingTop: '0', paddingBottom: '0' }}>
+          <ChatKit 
+            control={control}
+            style={{ 
+              width: '100%', 
+              height: '100%',
+              display: 'block',
+              minWidth: '360px',
+              overflow: 'visible',
+              position: 'relative',
+              zIndex: 1,
+              marginTop: '0',
+              marginBottom: '0'
+            }}
+          />
+        </div>
       </div>
       
-      {/* Custom attachment button - positioned to not overlap composer */}
+      {/* Custom attachment button - positioned outside iframe at bottom left of screen */}
       <div style={{ 
+        position: 'fixed',
+        bottom: '20px',
+        left: '20px',
         display: 'flex',
-        gap: '12px',
-        alignItems: 'center',
-        padding: '12px 16px',
-        backgroundColor: '#ffffff',
-        borderTop: '1px solid rgba(148, 163, 184, 0.2)',
-        zIndex: 10, /* Lower than composer bar */
-        flexShrink: 0,
-        boxSizing: 'border-box',
-        position: 'relative'
+        flexDirection: 'column',
+        gap: '8px',
+        alignItems: 'flex-start',
+        zIndex: 10000, /* Above everything including MenuBar */
+        pointerEvents: 'auto'
       }}>
         <input
           ref={fileInputRef}
@@ -545,7 +548,11 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
           style={{
             padding: '12px 18px',
             fontSize: '14px',
-            fontWeight: '600'
+            fontWeight: '600',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            borderRadius: '12px',
+            backgroundColor: '#ffffff',
+            border: '1px solid rgba(148, 163, 184, 0.2)'
           }}
           title="Attach a file"
         >
@@ -553,20 +560,20 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
         </button>
         {uploadStatus && (
           <div style={{
-            marginLeft: 'auto',
             padding: '10px 15px',
             backgroundColor: 'rgba(102, 126, 234, 0.1)',
             border: '1px solid rgba(102, 126, 234, 0.2)',
             borderRadius: '12px',
             fontSize: '13px',
             maxWidth: '300px',
-            wordBreak: 'break-word'
+            wordBreak: 'break-word',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
           }}>
             {uploadStatus}
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
