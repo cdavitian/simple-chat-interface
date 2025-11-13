@@ -289,8 +289,7 @@
                                 </td>
                                 <td>
                                     ${isEditMode ? 
-                                        `<select class="editable-field" onchange="markFieldChanged(${index}, 'status', this.value)" data-field="status">
-                                            <option value="">Select Status</option>
+                                        `<select class="editable-field" onchange="markFieldChanged(${index}, 'status', this.value)" data-field="status" required>
                                             ${CHATBOT_STATUS_OPTIONS.map(status => 
                                                 `<option value="${status}" ${chatbot.status === status ? 'selected' : ''}>${getChatbotStatusDisplayName(status)}</option>`
                                             ).join('')}
