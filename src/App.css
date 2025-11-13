@@ -145,6 +145,8 @@ body {
     height: 600px;
     width: 100%;
     position: relative;
+    /* Ensure ChatKit reset button and header are not clipped */
+    z-index: 1;
 }
 
 /* Loading styles */
@@ -229,6 +231,19 @@ openai-chatkit::part(assistant-message) {
 
 /* Composer is now visible to show native attachment button */
 /* Removed CSS that was hiding the composer */
+
+/* Ensure reset button and header controls are visible */
+/* Note: ChatKit uses shadow DOM, so we target via ::part() selectors */
+openai-chatkit::part(header),
+openai-chatkit::part(reset-button),
+openai-chatkit::part(controls),
+openai-chatkit::part(toolbar) {
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 1000 !important;
+    position: relative !important;
+    display: block !important;
+}
 
 /* Scrollbar styling for ChatKit */
 openai-chatkit::part(messages-container) {
