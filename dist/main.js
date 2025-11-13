@@ -867,10 +867,12 @@ ___CSS_LOADER_EXPORT___.push([module.id, `* {
 openai-chatkit {
     display: block !important;
     width: 100% !important;
-    height: 600px !important;
-    min-height: 600px !important;
+    height: 700px !important; /* Full height since MenuBar is removed */
+    min-height: 700px !important;
     visibility: visible !important;
     opacity: 1 !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
 }
 
 body {
@@ -892,8 +894,9 @@ body {
     height: 700px;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    padding-top: 72px; /* Ensure content starts below fixed menu bar */
+    overflow-y: auto; /* Allow vertical overflow for reset button visibility */
+    overflow-x: hidden; /* Keep horizontal clipping */
+    padding-top: 0; /* Removed padding since MenuBar is hidden */
 }
 
 .app-header {
@@ -999,11 +1002,14 @@ body {
 .chatkit-container {
     flex: 1;
     display: block;
-    overflow: visible;
-    min-height: 600px;
-    height: 600px;
+    overflow: visible; /* Allow reset button to be visible */
+    min-height: 700px; /* Full height since MenuBar is removed */
+    height: 700px; /* Full height since MenuBar is removed */
     width: 100%;
     position: relative;
+    /* Ensure ChatKit reset button and header are not clipped */
+    z-index: 1;
+    margin-top: 0; /* Reset margin since MenuBar is removed */
 }
 
 /* Loading styles */
@@ -1088,6 +1094,50 @@ openai-chatkit::part(assistant-message) {
 
 /* Composer is now visible to show native attachment button */
 /* Removed CSS that was hiding the composer */
+
+/* Ensure reset button and header controls are visible */
+/* Note: ChatKit uses shadow DOM, so we target via ::part() selectors */
+openai-chatkit {
+    /* Ensure the ChatKit component itself allows overflow for header/reset button */
+    overflow: visible !important;
+    position: relative !important;
+    /* Ensure it can extend beyond container bounds for reset button */
+    contain: none !important;
+}
+
+/* Target ChatKit shadow DOM parts */
+openai-chatkit::part(header),
+openai-chatkit::part(reset-button),
+openai-chatkit::part(controls),
+openai-chatkit::part(toolbar),
+openai-chatkit::part(header-controls),
+openai-chatkit::part(action-bar) {
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 10001 !important; /* Higher than MenuBar z-index: 10000 */
+    position: relative !important;
+    display: block !important;
+    overflow: visible !important;
+}
+
+/* Use deep selectors to target elements inside shadow DOM (if supported) */
+openai-chatkit * {
+    overflow: visible !important;
+}
+
+/* Target any button inside ChatKit that might be the reset button */
+/* Note: These selectors may not work if button is in shadow DOM without part attribute */
+openai-chatkit button[aria-label*="reset" i],
+openai-chatkit button[aria-label*="clear" i],
+openai-chatkit button[title*="reset" i],
+openai-chatkit button[title*="clear" i],
+openai-chatkit button[type="button"] {
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 10001 !important;
+    display: inline-block !important;
+    position: relative !important;
+}
 
 /* Scrollbar styling for ChatKit */
 openai-chatkit::part(messages-container) {
@@ -2289,66 +2339,66 @@ var update = injectStylesIntoStyleTag_default()(MenuBar/* default */.A, options)
 
 var MenuBar_MenuBar = function MenuBar(_ref) {
   var user = _ref.user;
-  return /*#__PURE__*/react.createElement("div", {
+  return /*#__PURE__*/React.createElement("div", {
     className: "menu-bar"
-  }, /*#__PURE__*/react.createElement("a", {
+  }, /*#__PURE__*/React.createElement("a", {
     href: "https://simple-chat-interface-staging.up.railway.app/homepage",
     className: "menu-bar-logo"
-  }, /*#__PURE__*/react.createElement("svg", {
+  }, /*#__PURE__*/React.createElement("svg", {
     width: "180",
     height: "60",
     viewBox: "0 0 120 40",
     xmlns: "http://www.w3.org/2000/svg"
-  }, /*#__PURE__*/react.createElement("text", {
+  }, /*#__PURE__*/React.createElement("text", {
     x: "5",
     y: "28",
     fontFamily: "serif",
     fontSize: "24",
     fontWeight: "600",
     fill: "#0F4C5C"
-  }, "Kyo"), /*#__PURE__*/react.createElement("g", {
+  }, "Kyo"), /*#__PURE__*/React.createElement("g", {
     transform: "translate(50, 8)"
-  }, /*#__PURE__*/react.createElement("polygon", {
+  }, /*#__PURE__*/React.createElement("polygon", {
     points: "0,12 6,0 12,12",
     fill: "#0F4C5C",
     opacity: "0.8"
-  }), /*#__PURE__*/react.createElement("polygon", {
+  }), /*#__PURE__*/React.createElement("polygon", {
     points: "2,14 8,2 14,14",
     fill: "#00A8E8",
     opacity: "0.7"
-  }), /*#__PURE__*/react.createElement("polygon", {
+  }), /*#__PURE__*/React.createElement("polygon", {
     points: "4,16 10,4 16,16",
     fill: "#4ECDC4",
     opacity: "0.6"
-  })))), /*#__PURE__*/react.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("div", {
     className: "menu-bar-right"
-  }, /*#__PURE__*/react.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
     className: "user-info"
-  }, /*#__PURE__*/react.createElement("img", {
+  }, /*#__PURE__*/React.createElement("img", {
     src: (user === null || user === void 0 ? void 0 : user.picture) || (user === null || user === void 0 ? void 0 : user.avatar) || '/default-avatar.png',
     alt: "User",
     className: "user-photo"
-  }), /*#__PURE__*/react.createElement("span", {
+  }), /*#__PURE__*/React.createElement("span", {
     className: "user-name"
-  }, (user === null || user === void 0 ? void 0 : user.name) || 'User'), (user === null || user === void 0 ? void 0 : user.userType) === 'Admin' && /*#__PURE__*/react.createElement("button", {
+  }, (user === null || user === void 0 ? void 0 : user.name) || 'User'), (user === null || user === void 0 ? void 0 : user.userType) === 'Admin' && /*#__PURE__*/React.createElement("button", {
     className: "admin-btn",
     onClick: function onClick() {
       return window.location.href = '/admin';
     }
-  }, "Admin"), /*#__PURE__*/react.createElement("button", {
+  }, "Admin"), /*#__PURE__*/React.createElement("button", {
     className: "logout-btn",
     onClick: function onClick() {
       return window.location.href = '/logout';
     }
-  }, "Logout")), /*#__PURE__*/react.createElement("div", {
+  }, "Logout")), /*#__PURE__*/React.createElement("div", {
     className: "status-indicator"
-  }, /*#__PURE__*/react.createElement("span", {
+  }, /*#__PURE__*/React.createElement("span", {
     className: "status-dot"
-  }), /*#__PURE__*/react.createElement("span", {
+  }), /*#__PURE__*/React.createElement("span", {
     className: "status-text"
   }, "Online"))));
 };
-/* harmony default export */ const src_components_MenuBar = (MenuBar_MenuBar);
+/* harmony default export */ const src_components_MenuBar = ((/* unused pure expression or super */ null && (MenuBar_MenuBar)));
 // EXTERNAL MODULE: ./node_modules/css-loader/dist/cjs.js!./src/App.css
 var App = __webpack_require__(626);
 ;// ./src/App.css
@@ -2719,18 +2769,18 @@ function App_App() {
   }
   return /*#__PURE__*/react.createElement("div", {
     className: "app-container"
-  }, /*#__PURE__*/react.createElement(src_components_MenuBar, {
-    user: user
-  }), /*#__PURE__*/react.createElement("div", {
+  }, /*#__PURE__*/react.createElement("div", {
     className: "chatkit-container",
     style: {
       width: '100%',
-      height: '600px',
-      minHeight: '600px',
+      height: '700px',
+      minHeight: '700px',
       display: 'flex',
       flexDirection: 'column',
       position: 'relative',
-      overflow: 'hidden'
+      overflow: 'visible',
+      zIndex: 1,
+      marginTop: '0' // Reset margin since MenuBar is removed
     }
   }, !chatkitInitialized ? /*#__PURE__*/react.createElement("div", {
     className: "loading"
@@ -3094,13 +3144,18 @@ function ChatKitComponent(_ref4) {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      position: 'relative'
+      position: 'relative',
+      overflow: 'visible',
+      zIndex: 1
     }
   }, /*#__PURE__*/react.createElement("div", {
     style: {
       flex: '1 1 0',
       minHeight: '0',
-      overflow: 'hidden'
+      position: 'relative',
+      overflow: 'visible',
+      zIndex: 1,
+      paddingTop: '0'
     }
   }, /*#__PURE__*/react.createElement(ChatKit, {
     control: control,
@@ -3108,7 +3163,11 @@ function ChatKitComponent(_ref4) {
       width: '100%',
       height: '100%',
       display: 'block',
-      minWidth: '360px'
+      minWidth: '360px',
+      overflow: 'visible',
+      position: 'relative',
+      zIndex: 1,
+      marginTop: '0'
     }
   })), /*#__PURE__*/react.createElement("div", {
     style: {
