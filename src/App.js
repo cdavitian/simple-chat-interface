@@ -208,7 +208,8 @@ function App() {
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
-        overflow: 'visible'
+        overflow: 'visible',
+        zIndex: 1
       }}>
         {!chatkitInitialized ? (
           <div className="loading">
@@ -498,8 +499,8 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
   }
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'visible' }}>
-      <div style={{ flex: '1 1 0', minHeight: '0', position: 'relative', overflow: 'visible' }}>
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'visible', zIndex: 1 }}>
+      <div style={{ flex: '1 1 0', minHeight: '0', position: 'relative', overflow: 'visible', zIndex: 1 }}>
         <ChatKit 
           control={control}
           style={{ 
@@ -507,7 +508,9 @@ function ChatKitComponent({ sessionData, onSessionUpdate, user }) {
             height: '100%',
             display: 'block',
             minWidth: '360px',
-            overflow: 'visible'
+            overflow: 'visible',
+            position: 'relative',
+            zIndex: 1
           }}
         />
       </div>

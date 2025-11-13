@@ -33,7 +33,8 @@ body {
     height: 700px;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto; /* Allow vertical overflow for reset button visibility */
+    overflow-x: hidden; /* Keep horizontal clipping */
     padding-top: 72px; /* Ensure content starts below fixed menu bar */
 }
 
@@ -140,13 +141,15 @@ body {
 .chatkit-container {
     flex: 1;
     display: block;
-    overflow: visible;
+    overflow: visible; /* Allow reset button to be visible */
     min-height: 600px;
     height: 600px;
     width: 100%;
     position: relative;
     /* Ensure ChatKit reset button and header are not clipped */
     z-index: 1;
+    /* Add padding-top to account for reset button if it's positioned at top */
+    padding-top: 0;
 }
 
 /* Loading styles */
@@ -234,15 +237,46 @@ openai-chatkit::part(assistant-message) {
 
 /* Ensure reset button and header controls are visible */
 /* Note: ChatKit uses shadow DOM, so we target via ::part() selectors */
+openai-chatkit {
+    /* Ensure the ChatKit component itself allows overflow for header/reset button */
+    overflow: visible !important;
+    position: relative !important;
+    /* Ensure it can extend beyond container bounds for reset button */
+    contain: none !important;
+}
+
+/* Target ChatKit shadow DOM parts */
 openai-chatkit::part(header),
 openai-chatkit::part(reset-button),
 openai-chatkit::part(controls),
-openai-chatkit::part(toolbar) {
+openai-chatkit::part(toolbar),
+openai-chatkit::part(header-controls),
+openai-chatkit::part(action-bar) {
     visibility: visible !important;
     opacity: 1 !important;
-    z-index: 1000 !important;
+    z-index: 10001 !important; /* Higher than MenuBar z-index: 10000 */
     position: relative !important;
     display: block !important;
+    overflow: visible !important;
+}
+
+/* Use deep selectors to target elements inside shadow DOM (if supported) */
+openai-chatkit * {
+    overflow: visible !important;
+}
+
+/* Target any button inside ChatKit that might be the reset button */
+/* Note: These selectors may not work if button is in shadow DOM without part attribute */
+openai-chatkit button[aria-label*="reset" i],
+openai-chatkit button[aria-label*="clear" i],
+openai-chatkit button[title*="reset" i],
+openai-chatkit button[title*="clear" i],
+openai-chatkit button[type="button"] {
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 10001 !important;
+    display: inline-block !important;
+    position: relative !important;
 }
 
 /* Scrollbar styling for ChatKit */
