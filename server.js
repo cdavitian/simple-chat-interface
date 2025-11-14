@@ -3687,3 +3687,4 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log(`📱 Access your chat at: http://localhost:${PORT}`);
     console.log(`🔐 AWS Cognito authentication enabled for kyocare.com domain`);
 });
+// this change is inserted to test git pushes - please delete later
