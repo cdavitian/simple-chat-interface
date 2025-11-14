@@ -338,12 +338,20 @@
             document.querySelector('.homepage-content').style.display = 'flex';
         }
 
+        // Store active chatbot slug for navigation
+        let activeChatbotSlug = null;
+
         function openChatKitInterface() {
-            // Navigate to the ChatKit interface in the same tab
-            window.location.href = '/chatkit';
+            // Navigate to the ChatKit interface using slug if available, otherwise fallback to legacy route
+            if (activeChatbotSlug) {
+                window.location.href = `/chatkit/${activeChatbotSlug}`;
+            } else {
+                // Fallback to legacy route (will redirect to slug-based route)
+                window.location.href = '/chatkit';
+            }
         }
 
-        // Load active chatbot name
+        // Load active chatbot name and slug
         async function loadChatbotName() {
             try {
                 const response = await fetch('/api/chatbot/active');
@@ -354,12 +362,15 @@
                     if (button) {
                         button.textContent = data.chatbot.chatbot_name;
                     }
+                    // Store slug for navigation
+                    activeChatbotSlug = data.chatbot.slug || null;
                 } else {
                     // Fallback if no chatbot found
                     const button = document.getElementById('chatbotButton');
                     if (button) {
                         button.textContent = 'ChatBot';
                     }
+                    activeChatbotSlug = null;
                 }
             } catch (error) {
                 console.error('Failed to load chatbot name:', error);
@@ -368,6 +379,7 @@
                 if (button) {
                     button.textContent = 'ChatBot';
                 }
+                activeChatbotSlug = null;
             }
         }
 

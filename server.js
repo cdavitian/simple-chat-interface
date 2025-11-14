@@ -232,6 +232,141 @@ runChatbotsMigration().catch(err => {
     console.error('Chatbots migration failed to start (non-critical):', err.message);
 });
 
+// Helper function to generate a unique slug from chatbot name
+// Rules: <=10 characters, URL-friendly, unique
+// @param {string} chatbotName - The chatbot name to generate slug from
+// @param {object} pool - PostgreSQL connection pool
+// @param {number} existingChatbotId - Optional chatbot_id to exclude from uniqueness check (for updates)
+// @returns {Promise<string>} - A unique slug
+const generateUniqueSlug = async (chatbotName, pool, existingChatbotId = null) => {
+    if (!chatbotName || !pool) {
+        throw new Error('chatbotName and pool are required');
+    }
+    
+    // Convert to lowercase, remove special chars, keep only alphanumeric and hyphens
+    let baseSlug = chatbotName
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
+        .replace(/\s+/g, '-') // Replace spaces with hyphens
+        .replace(/-+/g, '-') // Replace multiple hyphens with single
+        .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+    
+    // Truncate to 10 characters (but try to break at word boundary if possible)
+    if (baseSlug.length > 10) {
+        // Try to find a hyphen near position 10
+        const truncateAt = baseSlug.substring(0, 10).lastIndexOf('-');
+        if (truncateAt > 0) {
+            baseSlug = baseSlug.substring(0, truncateAt);
+        } else {
+            baseSlug = baseSlug.substring(0, 10);
+        }
+    }
+    
+    // If slug is empty after processing, use a default
+    if (!baseSlug || baseSlug.length === 0) {
+        baseSlug = 'chatbot';
+    }
+    
+    // Check uniqueness and append number if needed
+    let slug = baseSlug;
+    let counter = 1;
+    let isUnique = false;
+    
+    while (!isUnique && counter < 1000) { // Safety limit
+        // Build query to check uniqueness
+        let checkSQL = 'SELECT COUNT(*) as count FROM chatbots WHERE slug = $1';
+        const checkParams = [slug];
+        
+        // If updating an existing chatbot, exclude it from uniqueness check
+        if (existingChatbotId) {
+            checkSQL += ' AND chatbot_id != $2';
+            checkParams.push(existingChatbotId);
+        }
+        
+        const result = await pool.query(checkSQL, checkParams);
+        const count = parseInt(result.rows[0].count);
+        
+        if (count === 0) {
+            isUnique = true;
+        } else {
+            // Append number, but keep total length <= 10
+            const numStr = counter.toString();
+            const maxBaseLength = 10 - numStr.length;
+            if (maxBaseLength > 0) {
+                slug = baseSlug.substring(0, maxBaseLength) + numStr;
+            } else {
+                // If base is too long, just use number
+                slug = numStr;
+            }
+            counter++;
+        }
+    }
+    
+    if (!isUnique) {
+        throw new Error('Unable to generate unique slug after 1000 attempts');
+    }
+    
+    return slug;
+};
+
+// Helper function to get chatbot by slug
+// Permission rules:
+// - Inactive: accessible by no users (excluded from results)
+// - Prod: accessible to all users
+// - Test: accessible to Admin users only
+// @param {string} slug - The chatbot slug
+// @param {string} userType - Optional user type ('Admin', 'Standard', 'New', etc.)
+const getChatbotBySlug = async (slug, userType = null) => {
+    try {
+        // Only work with PostgreSQL logger
+        if (loggingConfig.loggerType !== 'postgresql') {
+            return null;
+        }
+
+        if (!loggingConfig.logger || !loggingConfig.logger.pool) {
+            return null;
+        }
+
+        if (!slug) {
+            return null;
+        }
+
+        // Build status filter based on user permissions
+        let statusFilter = "status = 'Prod'"; // Default: only Prod for non-admin users
+        
+        if (userType === 'Admin') {
+            // Admin users can access both Prod and Test
+            statusFilter = "status IN ('Prod', 'Test')";
+        }
+
+        // Get chatbot by slug matching the permission criteria
+        const querySQL = `
+            SELECT 
+                chatbot_id,
+                chatbot_name,
+                workflow_id,
+                workflow_version,
+                status,
+                slug
+            FROM chatbots
+            WHERE slug = $1 AND ${statusFilter}
+            LIMIT 1
+        `;
+
+        const result = await loggingConfig.logger.pool.query(querySQL, [slug]);
+        
+        if (result.rows.length > 0) {
+            return result.rows[0];
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Failed to get chatbot by slug:', error);
+        return null;
+    }
+};
+
 // Helper function to get active chatbot from database
 // Permission rules:
 // - Inactive: accessible by no users (excluded from results)
@@ -1732,8 +1867,17 @@ app.get('/api/chatkit/session', requireAuth, checkUserPermissions, async (req, r
         // Get user type from session for permission checking
         const userType = req.session.user?.userType || req.session.userType || null;
         
-        // Get active chatbot from database (with permission filtering)
-        const activeChatbot = await getActiveChatbot(userType);
+        // Get chatbot - prefer slug from session (if user came via /chatkit/:slug route)
+        // Otherwise fall back to active chatbot
+        let activeChatbot = null;
+        if (req.session.activeChatbotSlug) {
+            activeChatbot = await getChatbotBySlug(req.session.activeChatbotSlug, userType);
+        }
+        
+        if (!activeChatbot) {
+            activeChatbot = await getActiveChatbot(userType);
+        }
+        
         if (!activeChatbot || !activeChatbot.workflow_id) {
             console.log('ERROR: No active chatbot found in database (or user lacks permission)');
             return res.status(500).json({ 
@@ -1963,8 +2107,17 @@ app.post('/api/chatkit/session', requireAuth, checkUserPermissions, async (req, 
         // Get user type from session for permission checking
         const userType = req.session.user?.userType || req.session.userType || null;
         
-        // Get active chatbot from database (with permission filtering)
-        const activeChatbot = await getActiveChatbot(userType);
+        // Get chatbot - prefer slug from session (if user came via /chatkit/:slug route)
+        // Otherwise fall back to active chatbot
+        let activeChatbot = null;
+        if (req.session.activeChatbotSlug) {
+            activeChatbot = await getChatbotBySlug(req.session.activeChatbotSlug, userType);
+        }
+        
+        if (!activeChatbot) {
+            activeChatbot = await getActiveChatbot(userType);
+        }
+        
         if (!activeChatbot || !activeChatbot.workflow_id) {
             console.log('ERROR: No active chatbot found in database (or user lacks permission)');
             return res.status(500).json({ 
@@ -3442,6 +3595,17 @@ app.post('/api/admin/chatbots/create', requireAuth, checkUserPermissions, requir
                 throw new Error(`status is required and must be one of: Prod, Test, Inactive`);
             }
 
+            // Auto-generate slug if not provided
+            let finalSlug = slug && slug.trim() !== '' ? slug.trim() : null;
+            if (!finalSlug) {
+                try {
+                    finalSlug = await generateUniqueSlug(chatbot_name.trim(), loggingConfig.logger.pool);
+                } catch (error) {
+                    console.error('Failed to generate slug for chatbot:', error);
+                    throw new Error(`Failed to generate unique slug: ${error.message}`);
+                }
+            }
+
             const insertSQL = `
                 INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status, slug, created)
                 VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
@@ -3453,7 +3617,7 @@ app.post('/api/admin/chatbots/create', requireAuth, checkUserPermissions, requir
                 workflow_id.trim(),
                 workflow_version && workflow_version.trim() !== '' ? workflow_version.trim() : null,
                 status,
-                slug && slug.trim() !== '' ? slug.trim() : null
+                finalSlug
             ]);
             
             return result.rows[0];
@@ -3812,8 +3976,8 @@ app.get('/simple', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist-simple', 'index.html'));
 });
 
-// ChatKit interface route - serve React app (restricted to Admin and Standard users)
-app.get('/chatkit', requireAuth, checkUserPermissions, (req, res) => {
+// ChatKit interface route with slug - serve React app (restricted to Admin and Standard users)
+app.get('/chatkit/:slug', requireAuth, checkUserPermissions, async (req, res) => {
     const userType = req.session.user.userType || req.session.userType;
     
     // Block New users from accessing chat
@@ -3821,10 +3985,60 @@ app.get('/chatkit', requireAuth, checkUserPermissions, (req, res) => {
         return res.redirect('/new-user-home');
     }
     
+    const { slug } = req.params;
+    
+    // Get chatbot by slug with permission checking
+    const chatbot = await getChatbotBySlug(slug, userType);
+    
+    if (!chatbot) {
+        return res.status(404).send(`
+            <html>
+                <head><title>Chatbot Not Found</title></head>
+                <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+                    <h1>Chatbot Not Found</h1>
+                    <p>The chatbot "${slug}" could not be found or you don't have permission to access it.</p>
+                    <p><a href="/homepage">Return to Homepage</a></p>
+                </body>
+            </html>
+        `);
+    }
+    
+    // Store chatbot info in session for API endpoints
+    req.session.activeChatbotSlug = slug;
+    
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+// Legacy /chatkit route - redirect to active chatbot's slug for backward compatibility
+app.get('/chatkit', requireAuth, checkUserPermissions, async (req, res) => {
+    const userType = req.session.user.userType || req.session.userType;
+    
+    // Block New users from accessing chat
+    if (userType === 'New') {
+        return res.redirect('/new-user-home');
+    }
+    
+    // Get active chatbot and redirect to its slug
+    const activeChatbot = await getActiveChatbot(userType);
+    
+    if (!activeChatbot || !activeChatbot.slug) {
+        return res.status(404).send(`
+            <html>
+                <head><title>No Active Chatbot</title></head>
+                <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+                    <h1>No Active Chatbot</h1>
+                    <p>No active chatbot is configured or you don't have permission to access it.</p>
+                    <p><a href="/homepage">Return to Homepage</a></p>
+                </body>
+            </html>
+        `);
+    }
+    
+    // Redirect to slug-based path
+    res.redirect(`/chatkit/${activeChatbot.slug}`);
 });
 
 // ============ Root Route (Must be LAST) ============

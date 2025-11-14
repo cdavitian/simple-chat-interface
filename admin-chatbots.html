@@ -280,6 +280,7 @@
                         <tr>
                             <th>Chatbot ID</th>
                             <th>Chatbot Name</th>
+                            <th>Slug</th>
                             <th>Workflow ID</th>
                             <th>Workflow Version</th>
                             <th>Status</th>
@@ -299,6 +300,15 @@
                                         (chatbot.chatbot_name || 'N/A')
                                     }
                                     ${isEditMode ? '<div class="change-indicator" id="indicator-' + index + '-chatbot_name"></div>' : ''}
+                                </td>
+                                <td>
+                                    ${isEditMode ? 
+                                        (isDraft ? 
+                                            `<input type="text" class="editable-field" value="" readonly placeholder="Auto-generated on save" style="background-color: #f5f5f5; cursor: not-allowed; font-style: italic; color: #999;" title="Slug will be auto-generated from chatbot name when saved">` :
+                                            `<input type="text" class="editable-field" value="${(chatbot.slug || '').replace(/"/g, '&quot;')}" readonly style="background-color: #f5f5f5; cursor: not-allowed;" title="Slug is auto-generated and read-only">`
+                                        ) : 
+                                        (chatbot.slug || '<em>N/A</em>')
+                                    }
                                 </td>
                                 <td>
                                     ${isEditMode ? 
