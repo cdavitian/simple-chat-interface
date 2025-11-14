@@ -3328,6 +3328,98 @@ app.post('/api/admin/chatbots/update', requireAuth, checkUserPermissions, requir
     }
 });
 
+// Create chatbots (admin only)
+app.post('/api/admin/chatbots/create', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        const { chatbots } = req.body;
+        
+        if (!chatbots || !Array.isArray(chatbots)) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Invalid request: chatbots array required' 
+            });
+        }
+
+        // Only work with PostgreSQL logger
+        if (loggingConfig.loggerType !== 'postgresql') {
+            return res.status(500).json({ 
+                success: false,
+                error: 'Chatbots feature requires PostgreSQL database' 
+            });
+        }
+
+        if (!loggingConfig.logger || !loggingConfig.logger.pool) {
+            return res.status(500).json({ 
+                success: false,
+                error: 'Database connection not available' 
+            });
+        }
+
+        // Validate chatbot status using constants
+        const { isValidChatbotStatus } = require('./constants.js');
+
+        const createPromises = chatbots.map(async (chatbotData) => {
+            const { chatbot_name, workflow_id, workflow_version, status } = chatbotData;
+            
+            // Validate required fields
+            if (!chatbot_name || chatbot_name.trim() === '') {
+                throw new Error('chatbot_name is required and cannot be empty');
+            }
+            
+            if (!workflow_id || workflow_id.trim() === '') {
+                throw new Error('workflow_id is required and cannot be empty');
+            }
+            
+            if (!status || !isValidChatbotStatus(status)) {
+                throw new Error(`status is required and must be one of: Prod, Test, Inactive`);
+            }
+
+            const insertSQL = `
+                INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status, created)
+                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                RETURNING chatbot_id, chatbot_name, workflow_id, workflow_version, status, created
+            `;
+
+            const result = await loggingConfig.logger.pool.query(insertSQL, [
+                chatbot_name.trim(),
+                workflow_id.trim(),
+                workflow_version && workflow_version.trim() !== '' ? workflow_version.trim() : null,
+                status
+            ]);
+            
+            return result.rows[0];
+        });
+        
+        const results = await Promise.all(createPromises);
+        
+        // Log the admin action
+        const clientInfo = getClientInfo(req);
+        await loggingConfig.logAccess({
+            userId: req.session.user.id,
+            email: req.session.user.email,
+            eventType: 'admin_chatbot_create',
+            metadata: {
+                chatbotsCreated: results.length,
+                chatbotIds: results.map(r => r.chatbot_id)
+            },
+            ...clientInfo
+        });
+        
+        res.json({
+            success: true,
+            message: `Successfully created ${results.length} chatbot(s)`,
+            chatbots: results
+        });
+    } catch (error) {
+        console.error('Failed to create chatbots:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to create chatbots',
+            details: error.message 
+        });
+    }
+});
+
 // Increment version (admin only)
 app.post('/api/admin/version/increment', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
     try {

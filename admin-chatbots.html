@@ -185,6 +185,26 @@
         .change-indicator.visible {
             display: block;
         }
+        
+        .add-row-container {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        .add-row-container.visible {
+            display: block;
+        }
+        
+        .draft-row {
+            background: #fff3cd !important;
+        }
+        
+        .draft-row:hover {
+            background: #ffeaa7 !important;
+        }
     </style>
 </head>
 <body>
@@ -218,6 +238,7 @@
         let isEditMode = false;
         let originalChatbotData = [];
         let currentChatbotData = [];
+        let draftRows = []; // Track draft rows (new rows not yet saved)
 
         async function loadChatbots() {
             try {
@@ -237,19 +258,22 @@
         function displayChatbots(chatbots) {
             const container = document.getElementById('chatbotsContainer');
             
-            if (chatbots.length === 0) {
-                container.innerHTML = '<div class="no-data">No chatbots found</div>';
-                document.getElementById('editControls').style.display = 'none';
-                return;
-            }
-
             // Store chatbot data for edit mode
             currentChatbotData = chatbots.map(chatbot => ({ ...chatbot }));
             originalChatbotData = chatbots.map(chatbot => ({ ...chatbot }));
+            // Note: draftRows is maintained separately and not reset on load
 
-            // Show edit controls
+            // Show edit controls (even if no chatbots, user can still add one)
             document.getElementById('editControls').style.display = 'flex';
+            
+            if (chatbots.length === 0 && draftRows.length === 0 && !isEditMode) {
+                container.innerHTML = '<div class="no-data">No chatbots found. Click "Edit" to add a new chatbot.</div>';
+                return;
+            }
 
+            // Combine existing chatbots with draft rows
+            const allChatbots = [...chatbots, ...draftRows];
+            
             const table = `
                 <table class="chatbots-table ${isEditMode ? 'editable' : ''}">
                     <thead>
@@ -263,9 +287,12 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${chatbots.map((chatbot, index) => `
-                            <tr data-chatbot-index="${index}">
-                                <td>${chatbot.chatbot_id}</td>
+                        ${allChatbots.map((chatbot, index) => {
+                            const isDraft = !chatbot.chatbot_id;
+                            const rowClass = isDraft ? 'draft-row' : '';
+                            return `
+                            <tr data-chatbot-index="${index}" class="${rowClass}" data-is-draft="${isDraft}">
+                                <td>${chatbot.chatbot_id || '<em>New</em>'}</td>
                                 <td>
                                     ${isEditMode ? 
                                         `<input type="text" class="editable-field" value="${(chatbot.chatbot_name || '').replace(/"/g, '&quot;')}" onchange="markFieldChanged(${index}, 'chatbot_name', this.value)" data-field="chatbot_name">` : 
@@ -290,8 +317,8 @@
                                 <td>
                                     ${isEditMode ? 
                                         `<select class="editable-field" onchange="markFieldChanged(${index}, 'status', this.value)" data-field="status" required>
-                                            ${CHATBOT_STATUS_OPTIONS.map(status => 
-                                                `<option value="${status}" ${chatbot.status === status ? 'selected' : ''}>${getChatbotStatusDisplayName(status)}</option>`
+                                            ${Constants.CHATBOT_STATUS_OPTIONS.map(status => 
+                                                `<option value="${status}" ${chatbot.status === status ? 'selected' : ''}>${Constants.getChatbotStatusDisplayName(status)}</option>`
                                             ).join('')}
                                         </select>` : 
                                         `<span class="status-badge status-${(chatbot.status || '').toLowerCase()}">
@@ -300,11 +327,17 @@
                                     }
                                     ${isEditMode ? '<div class="change-indicator" id="indicator-' + index + '-status"></div>' : ''}
                                 </td>
-                                <td>${chatbot.created ? new Date(chatbot.created).toLocaleString() : 'N/A'}</td>
+                                <td>${chatbot.created ? new Date(chatbot.created).toLocaleString() : '<em>Not created</em>'}</td>
                             </tr>
-                        `).join('')}
+                        `;
+                        }).join('')}
                     </tbody>
                 </table>
+                ${isEditMode ? `
+                    <div class="add-row-container visible">
+                        <button onclick="addDraftRow()" style="background: #28a745;">+ Add New Chatbot</button>
+                    </div>
+                ` : ''}
             `;
             
             container.innerHTML = table;
@@ -335,6 +368,9 @@
                 document.getElementById('saveBtn').style.display = 'none';
                 document.getElementById('cancelBtn').style.display = 'none';
                 
+                // Clear draft rows when exiting edit mode
+                draftRows = [];
+                
                 // Re-render the table in normal mode
                 displayChatbots(currentChatbotData);
             }
@@ -351,8 +387,19 @@
         }
 
         function markFieldChanged(chatbotIndex, fieldName, newValue) {
-            // Update the current chatbot data
-            currentChatbotData[chatbotIndex][fieldName] = newValue;
+            // Determine if this is a draft row or existing row
+            // chatbotIndex is the index in the combined array (currentChatbotData + draftRows)
+            
+            if (chatbotIndex < currentChatbotData.length) {
+                // Existing chatbot - update in currentChatbotData
+                currentChatbotData[chatbotIndex][fieldName] = newValue;
+            } else {
+                // Draft row - update in draftRows
+                const draftIndex = chatbotIndex - currentChatbotData.length;
+                if (draftIndex >= 0 && draftIndex < draftRows.length) {
+                    draftRows[draftIndex][fieldName] = newValue;
+                }
+            }
             
             // Show change indicator
             const indicator = document.getElementById(`indicator-${chatbotIndex}-${fieldName}`);
@@ -360,10 +407,25 @@
                 indicator.classList.add('visible');
             }
         }
+        
+        function addDraftRow() {
+            // Create a new draft row with blank fields
+            const newDraft = {
+                chatbot_name: '',
+                workflow_id: '',
+                workflow_version: '',
+                status: Constants.CHATBOT_STATUS_OPTIONS[0] || 'Test' // Default to first status option
+            };
+            
+            draftRows.push(newDraft);
+            
+            // Re-render the table to show the new draft row
+            displayChatbots(currentChatbotData);
+        }
 
         async function saveChanges() {
             try {
-                // Find chatbots that have been changed
+                // Find chatbots that have been changed (updates)
                 const changedChatbots = [];
                 for (let i = 0; i < currentChatbotData.length; i++) {
                     const current = currentChatbotData[i];
@@ -400,30 +462,74 @@
                     }
                 }
 
-                if (changedChatbots.length === 0) {
+                // Prepare new chatbots to create (from draft rows)
+                const newChatbots = draftRows.map(draft => ({
+                    chatbot_name: draft.chatbot_name || '',
+                    workflow_id: draft.workflow_id || '',
+                    workflow_version: draft.workflow_version || null,
+                    status: draft.status || Constants.CHATBOT_STATUS_OPTIONS[0] || 'Test'
+                })).filter(draft => {
+                    // Only include drafts with required fields filled
+                    return draft.chatbot_name.trim() !== '' && draft.workflow_id.trim() !== '' && draft.status;
+                });
+
+                if (changedChatbots.length === 0 && newChatbots.length === 0) {
                     alert('No changes to save.');
                     return;
                 }
 
-                // Send update request to server
-                const response = await fetch('/api/admin/chatbots/update', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ chatbots: changedChatbots })
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    alert(`Successfully updated ${changedChatbots.length} chatbot(s).`);
-                    // Exit edit mode and reload data
-                    exitEditMode();
-                    loadChatbots();
-                } else {
-                    alert('Failed to save changes: ' + (result.error || 'Unknown error'));
+                // Send update and create requests
+                const promises = [];
+                
+                if (changedChatbots.length > 0) {
+                    promises.push(
+                        fetch('/api/admin/chatbots/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ chatbots: changedChatbots })
+                        }).then(res => res.json())
+                    );
                 }
+                
+                if (newChatbots.length > 0) {
+                    promises.push(
+                        fetch('/api/admin/chatbots/create', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ chatbots: newChatbots })
+                        }).then(res => res.json())
+                    );
+                }
+
+                const results = await Promise.all(promises);
+                
+                // Check for errors
+                const errors = results.filter(r => !r.success);
+                if (errors.length > 0) {
+                    const errorMessages = errors.map(e => e.error || e.details || 'Unknown error').join('; ');
+                    alert('Failed to save changes: ' + errorMessages);
+                    return;
+                }
+
+                // Success messages
+                const messages = [];
+                if (changedChatbots.length > 0) {
+                    messages.push(`Updated ${changedChatbots.length} chatbot(s)`);
+                }
+                if (newChatbots.length > 0) {
+                    messages.push(`Created ${newChatbots.length} chatbot(s)`);
+                }
+                
+                alert(messages.join('. ') + '.');
+                
+                // Clear draft rows and exit edit mode
+                draftRows = [];
+                exitEditMode();
+                loadChatbots();
             } catch (error) {
                 console.error('Error saving changes:', error);
                 alert('Error saving changes: ' + error.message);
@@ -433,6 +539,9 @@
         function cancelEdit() {
             // Reset to original data
             currentChatbotData = originalChatbotData.map(chatbot => ({ ...chatbot }));
+            
+            // Clear draft rows
+            draftRows = [];
             
             // Show helpful dialog
             alert('Canceled all changes');
