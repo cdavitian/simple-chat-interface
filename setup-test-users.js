@@ -17,7 +17,6 @@ const pool = new Pool({
         sslmode: 'require'
     } : false
 });
-/// ignore this change
 
 async function setupTestUsers() {
     try {
