@@ -137,7 +137,8 @@ const runChatbotsMigration = async () => {
                     workflow_id VARCHAR(255) NOT NULL,
                     workflow_version VARCHAR(255) DEFAULT NULL,
                     created TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    status VARCHAR(50) NOT NULL CHECK (status IN ('Prod', 'Test', 'Inactive'))
+                    status VARCHAR(50) NOT NULL CHECK (status IN ('Prod', 'Test', 'Inactive')),
+                    slug VARCHAR(255) UNIQUE
                 );
             `;
 
@@ -147,7 +148,8 @@ const runChatbotsMigration = async () => {
             // Create indexes
             const indexSQL = [
                 'CREATE INDEX IF NOT EXISTS idx_chatbots_status ON chatbots(status)',
-                'CREATE INDEX IF NOT EXISTS idx_chatbots_created ON chatbots(created)'
+                'CREATE INDEX IF NOT EXISTS idx_chatbots_created ON chatbots(created)',
+                'CREATE INDEX IF NOT EXISTS idx_chatbots_slug ON chatbots(slug)'
             ];
 
             for (const sql of indexSQL) {
@@ -170,14 +172,15 @@ const runChatbotsMigration = async () => {
                     
                     if (parseInt(existing.rows[0].count) === 0) {
                         const insertSQL = `
-                            INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status)
-                            VALUES ($1, $2, $3, $4)
+                            INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status, slug)
+                            VALUES ($1, $2, $3, $4, $5)
                         `;
                         await loggingConfig.logger.pool.query(insertSQL, [
                             'Test MCP - ChatKit',
                             process.env.OPENAI_CHATKIT_WORKFLOW_ID,
                             null,
-                            'Prod'
+                            'Prod',
+                            'chatkit' // Default slug for initial chatbot
                         ]);
                         console.log('✅ Initial chatbot "Test MCP - ChatKit" inserted successfully (migrated from OPENAI_CHATKIT_WORKFLOW_ID)');
                     }
@@ -186,7 +189,36 @@ const runChatbotsMigration = async () => {
                 }
             }
         } else {
-            console.log('✅ Chatbots table already exists, migration not needed');
+            console.log('✅ Chatbots table already exists, checking for slug column...');
+            
+            // Check if slug column exists, add it if missing
+            const checkSlugColumnSQL = `
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'chatbots' 
+                    AND column_name = 'slug'
+                );
+            `;
+            
+            const slugColumnExists = await loggingConfig.logger.pool.query(checkSlugColumnSQL);
+            
+            if (!slugColumnExists.rows[0].exists) {
+                console.log('Adding slug column to existing chatbots table...');
+                
+                // Add slug column
+                await loggingConfig.logger.pool.query(`
+                    ALTER TABLE chatbots ADD COLUMN slug VARCHAR(255) UNIQUE;
+                `);
+                
+                // Create index on slug
+                await loggingConfig.logger.pool.query(`
+                    CREATE INDEX IF NOT EXISTS idx_chatbots_slug ON chatbots(slug);
+                `);
+                
+                console.log('✅ Slug column added to chatbots table');
+            } else {
+                console.log('✅ Slug column already exists');
+            }
         }
     } catch (error) {
         console.error('Chatbots migration check failed (non-critical):', error.message);
@@ -201,7 +233,12 @@ runChatbotsMigration().catch(err => {
 });
 
 // Helper function to get active chatbot from database
-const getActiveChatbot = async () => {
+// Permission rules:
+// - Inactive: accessible by no users (excluded from results)
+// - Prod: accessible to all users
+// - Test: accessible to Admin users only
+// @param {string} userType - Optional user type ('Admin', 'Standard', 'New', etc.)
+const getActiveChatbot = async (userType = null) => {
     try {
         // Only work with PostgreSQL logger
         if (loggingConfig.loggerType !== 'postgresql') {
@@ -212,16 +249,29 @@ const getActiveChatbot = async () => {
             return null;
         }
 
-        // Get the first active chatbot with status 'Prod' or 'Test' (preferring 'Prod')
+        // Build status filter based on user permissions
+        // Inactive chatbots are never accessible
+        // Prod chatbots are accessible to all users
+        // Test chatbots are only accessible to Admin users
+        let statusFilter = "status = 'Prod'"; // Default: only Prod for non-admin users
+        
+        if (userType === 'Admin') {
+            // Admin users can access both Prod and Test (prefer Prod)
+            statusFilter = "status IN ('Prod', 'Test')";
+        }
+        // For non-admin users or when userType is not provided, only Prod is accessible
+
+        // Get the first active chatbot matching the permission criteria (preferring 'Prod')
         const querySQL = `
             SELECT 
                 chatbot_id,
                 chatbot_name,
                 workflow_id,
                 workflow_version,
-                status
+                status,
+                slug
             FROM chatbots
-            WHERE status IN ('Prod', 'Test')
+            WHERE ${statusFilter}
             ORDER BY 
                 CASE status 
                     WHEN 'Prod' THEN 1 
@@ -1656,7 +1706,7 @@ async function getOrCreateVectorStoreForConversation(client, conversationId, ses
 
 // ChatKit session endpoint - generates client tokens for ChatKit
 // Supports both GET and POST for flexibility
-app.get('/api/chatkit/session', requireAuth, async (req, res) => {
+app.get('/api/chatkit/session', requireAuth, checkUserPermissions, async (req, res) => {
     try {
         console.log('ChatKit session request received (GET)');
         
@@ -1679,12 +1729,15 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
             });
         }
 
-        // Get active chatbot from database
-        const activeChatbot = await getActiveChatbot();
+        // Get user type from session for permission checking
+        const userType = req.session.user?.userType || req.session.userType || null;
+        
+        // Get active chatbot from database (with permission filtering)
+        const activeChatbot = await getActiveChatbot(userType);
         if (!activeChatbot || !activeChatbot.workflow_id) {
-            console.log('ERROR: No active chatbot found in database');
+            console.log('ERROR: No active chatbot found in database (or user lacks permission)');
             return res.status(500).json({ 
-                error: 'No active chatbot configured. Please configure a chatbot in the admin panel.' 
+                error: 'No active chatbot configured or you do not have permission to access it. Please contact an administrator.' 
             });
         }
 
@@ -1884,7 +1937,7 @@ app.get('/api/chatkit/session', requireAuth, async (req, res) => {
 });
 
 // POST endpoint for backwards compatibility (also returns no-store)
-app.post('/api/chatkit/session', requireAuth, async (req, res) => {
+app.post('/api/chatkit/session', requireAuth, checkUserPermissions, async (req, res) => {
     try {
         console.log('ChatKit session request received (POST)');
         
@@ -1907,12 +1960,15 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
             });
         }
 
-        // Get active chatbot from database
-        const activeChatbot = await getActiveChatbot();
+        // Get user type from session for permission checking
+        const userType = req.session.user?.userType || req.session.userType || null;
+        
+        // Get active chatbot from database (with permission filtering)
+        const activeChatbot = await getActiveChatbot(userType);
         if (!activeChatbot || !activeChatbot.workflow_id) {
-            console.log('ERROR: No active chatbot found in database');
+            console.log('ERROR: No active chatbot found in database (or user lacks permission)');
             return res.status(500).json({ 
-                error: 'No active chatbot configured. Please configure a chatbot in the admin panel.' 
+                error: 'No active chatbot configured or you do not have permission to access it. Please contact an administrator.' 
             });
         }
 
@@ -2097,7 +2153,7 @@ app.post('/api/chatkit/session', requireAuth, async (req, res) => {
 });
 
 // ChatKit session reset endpoint - ends current session and starts a new one
-app.post('/api/chatkit/session/reset', requireAuth, async (req, res) => {
+app.post('/api/chatkit/session/reset', requireAuth, checkUserPermissions, async (req, res) => {
     try {
         console.log('ChatKit session reset request received');
         
@@ -3129,14 +3185,18 @@ app.get('/api/admin/version', requireAuth, checkUserPermissions, requireAdmin, a
 });
 
 // Get active chatbot (public endpoint for homepage)
-app.get('/api/chatbot/active', requireAuth, async (req, res) => {
+app.get('/api/chatbot/active', requireAuth, checkUserPermissions, async (req, res) => {
     try {
-        const activeChatbot = await getActiveChatbot();
+        // Get user type from session for permission checking
+        const userType = req.session.user?.userType || req.session.userType || null;
+        
+        const activeChatbot = await getActiveChatbot(userType);
         
         if (!activeChatbot) {
             return res.json({
                 success: false,
-                chatbot: null
+                chatbot: null,
+                message: 'No active chatbot available or you do not have permission to access it'
             });
         }
         
@@ -3145,7 +3205,8 @@ app.get('/api/chatbot/active', requireAuth, async (req, res) => {
             chatbot: {
                 chatbot_id: activeChatbot.chatbot_id,
                 chatbot_name: activeChatbot.chatbot_name,
-                status: activeChatbot.status
+                status: activeChatbot.status,
+                slug: activeChatbot.slug
             }
         });
     } catch (error) {
@@ -3183,7 +3244,8 @@ app.get('/api/admin/chatbots', requireAuth, checkUserPermissions, requireAdmin, 
                 workflow_id,
                 workflow_version,
                 created,
-                status
+                status,
+                slug
             FROM chatbots
             ORDER BY chatbot_id ASC
         `;
@@ -3235,7 +3297,7 @@ app.post('/api/admin/chatbots/update', requireAuth, checkUserPermissions, requir
         const { isValidChatbotStatus } = require('./constants.js');
 
         const updatePromises = chatbots.map(async (chatbotUpdate) => {
-            const { chatbot_id, chatbot_name, workflow_id, workflow_version, status } = chatbotUpdate;
+            const { chatbot_id, chatbot_name, workflow_id, workflow_version, status, slug } = chatbotUpdate;
             
             if (!chatbot_id) {
                 throw new Error('chatbot_id is required for each chatbot update');
@@ -3274,6 +3336,12 @@ app.post('/api/admin/chatbots/update', requireAuth, checkUserPermissions, requir
                 }
                 updateFields.push(`status = $${paramIndex++}`);
                 updateValues.push(status);
+            }
+
+            if (slug !== undefined) {
+                // slug can be null or empty string (which becomes null), or a valid slug string
+                updateFields.push(`slug = $${paramIndex++}`);
+                updateValues.push(slug && slug.trim() !== '' ? slug.trim() : null);
             }
 
             if (updateFields.length === 0) {
@@ -3359,7 +3427,7 @@ app.post('/api/admin/chatbots/create', requireAuth, checkUserPermissions, requir
         const { isValidChatbotStatus } = require('./constants.js');
 
         const createPromises = chatbots.map(async (chatbotData) => {
-            const { chatbot_name, workflow_id, workflow_version, status } = chatbotData;
+            const { chatbot_name, workflow_id, workflow_version, status, slug } = chatbotData;
             
             // Validate required fields
             if (!chatbot_name || chatbot_name.trim() === '') {
@@ -3375,16 +3443,17 @@ app.post('/api/admin/chatbots/create', requireAuth, checkUserPermissions, requir
             }
 
             const insertSQL = `
-                INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status, created)
-                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-                RETURNING chatbot_id, chatbot_name, workflow_id, workflow_version, status, created
+                INSERT INTO chatbots (chatbot_name, workflow_id, workflow_version, status, slug, created)
+                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+                RETURNING chatbot_id, chatbot_name, workflow_id, workflow_version, status, slug, created
             `;
 
             const result = await loggingConfig.logger.pool.query(insertSQL, [
                 chatbot_name.trim(),
                 workflow_id.trim(),
                 workflow_version && workflow_version.trim() !== '' ? workflow_version.trim() : null,
-                status
+                status,
+                slug && slug.trim() !== '' ? slug.trim() : null
             ]);
             
             return result.rows[0];

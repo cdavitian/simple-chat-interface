@@ -333,7 +333,7 @@
                         }).join('')}
                     </tbody>
                 </table>
-                ${isEditMode ? `
+                ${isEditMode && draftRows.length === 0 ? `
                     <div class="add-row-container visible">
                         <button onclick="addDraftRow()" style="background: #28a745;">+ Add New Chatbot</button>
                     </div>
@@ -409,6 +409,12 @@
         }
         
         function addDraftRow() {
+            // Only allow one draft row at a time
+            if (draftRows.length > 0) {
+                alert('You can only add one new chatbot at a time. Please save or cancel the current draft before adding another.');
+                return;
+            }
+            
             // Create a new draft row with blank fields
             const newDraft = {
                 chatbot_name: '',
@@ -419,7 +425,7 @@
             
             draftRows.push(newDraft);
             
-            // Re-render the table to show the new draft row
+            // Re-render the table to show the new draft row (button will be hidden)
             displayChatbots(currentChatbotData);
         }
 
@@ -462,16 +468,40 @@
                     }
                 }
 
-                // Prepare new chatbots to create (from draft rows)
+                // Validate and prepare new chatbots to create (from draft rows)
+                const validationErrors = [];
+                
+                for (let i = 0; i < draftRows.length; i++) {
+                    const draft = draftRows[i];
+                    const chatbotName = (draft.chatbot_name || '').trim();
+                    const workflowId = (draft.workflow_id || '').trim();
+                    
+                    // Validate Chatbot Name: Cannot be blank
+                    if (chatbotName === '') {
+                        validationErrors.push(`Row ${i + 1}: Chatbot Name cannot be blank.`);
+                    }
+                    
+                    // Validate Workflow ID: Must start with "wf_"
+                    if (workflowId === '') {
+                        validationErrors.push(`Row ${i + 1}: Workflow ID cannot be blank.`);
+                    } else if (!workflowId.startsWith('wf_')) {
+                        validationErrors.push(`Row ${i + 1}: Workflow ID must start with "wf_".`);
+                    }
+                }
+                
+                // If there are validation errors, show them and prevent saving
+                if (validationErrors.length > 0) {
+                    alert('Validation errors:\n\n' + validationErrors.join('\n') + '\n\nPlease fix these errors before saving.');
+                    return;
+                }
+                
+                // Prepare new chatbots to create (all drafts should pass validation now)
                 const newChatbots = draftRows.map(draft => ({
-                    chatbot_name: draft.chatbot_name || '',
-                    workflow_id: draft.workflow_id || '',
-                    workflow_version: draft.workflow_version || null,
+                    chatbot_name: (draft.chatbot_name || '').trim(),
+                    workflow_id: (draft.workflow_id || '').trim(),
+                    workflow_version: (draft.workflow_version || '').trim() || null,
                     status: draft.status || Constants.CHATBOT_STATUS_OPTIONS[0] || 'Test'
-                })).filter(draft => {
-                    // Only include drafts with required fields filled
-                    return draft.chatbot_name.trim() !== '' && draft.workflow_id.trim() !== '' && draft.status;
-                });
+                }));
 
                 if (changedChatbots.length === 0 && newChatbots.length === 0) {
                     alert('No changes to save.');
