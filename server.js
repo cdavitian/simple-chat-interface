@@ -429,6 +429,63 @@ const getActiveChatbot = async (userType = null) => {
     }
 };
 
+// Helper function to get all accessible chatbots for a user
+// Permission rules:
+// - Inactive: accessible by no users (excluded from results)
+// - Prod: accessible to all users
+// - Test: accessible to Admin users only
+// @param {string} userType - Optional user type ('Admin', 'Standard', 'New', etc.)
+// @returns {Array} Array of chatbot objects
+const getAccessibleChatbots = async (userType = null) => {
+    try {
+        // Only work with PostgreSQL logger
+        if (loggingConfig.loggerType !== 'postgresql') {
+            return [];
+        }
+
+        if (!loggingConfig.logger || !loggingConfig.logger.pool) {
+            return [];
+        }
+
+        // Build status filter based on user permissions
+        // Inactive chatbots are never accessible
+        // Prod chatbots are accessible to all users
+        // Test chatbots are only accessible to Admin users
+        let statusFilter = "status = 'Prod'"; // Default: only Prod for non-admin users
+        
+        if (userType === 'Admin') {
+            // Admin users can access both Prod and Test
+            statusFilter = "status IN ('Prod', 'Test')";
+        }
+
+        // Get all accessible chatbots matching the permission criteria
+        const querySQL = `
+            SELECT 
+                chatbot_id,
+                chatbot_name,
+                workflow_id,
+                workflow_version,
+                status,
+                slug
+            FROM chatbots
+            WHERE ${statusFilter}
+            ORDER BY 
+                CASE status 
+                    WHEN 'Prod' THEN 1 
+                    WHEN 'Test' THEN 2 
+                END,
+                chatbot_name ASC
+        `;
+
+        const result = await loggingConfig.logger.pool.query(querySQL);
+        
+        return result.rows;
+    } catch (error) {
+        console.error('Failed to get accessible chatbots:', error);
+        return [];
+    }
+};
+
 // Configure AWS
 AWS.config.update({
     region: process.env.AWS_REGION || 'us-east-1',
@@ -2058,14 +2115,16 @@ app.get('/api/chatkit/session', requireAuth, checkUserPermissions, async (req, r
             clientToken: clientToken,
             publicKey: publicKey,
             sessionId: sessionId,
-            vector_store_id: vectorStoreId || null  // ✅ NEW: Include vector_store_id
+            vector_store_id: vectorStoreId || null,  // ✅ NEW: Include vector_store_id
+            chatbotName: activeChatbot.chatbot_name || null  // Include chatbot name for title bar
         };
         
         console.log('Sending ChatKit session data (GET):', {
             clientToken: clientToken.substring(0, 20) + '...',
             publicKey: sessionData.publicKey.substring(0, 20) + '...',
             sessionId: sessionId,
-            vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
+            vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
+            chatbotName: activeChatbot.chatbot_name
         });
         
         res.json(sessionData);
@@ -2283,14 +2342,16 @@ app.post('/api/chatkit/session', requireAuth, checkUserPermissions, async (req, 
             clientToken: clientToken,
             publicKey: publicKey,
             sessionId: sessionId,
-            vector_store_id: vectorStoreId || null  // ✅ NEW: Include vector_store_id
+            vector_store_id: vectorStoreId || null,  // ✅ NEW: Include vector_store_id
+            chatbotName: activeChatbot.chatbot_name || null  // Include chatbot name for title bar
         };
         
         console.log('Sending ChatKit session data (POST):', {
             clientToken: clientToken.substring(0, 20) + '...',
             publicKey: sessionData.publicKey.substring(0, 20) + '...',
             sessionId: sessionId,
-            vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
+            vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
+            chatbotName: activeChatbot.chatbot_name
         });
         
         res.json(sessionData);
@@ -2476,7 +2537,8 @@ app.post('/api/chatkit/session/reset', requireAuth, checkUserPermissions, async 
             clientToken: clientToken,
             publicKey: publicKey,
             sessionId: sessionId,
-            vector_store_id: vectorStoreId || null
+            vector_store_id: vectorStoreId || null,
+            chatbotName: activeChatbot.chatbot_name || null  // Include chatbot name for title bar
         };
         
         // Log the reset to deployment logs
@@ -2493,7 +2555,8 @@ app.post('/api/chatkit/session/reset', requireAuth, checkUserPermissions, async 
             clientToken: clientToken.substring(0, 20) + '...',
             publicKey: sessionData.publicKey.substring(0, 20) + '...',
             sessionId: sessionId,
-            vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none'
+            vector_store_id: vectorStoreId ? vectorStoreId.substring(0, 20) + '...' : 'none',
+            chatbotName: activeChatbot.chatbot_name
         });
         
         res.json({
@@ -3367,6 +3430,33 @@ app.get('/api/chatbot/active', requireAuth, checkUserPermissions, async (req, re
         res.status(500).json({ 
             success: false,
             error: 'Failed to retrieve active chatbot',
+            details: error.message 
+        });
+    }
+});
+
+// Get all accessible chatbots for current user
+app.get('/api/chatbots', requireAuth, checkUserPermissions, async (req, res) => {
+    try {
+        // Get user type from session for permission checking
+        const userType = req.session.user?.userType || req.session.userType || null;
+        
+        const chatbots = await getAccessibleChatbots(userType);
+        
+        res.json({
+            success: true,
+            chatbots: chatbots.map(chatbot => ({
+                chatbot_id: chatbot.chatbot_id,
+                chatbot_name: chatbot.chatbot_name,
+                status: chatbot.status,
+                slug: chatbot.slug
+            }))
+        });
+    } catch (error) {
+        console.error('Failed to get accessible chatbots:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to retrieve accessible chatbots',
             details: error.message 
         });
     }

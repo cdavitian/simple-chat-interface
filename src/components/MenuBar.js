@@ -1,7 +1,12 @@
 import React from 'react';
 import './MenuBar.css';
 
-const MenuBar = ({ user }) => {
+const MenuBar = ({ user, chatbotName }) => {
+  // Truncate chatbot name if longer than 15 characters
+  const displayName = chatbotName && chatbotName.length > 15 
+    ? chatbotName.substring(0, 15) + '...' 
+    : chatbotName;
+
   return (
     <div className="menu-bar">
       <a href="https://simple-chat-interface-staging.up.railway.app/homepage" className="menu-bar-logo">
@@ -18,6 +23,12 @@ const MenuBar = ({ user }) => {
           </g>
         </svg>
       </a>
+      
+      {displayName && (
+        <div className="menu-bar-chatbot-name">
+          {displayName}
+        </div>
+      )}
       
       <div className="menu-bar-right">
         <div className="user-info">

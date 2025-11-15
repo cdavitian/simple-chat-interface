@@ -149,6 +149,7 @@
             justify-content: center;
             padding: 40px;
             text-align: center;
+            overflow-y: auto;
         }
 
         .homepage-title {
@@ -160,6 +161,40 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+        }
+
+        .chatbots-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%;
+            max-width: 500px;
+            align-items: stretch;
+        }
+
+        .chatbot-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px 32px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            text-decoration: none;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .chatbot-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .chatbot-btn:active {
+            transform: translateY(0);
         }
 
         .mcp-test-btn {
@@ -186,13 +221,22 @@
             transform: translateY(0);
         }
 
+        .no-chatbots-message {
+            color: #666;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+
         .loading {
-            display: none;
+            display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100%;
             gap: 16px;
+        }
+        
+        #loadingChatbots {
+            display: flex;
         }
 
         .loading-spinner {
@@ -245,6 +289,11 @@
                 margin-bottom: 30px;
             }
             
+            .chatbot-btn {
+                padding: 14px 28px;
+                font-size: 16px;
+            }
+            
             .mcp-test-btn {
                 padding: 14px 28px;
                 font-size: 16px;
@@ -279,9 +328,12 @@
         
         <div class="homepage-content">
             <h2 class="homepage-title">Kyo Chat Tools</h2>
-            <button class="mcp-test-btn" id="chatbotButton" onclick="openChatKitInterface()">
-                Loading...
-            </button>
+            <div class="chatbots-container" id="chatbotsContainer">
+                <div class="loading" id="loadingChatbots">
+                    <div class="loading-spinner"></div>
+                    <p>Loading chatbots...</p>
+                </div>
+            </div>
         </div>
         
         <div class="loading" id="loading">
@@ -338,48 +390,54 @@
             document.querySelector('.homepage-content').style.display = 'flex';
         }
 
-        // Store active chatbot slug for navigation
-        let activeChatbotSlug = null;
-
-        function openChatKitInterface() {
-            // Navigate to the ChatKit interface using slug if available, otherwise fallback to legacy route
-            if (activeChatbotSlug) {
-                window.location.href = `/chatkit/${activeChatbotSlug}`;
+        function openChatKitInterface(slug) {
+            // Navigate to the ChatKit interface using slug
+            if (slug) {
+                window.location.href = `/chatkit/${slug}`;
             } else {
                 // Fallback to legacy route (will redirect to slug-based route)
                 window.location.href = '/chatkit';
             }
         }
 
-        // Load active chatbot name and slug
-        async function loadChatbotName() {
+        // Load all accessible chatbots and display buttons
+        async function loadChatbots() {
+            const container = document.getElementById('chatbotsContainer');
+            const loadingDiv = document.getElementById('loadingChatbots');
+            
             try {
-                const response = await fetch('/api/chatbot/active');
+                const response = await fetch('/api/chatbots');
                 const data = await response.json();
                 
-                if (data.success && data.chatbot && data.chatbot.chatbot_name) {
-                    const button = document.getElementById('chatbotButton');
-                    if (button) {
-                        button.textContent = data.chatbot.chatbot_name;
-                    }
-                    // Store slug for navigation
-                    activeChatbotSlug = data.chatbot.slug || null;
+                // Hide loading indicator
+                if (loadingDiv) {
+                    loadingDiv.style.display = 'none';
+                }
+                
+                if (data.success && data.chatbots && data.chatbots.length > 0) {
+                    // Clear container
+                    container.innerHTML = '';
+                    
+                    // Create a button for each chatbot
+                    data.chatbots.forEach(chatbot => {
+                        const button = document.createElement('button');
+                        button.className = 'chatbot-btn';
+                        button.textContent = chatbot.chatbot_name;
+                        button.onclick = () => openChatKitInterface(chatbot.slug);
+                        container.appendChild(button);
+                    });
                 } else {
-                    // Fallback if no chatbot found
-                    const button = document.getElementById('chatbotButton');
-                    if (button) {
-                        button.textContent = 'ChatBot';
-                    }
-                    activeChatbotSlug = null;
+                    // No chatbots available
+                    container.innerHTML = '<p class="no-chatbots-message">No chatbots available. Please contact an administrator.</p>';
                 }
             } catch (error) {
-                console.error('Failed to load chatbot name:', error);
-                // Fallback on error
-                const button = document.getElementById('chatbotButton');
-                if (button) {
-                    button.textContent = 'ChatBot';
+                console.error('Failed to load chatbots:', error);
+                // Hide loading indicator
+                if (loadingDiv) {
+                    loadingDiv.style.display = 'none';
                 }
-                activeChatbotSlug = null;
+                // Show error message
+                container.innerHTML = '<p class="no-chatbots-message">Failed to load chatbots. Please try again later.</p>';
             }
         }
 
@@ -397,8 +455,8 @@
                 }
             });
             
-            // Load chatbot name
-            loadChatbotName();
+            // Load all accessible chatbots
+            loadChatbots();
         }
 
         // Load menu-bar.js and then initialize

@@ -199,7 +199,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <MenuBar user={user} />
+      <MenuBar user={user} chatbotName={sessionData?.chatbotName} />
       
       <div className="chatkit-container" style={{ 
         width: '100%', 
