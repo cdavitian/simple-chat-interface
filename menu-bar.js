@@ -33,10 +33,6 @@ window.createMenuBar = function(user) {
         <a href="/admin" class="admin-btn" id="menuBarAdminBtn" style="display: none;">Admin</a>
         <a href="/logout" class="logout-btn">Logout</a>
       </div>
-      <div class="status-indicator">
-        <span class="status-dot"></span>
-        <span class="status-text">Online</span>
-      </div>
     </div>
   `;
 

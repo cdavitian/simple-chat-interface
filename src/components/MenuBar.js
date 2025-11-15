@@ -53,10 +53,6 @@ const MenuBar = ({ user, chatbotName }) => {
             Logout
           </button>
         </div>
-        <div className="status-indicator">
-          <span className="status-dot"></span>
-          <span className="status-text">Online</span>
-        </div>
       </div>
     </div>
   );
