@@ -350,6 +350,22 @@ ___CSS_LOADER_EXPORT___.push([module.id, `.menu-bar {
     width: auto;
 }
 
+.menu-bar-chatbot-name {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 600;
+    color: white;
+    text-align: center;
+    padding: 0 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+}
+
 .menu-bar-right {
     display: flex;
     align-items: center;
@@ -435,6 +451,12 @@ body.has-menu-bar {
     
     .menu-bar-logo svg {
         height: 24px;
+    }
+    
+    .menu-bar-chatbot-name {
+        font-size: 14px;
+        padding: 0 10px;
+        max-width: 150px;
     }
     
     .menu-bar-right {
@@ -2355,11 +2377,14 @@ var update = injectStylesIntoStyleTag_default()(MenuBar/* default */.A, options)
 
 
 var MenuBar_MenuBar = function MenuBar(_ref) {
-  var user = _ref.user;
+  var user = _ref.user,
+    chatbotName = _ref.chatbotName;
+  // Truncate chatbot name if longer than 15 characters
+  var displayName = chatbotName && chatbotName.length > 15 ? chatbotName.substring(0, 15) + '...' : chatbotName;
   return /*#__PURE__*/react.createElement("div", {
     className: "menu-bar"
   }, /*#__PURE__*/react.createElement("a", {
-    href: "https://simple-chat-interface-staging.up.railway.app/homepage",
+    href: "/homepage",
     className: "menu-bar-logo"
   }, /*#__PURE__*/react.createElement("svg", {
     width: "180",
@@ -2387,7 +2412,9 @@ var MenuBar_MenuBar = function MenuBar(_ref) {
     points: "4,16 10,4 16,16",
     fill: "#4ECDC4",
     opacity: "0.6"
-  })))), /*#__PURE__*/react.createElement("div", {
+  })))), displayName && /*#__PURE__*/react.createElement("div", {
+    className: "menu-bar-chatbot-name"
+  }, displayName), /*#__PURE__*/react.createElement("div", {
     className: "menu-bar-right"
   }, /*#__PURE__*/react.createElement("div", {
     className: "user-info"
@@ -2407,13 +2434,7 @@ var MenuBar_MenuBar = function MenuBar(_ref) {
     onClick: function onClick() {
       return window.location.href = '/logout';
     }
-  }, "Logout")), /*#__PURE__*/react.createElement("div", {
-    className: "status-indicator"
-  }, /*#__PURE__*/react.createElement("span", {
-    className: "status-dot"
-  }), /*#__PURE__*/react.createElement("span", {
-    className: "status-text"
-  }, "Online"))));
+  }, "Logout"))));
 };
 /* harmony default export */ const src_components_MenuBar = (MenuBar_MenuBar);
 // EXTERNAL MODULE: ./node_modules/css-loader/dist/cjs.js!./src/App.css
@@ -2787,7 +2808,8 @@ function App_App() {
   return /*#__PURE__*/react.createElement("div", {
     className: "app-container"
   }, /*#__PURE__*/react.createElement(src_components_MenuBar, {
-    user: user
+    user: user,
+    chatbotName: sessionData === null || sessionData === void 0 ? void 0 : sessionData.chatbotName
   }), /*#__PURE__*/react.createElement("div", {
     className: "chatkit-container",
     style: {
