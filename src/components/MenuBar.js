@@ -9,7 +9,7 @@ const MenuBar = ({ user, chatbotName }) => {
 
   return (
     <div className="menu-bar">
-      <a href="https://simple-chat-interface-staging.up.railway.app/homepage" className="menu-bar-logo">
+      <a href="/homepage" className="menu-bar-logo">
         <svg width="180" height="60" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
           {/* Kyo text */}
           <text x="5" y="28" fontFamily="serif" fontSize="24" fontWeight="600" fill="#0F4C5C">

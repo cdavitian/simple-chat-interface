@@ -4132,9 +4132,15 @@ app.get('/chatkit', requireAuth, checkUserPermissions, async (req, res) => {
 });
 
 // ============ Root Route (Must be LAST) ============
-// Redirect to homepage (homepage route will handle authentication)
+// Redirect based on authentication status
 app.get('/', (req, res) => {
-    res.redirect('/homepage');
+    if (req.session.user) {
+        // User is logged in, redirect to homepage
+        res.redirect('/homepage');
+    } else {
+        // User is not logged in, redirect to login
+        res.redirect('/login');
+    }
 });
 
 // Serve static assets normally
