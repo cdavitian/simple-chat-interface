@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>TP Uploads</title>
+    <title>TP Review</title>
     <link rel="stylesheet" href="/menu-bar.css">
     <style>
         body {
@@ -173,12 +173,36 @@
             padding: 6px 10px;
             font-size: 14px;
         }
+        .prompt-id-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .prompt-id-section label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        .prompt-id-section input {
+            width: 100%;
+            max-width: 600px;
+            font-family: monospace;
+        }
+        .section-title {
+            color: #333;
+            margin: 30px 0 20px 0;
+            font-size: 1.5em;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>TP Uploads</h1>
+            <h1>TP Review</h1>
             <a href="/admin" class="back-btn">← Back to Admin Menu</a>
         </div>
         
@@ -196,6 +220,18 @@
                 <button onclick="loadUploads()">Refresh</button>
             </div>
         </div>
+
+        <div class="prompt-id-section">
+            <label for="promptId">Prompt ID:</label>
+            <input 
+                type="text" 
+                id="promptId" 
+                placeholder="pmpt_692f9786740c81968c5da311ccafb2f40000300af81af760"
+                value=""
+            />
+        </div>
+
+        <h2 class="section-title">User Uploads</h2>
 
         <div id="uploadsContainer">
             <div class="loading">Loading uploads...</div>

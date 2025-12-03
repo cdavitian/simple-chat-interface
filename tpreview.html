@@ -88,6 +88,35 @@
         #fileInput {
             display: none;
         }
+
+        .go-button {
+            padding: 12px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 16px;
+        }
+
+        .go-button:disabled {
+            background-color: #9ca3af;
+            color: #ffffff;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .go-button:not(:disabled) {
+            background-color: #3b82f6;
+            color: #ffffff;
+        }
+
+        .go-button:not(:disabled):hover {
+            background-color: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -108,6 +137,13 @@
                 📎
             </button>
             <div id="uploadStatus" class="upload-status"></div>
+            <button
+                id="goButton"
+                class="go-button"
+                disabled
+            >
+                Go
+            </button>
         </div>
     </div>
 
@@ -206,6 +242,10 @@
                 
                 uploadStatus.textContent = `✓ ${file.name} ready! The file is indexed and searchable.`;
                 
+                // Enable the Go button when file is indexed and searchable
+                const goButton = document.getElementById('goButton');
+                goButton.disabled = false;
+                
                 setTimeout(() => {
                     uploadingFile = null;
                     uploadButton.disabled = false;
@@ -216,10 +256,12 @@
                 console.error('Upload error:', error);
                 const uploadStatus = document.getElementById('uploadStatus');
                 const uploadButton = document.getElementById('uploadButton');
+                const goButton = document.getElementById('goButton');
                 uploadStatus.textContent = `✗ Error: ${error.message}`;
                 uploadStatus.classList.add('show');
                 uploadingFile = null;
                 uploadButton.disabled = false;
+                goButton.disabled = true; // Keep Go button disabled on error
                 setTimeout(() => {
                     uploadStatus.classList.remove('show');
                     uploadStatus.textContent = '';
@@ -250,6 +292,13 @@
                 }
                 // Reset input so same file can be selected again
                 fileInput.value = '';
+            });
+
+            // Set up Go button handler (dead end for now)
+            const goButton = document.getElementById('goButton');
+            goButton.addEventListener('click', (e) => {
+                // Dead end - do nothing
+                e.preventDefault();
             });
         }
 
