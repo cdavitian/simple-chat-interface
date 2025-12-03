@@ -14,6 +14,11 @@ OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxx
 Your OpenAI API key from https://platform.openai.com/api-keys
 
 ```bash
+OPENAI_API_KEY_2=sk-proj-xxxxxxxxxxxxxxxxxxxxx
+```
+Future migration key (not currently used - application still uses OPENAI_API_KEY). This will be used for migration to a new API key in the future.
+
+```bash
 OPENAI_CHATKIT_WORKFLOW_ID=wf_xxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 Your ChatKit workflow ID from the ChatKit dashboard

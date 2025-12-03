@@ -30,6 +30,8 @@ ALLOWED_DOMAIN=kyocare.com
 
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
+# Future migration key (not currently used - application still uses OPENAI_API_KEY)
+OPENAI_API_KEY_2=your_openai_api_key_2_here
 OPENAI_CHATKIT_WORKFLOW_ID=your_chatkit_workflow_id_here
 OPENAI_CHATKIT_PUBLIC_KEY=your_chatkit_public_key_here
 

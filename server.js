@@ -4004,6 +4004,11 @@ app.get('/homepage', requireAuth, checkUserPermissions, (req, res) => {
     res.sendFile(path.join(__dirname, 'homepage.html'));
 });
 
+// TP Review route
+app.get('/tpreview', requireAuth, checkUserPermissions, (req, res) => {
+    res.sendFile(path.join(__dirname, 'tpreview.html'));
+});
+
 // Admin menu route - require admin access
 app.get('/admin', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, 'admin-menu.html'));
