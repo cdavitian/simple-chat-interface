@@ -3371,7 +3371,7 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
             ? { id: promptId, version }
             : { id: promptId }; // latest version auto-selected
 
-        console.log('[tpreview.chat] Creating response with prompt and attachment:', {
+        console.log('[tpreview.chat] Creating response with prompt and attached file:', {
             prompt_id: promptId,
             version,
             file_id: file_id
@@ -3379,10 +3379,17 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
 
         const response = await client.responses.create({
             prompt: promptBlock,
-            attachments: [
+            // Provide a lightweight user message that carries the file attachment
+            input: [
                 {
-                    file_id: file_id,
-                    tools: [{ type: 'file_search' }],
+                    role: 'user',
+                    content: 'Please review the uploaded treatment plan document.',
+                    attachments: [
+                        {
+                            file_id: file_id,
+                            tools: [{ type: 'file_search' }],
+                        },
+                    ],
                 },
             ],
         });
