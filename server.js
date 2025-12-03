@@ -3360,35 +3360,21 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
         }
 
         const promptId = await getTPReviewPromptId();
-        const version = null; // Use latest version when null
+        const promptText = promptId || 'Please review this treatment plan document.';
 
-        if (!promptId) {
-            console.error('tpreview chat failed: Prompt ID not configured');
-            return res.status(500).json({ error: 'TP Review prompt ID is not configured' });
-        }
-
-        const promptBlock = version
-            ? { id: promptId, version }
-            : { id: promptId }; // latest version auto-selected
-
-        console.log('[tpreview.chat] Creating response with prompt and attached file:', {
-            prompt_id: promptId,
-            version,
+        console.log('[tpreview.chat] Creating response with inline prompt and input_file:', {
+            prompt_text: promptText,
             file_id: file_id
         });
 
         const response = await client.responses.create({
-            prompt: promptBlock,
-            // Provide a lightweight user message that carries the file attachment
-            input: [
+            // Use inline prompt structure with input_text + input_file, per Responses API
+            prompt: [
                 {
                     role: 'user',
-                    content: 'Please review the uploaded treatment plan document.',
-                    attachments: [
-                        {
-                            file_id: file_id,
-                            tools: [{ type: 'file_search' }],
-                        },
+                    content: [
+                        { type: 'input_text', text: promptText },
+                        { type: 'input_file', file_id },
                     ],
                 },
             ],
