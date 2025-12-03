@@ -543,6 +543,17 @@ const getOpenAIClient = () => {
     return openaiClient;
 };
 
+// OpenAI client for TP Review (uses OPENAI_API_KEY_2)
+let openaiClient2 = null;
+const getOpenAIClient2 = () => {
+    if (!openaiClient2 && process.env.OPENAI_API_KEY_2) {
+        openaiClient2 = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY_2
+        });
+    }
+    return openaiClient2;
+};
+
 
 // Session configuration
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
@@ -2922,6 +2933,233 @@ app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
         });
     } catch (e) {
         console.error('ingest-s3 failed:', e);
+        return res.status(500).json({ error: 'Failed to ingest S3 object', details: e.message });
+    }
+});
+
+// TP Review file ingest endpoint (uses OPENAI_API_KEY_2)
+app.post('/api/tpreview/files/ingest-s3', requireAuth, async (req, res) => {
+    try {
+        const bucketName = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET;
+        const region = process.env.AWS_REGION || 'us-east-1';
+        const { key, bucket, filename } = req.body || {};
+
+        const effectiveBucket = bucket || bucketName;
+        if (!effectiveBucket) {
+            return res.status(400).json({ error: 'S3 bucket is not configured' });
+        }
+
+        if (!key || typeof key !== 'string') {
+            return res.status(400).json({ error: 'Missing S3 key' });
+        }
+
+        if (!process.env.OPENAI_API_KEY_2) {
+            console.error('tpreview ingest-s3 failed: OpenAI API key 2 missing');
+            return res.status(500).json({ error: 'OpenAI API Key 2 not configured' });
+        }
+
+        const s3 = new AWS.S3({ region });
+        let objectData;
+
+        try {
+            objectData = await s3.getObject({ Bucket: effectiveBucket, Key: key }).promise();
+        } catch (error) {
+            console.error('Failed to read S3 object for tpreview ingest:', {
+                key,
+                bucket: effectiveBucket,
+                message: error.message,
+                code: error.code
+            });
+            return res.status(404).json({ error: 'Uploaded file not found in S3' });
+        }
+
+        const fileBuffer = await streamToBuffer(objectData.Body);
+
+        if (!fileBuffer?.length) {
+            console.error('tpreview ingest-s3 failed: Empty file buffer', { key });
+            return res.status(500).json({ error: 'Failed to read uploaded file from S3' });
+        }
+
+        const client = getOpenAIClient2();
+
+        if (!client) {
+            console.error('tpreview ingest-s3 failed: OpenAI client 2 unavailable');
+            return res.status(500).json({ error: 'OpenAI client 2 unavailable' });
+        }
+
+        const resolvedFilename = filename || key.split('/').pop() || 'upload';
+        const resolvedContentType = objectData.ContentType || 'application/octet-stream';
+
+        // Convert buffer to File-like object for OpenAI
+        let fileForUpload;
+        if (typeof File !== 'undefined') {
+            fileForUpload = new File([fileBuffer], resolvedFilename, { type: resolvedContentType });
+        } else {
+            fileForUpload = fileBuffer;
+        }
+
+        const uploaded = await client.files.create({
+            file: fileForUpload,
+            purpose: 'assistants',
+        });
+
+        console.log('TP Review quiet ingest successful:', {
+            file_id: uploaded.id,
+            filename: resolvedFilename,
+            content_type: resolvedContentType
+        });
+
+        // Track unsent file_ids in session for automatic attachment on next message
+        try {
+            if (!Array.isArray(req.session.unsentFileIds)) {
+                req.session.unsentFileIds = [];
+            }
+            if (!req.session.unsentFileIds.includes(uploaded.id)) {
+                req.session.unsentFileIds.push(uploaded.id);
+            }
+        } catch (trackErr) {
+            console.warn('Unable to track unsent file_id in session:', trackErr?.message);
+        }
+
+        // Add file to the vector store used by the active chat session (priority: session store → conversation store → create session store)
+        try {
+            let vectorStoreId = null;
+
+            // 1) Prefer the session-bound vector store (this is what ChatKit binds to at session creation)
+            if (req.session?.tpreviewVectorStoreId) {
+                vectorStoreId = req.session.tpreviewVectorStoreId;
+                console.log('✅ tpreview ingest-s3: Using existing session vector store:', {
+                    vectorStoreId: vectorStoreId.substring(0, 20) + '...',
+                    file_id: uploaded.id
+                });
+            }
+
+            // 2) If still none, create (or get) a session-based vector store and persist it
+            if (!vectorStoreId) {
+                const userId = req.session.user?.id || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const sessionId = `tpreview_${userId}_${req.sessionID}`;
+                try {
+                    vectorStoreId = await getOrCreateVectorStore(client, req.session, sessionId, userId);
+                    req.session.tpreviewVectorStoreId = vectorStoreId;
+                    console.log('✅ tpreview ingest-s3: Using session-based vector store (created):', {
+                        vectorStoreId: vectorStoreId.substring(0, 20) + '...',
+                        file_id: uploaded.id
+                    });
+                } catch (createError) {
+                    console.error('❌ tpreview ingest-s3: Failed to create session-based vector store:', {
+                        error: createError?.message,
+                        stack: createError?.stack,
+                        file_id: uploaded.id
+                    });
+                    // Continue - file still uploaded, just not in vector store
+                }
+            }
+            
+            console.log('🔍 tpreview ingest-s3: Checking for vector store:', {
+                hasVectorStoreId: !!vectorStoreId,
+                vectorStoreId: vectorStoreId || 'NONE',
+                file_id: uploaded.id
+            });
+            
+            if (vectorStoreId) {
+                console.log('📤 tpreview ingest-s3: Adding file to vector store and waiting for indexing...', {
+                    file_id: uploaded.id,
+                    vectorStoreId
+                });
+                let vsFile;
+                if (client.beta?.vectorStores?.files) {
+                    vsFile = await client.beta.vectorStores.files.create(vectorStoreId, {
+                        file_id: uploaded.id
+                    });
+                } else {
+                    // Fallback to HTTP API
+                    const apiKey = process.env.OPENAI_API_KEY_2;
+                    vsFile = await addFileToVectorStoreViaHTTP(vectorStoreId, uploaded.id, apiKey);
+                }
+                
+                console.log('📎 File added to vector store, waiting for indexing (tpreview ingest-s3)...', {
+                    file_id: uploaded.id,
+                    vectorStoreId,
+                    initialStatus: vsFile.status
+                });
+                
+                // Wait for vector store file indexing to complete
+                // This ensures the file is searchable before we return
+                try {
+                    const indexedFile = await waitForVectorIndex(client, vectorStoreId, uploaded.id, {
+                        timeoutMs: 120000, // 2 minutes timeout for large files
+                        pollIntervalMs: 2000 // Poll every 2 seconds
+                    });
+                    
+                    console.log('✅ File indexed and ready for search (tpreview ingest-s3):', {
+                        file_id: uploaded.id,
+                        vectorStoreId,
+                        status: indexedFile.status,
+                        elapsed: 'completed'
+                    });
+                } catch (indexError) {
+                    // Log error but don't fail the request - file is still uploaded
+                    console.error('⚠️ File indexing wait failed (file still uploaded, tpreview ingest-s3):', {
+                        error: indexError?.message,
+                        file_id: uploaded.id,
+                        vectorStoreId
+                    });
+                    // Continue - file is uploaded even if indexing check fails
+                }
+            } else {
+                console.warn('⚠️ No vector store available after creation attempt, file not added to vector store. File will only be available for immediate use.', {
+                    file_id: uploaded.id,
+                    sessionKeys: Object.keys(req.session || {})
+                });
+            }
+        } catch (vectorStoreError) {
+            console.error('❌ Failed to add file to vector store:', {
+                error: vectorStoreError?.message,
+                stack: vectorStoreError?.stack,
+                file_id: uploaded.id,
+                vectorStoreId: req.session?.tpreviewVectorStoreId,
+                errorType: vectorStoreError?.constructor?.name
+            });
+            // Continue even if vector store addition fails
+        }
+
+        let fileConfig;
+
+        try {
+            if (!req.session.chatkitFilesMetadata) {
+                req.session.chatkitFilesMetadata = {};
+            }
+
+            fileConfig = getFileConfig({
+                filename: resolvedFilename,
+                content_type: resolvedContentType,
+            });
+
+            console.log('File category detection for tpreview ingest-s3:', {
+                file_id: uploaded.id,
+                filename: resolvedFilename,
+                content_type: resolvedContentType,
+                detected_category: fileConfig?.category,
+                fileConfig: fileConfig
+            });
+
+            req.session.chatkitFilesMetadata[uploaded.id] = {
+                content_type: resolvedContentType,
+                filename: resolvedFilename,
+                category: fileConfig?.category || null,
+            };
+        } catch (metadataError) {
+            console.warn('Unable to persist chatkit file metadata in session:', metadataError?.message);
+        }
+
+        return res.json({ 
+            file_id: uploaded.id, 
+            filename: resolvedFilename,
+            content_type: resolvedContentType,
+            category: fileConfig?.category || null,
+        });
+    } catch (e) {
+        console.error('tpreview ingest-s3 failed:', e);
         return res.status(500).json({ error: 'Failed to ingest S3 object', details: e.message });
     }
 });

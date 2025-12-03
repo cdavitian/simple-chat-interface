@@ -28,18 +28,87 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             padding: 40px;
             min-height: calc(100vh - 96px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
 
         h1 {
             color: #333;
-            margin-bottom: 20px;
+            margin-bottom: 40px;
+        }
+
+        .upload-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .upload-button {
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-radius: 12px;
+            background-color: #ffffff;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .upload-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .upload-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .upload-status {
+            padding: 10px 15px;
+            background-color: rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            border-radius: 12px;
+            font-size: 13px;
+            max-width: 300px;
+            word-break: break-word;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            display: none;
+        }
+
+        .upload-status.show {
+            display: block;
+        }
+
+        #fileInput {
+            display: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>TP Review</h1>
-        <!-- Content will be added here -->
+        <div class="upload-section">
+            <input
+                id="fileInput"
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.csv,.xls,.xlsx"
+            />
+            <button
+                id="uploadButton"
+                class="upload-button"
+                onclick="document.getElementById('fileInput').click()"
+                title="Attach a file"
+            >
+                📎
+            </button>
+            <div id="uploadStatus" class="upload-status"></div>
+        </div>
     </div>
 
     <script>
@@ -70,6 +139,94 @@
             }
         }
 
+        // File upload handler
+        let uploadingFile = null;
+
+        async function handleFileUpload(file) {
+            try {
+                uploadingFile = file.name;
+                const uploadButton = document.getElementById('uploadButton');
+                const uploadStatus = document.getElementById('uploadStatus');
+                
+                uploadButton.disabled = true;
+                uploadStatus.textContent = 'Getting upload URL...';
+                uploadStatus.classList.add('show');
+                
+                // 1) Get presigned PUT URL from server
+                const presignResp = await fetch("/api/uploads/presign", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ 
+                        filename: file.name, 
+                        mime: file.type,
+                        size: file.size
+                    })
+                });
+
+                if (!presignResp.ok) {
+                    const errorText = await presignResp.text();
+                    throw new Error(`Failed to presign upload: ${presignResp.status} ${errorText}`);
+                }
+
+                const { uploadUrl, objectKey, contentType } = await presignResp.json();
+                
+                uploadStatus.textContent = 'Uploading to S3...';
+
+                // 2) Upload file directly to S3
+                const uploadResp = await fetch(uploadUrl, {
+                    method: "PUT",
+                    body: file,
+                    headers: { 
+                        "Content-Type": contentType || file.type || 'application/octet-stream',
+                        "x-amz-server-side-encryption": "AES256"
+                    }
+                });
+
+                if (!uploadResp.ok) {
+                    throw new Error(`Failed to upload to S3: ${uploadResp.status}`);
+                }
+                
+                uploadStatus.textContent = 'Importing and indexing file...';
+
+                // 3) Register uploaded S3 object and index it (using TP Review endpoint with OPENAI_API_KEY_2)
+                const ingestResp = await fetch('/api/tpreview/files/ingest-s3', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: objectKey, filename: file.name }),
+                });
+                
+                if (!ingestResp.ok) {
+                    const errorText = await ingestResp.text();
+                    throw new Error(`Failed to register S3 object: ${ingestResp.status} ${errorText}`);
+                }
+
+                const result = await ingestResp.json();
+                
+                uploadStatus.textContent = `✓ ${file.name} ready! The file is indexed and searchable.`;
+                
+                setTimeout(() => {
+                    uploadingFile = null;
+                    uploadButton.disabled = false;
+                    uploadStatus.classList.remove('show');
+                    uploadStatus.textContent = '';
+                }, 5000);
+            } catch (error) {
+                console.error('Upload error:', error);
+                const uploadStatus = document.getElementById('uploadStatus');
+                const uploadButton = document.getElementById('uploadButton');
+                uploadStatus.textContent = `✗ Error: ${error.message}`;
+                uploadStatus.classList.add('show');
+                uploadingFile = null;
+                uploadButton.disabled = false;
+                setTimeout(() => {
+                    uploadStatus.classList.remove('show');
+                    uploadStatus.textContent = '';
+                }, 5000);
+            }
+        }
+
         // Initialize the page
         function initPage() {
             // Create menu bar
@@ -82,6 +239,17 @@
                 if (user && window.updateMenuBarUserInfo) {
                     updateMenuBarUserInfo(user);
                 }
+            });
+
+            // Set up file input handler
+            const fileInput = document.getElementById('fileInput');
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                    handleFileUpload(file);
+                }
+                // Reset input so same file can be selected again
+                fileInput.value = '';
             });
         }
 
