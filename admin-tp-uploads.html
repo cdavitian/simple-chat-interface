@@ -186,10 +186,24 @@
             font-weight: 600;
             color: #333;
         }
-        .prompt-id-section input {
-            width: 100%;
+        .prompt-id-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .prompt-id-row input {
+            flex: 1 1 320px;
             max-width: 600px;
             font-family: monospace;
+        }
+        .prompt-id-row button {
+            flex: 0 0 auto;
+        }
+        .prompt-id-status {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
         }
         .section-title {
             color: #333;
@@ -208,12 +222,16 @@
         
         <div class="prompt-id-section">
             <label for="promptId">Prompt ID:</label>
-            <input 
-                type="text" 
-                id="promptId" 
-                placeholder="pmpt_692f9786740c81968c5da311ccafb2f40000300af81af760"
-                value=""
-            />
+            <div class="prompt-id-row">
+                <input 
+                    type="text" 
+                    id="promptId" 
+                    placeholder="pmpt_692f9786740c81968c5da311ccafb2f40000300af81af760"
+                    value=""
+                />
+                <button type="button" id="savePromptIdButton">Save Prompt ID</button>
+            </div>
+            <div id="promptIdStatus" class="prompt-id-status"></div>
         </div>
 
         <h2 class="section-title">User Uploads</h2>
@@ -352,6 +370,65 @@
             return div.innerHTML;
         }
 
+        async function loadPromptIdSetting() {
+            const input = document.getElementById('promptId');
+            const statusEl = document.getElementById('promptIdStatus');
+            if (!input || !statusEl) return;
+
+            statusEl.textContent = 'Loading prompt ID...';
+
+            try {
+                const resp = await fetch('/api/admin/tp-settings/prompt-id');
+                if (!resp.ok) {
+                    throw new Error('Request failed: ' + resp.status);
+                }
+                const data = await resp.json();
+                if (data && data.success) {
+                    input.value = data.promptId || '';
+                    statusEl.textContent = data.promptId
+                        ? 'Current prompt ID loaded.'
+                        : 'No prompt ID is set yet.';
+                } else {
+                    statusEl.textContent = 'Unable to load prompt ID.';
+                }
+            } catch (err) {
+                console.error('Failed to load TP Review prompt ID:', err);
+                statusEl.textContent = 'Error loading prompt ID.';
+            }
+        }
+
+        async function savePromptIdSetting() {
+            const input = document.getElementById('promptId');
+            const statusEl = document.getElementById('promptIdStatus');
+            if (!input || !statusEl) return;
+
+            const promptId = input.value.trim();
+            statusEl.textContent = 'Saving prompt ID...';
+
+            try {
+                const resp = await fetch('/api/admin/tp-settings/prompt-id', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ promptId }),
+                });
+                if (!resp.ok) {
+                    const text = await resp.text();
+                    throw new Error(text || ('Request failed: ' + resp.status));
+                }
+                const data = await resp.json();
+                if (data && data.success) {
+                    statusEl.textContent = data.promptId
+                        ? 'Prompt ID saved.'
+                        : 'Prompt ID cleared.';
+                } else {
+                    statusEl.textContent = 'Failed to save prompt ID.';
+                }
+            } catch (err) {
+                console.error('Failed to save TP Review prompt ID:', err);
+                statusEl.textContent = 'Error saving prompt ID.';
+            }
+        }
+
         // Add event listener for page size changes
         document.getElementById('pageSize').addEventListener('change', function() {
             loadUploads(1); // Reset to first page when page size changes
@@ -380,6 +457,24 @@
         document.addEventListener('DOMContentLoaded', function() {
             initMenuBar();
             loadUploads();
+            loadPromptIdSetting();
+
+            const saveButton = document.getElementById('savePromptIdButton');
+            if (saveButton) {
+                saveButton.addEventListener('click', function() {
+                    savePromptIdSetting();
+                });
+            }
+
+            const promptInput = document.getElementById('promptId');
+            if (promptInput) {
+                promptInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        savePromptIdSetting();
+                    }
+                });
+            }
         });
     </script>
     <script src="/menu-bar.js"></script>

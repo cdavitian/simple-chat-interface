@@ -117,6 +117,92 @@
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
+
+        .chat-container {
+            margin-top: 32px;
+            width: 100%;
+            max-width: 800px;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            background-color: #f9fafb;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background-color: #111827;
+            color: #f9fafb;
+        }
+
+        .chat-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .copy-button {
+            padding: 6px 12px;
+            font-size: 13px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            background-color: #e5e7eb;
+            color: #111827;
+            font-weight: 500;
+            transition: background-color 0.15s ease, transform 0.1s ease;
+        }
+
+        .copy-button:hover:not(:disabled) {
+            background-color: #d1d5db;
+            transform: translateY(-0.5px);
+        }
+
+        .copy-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .chat-body {
+            padding: 16px;
+            max-height: 480px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #111827;
+            white-space: pre-wrap;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .loading-state {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #6b7280;
+        }
+
+        .hourglass {
+            display: inline-block;
+            animation: hourglass-spin 1s linear infinite;
+        }
+
+        @keyframes hourglass-spin {
+            0% { transform: rotate(0deg); }
+            50% { transform: rotate(180deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-state {
+            color: #b91c1c;
+            background-color: #fef2f2;
+            border: 1px solid #fecaca;
+            padding: 10px 12px;
+            border-radius: 8px;
+        }
     </style>
 </head>
 <body>
@@ -145,9 +231,21 @@
                 Go
             </button>
         </div>
+        <!-- Chat response window (hidden until Go is pressed) -->
+        <div id="chatContainer" class="chat-container" style="display: none;">
+            <div class="chat-header">
+                <div class="chat-title">Review Result</div>
+                <button id="copyResponseButton" class="copy-button" disabled>Copy</button>
+            </div>
+            <div id="chatBody" class="chat-body">
+                <!-- Response content or loading state will appear here -->
+            </div>
+        </div>
     </div>
 
     <script>
+        let currentFileId = null;
+
         // Check authentication and load user info
         async function checkAuth() {
             try {
@@ -242,6 +340,13 @@
                 
                 uploadStatus.textContent = `✓ ${file.name} ready! The file is indexed and searchable.`;
                 
+                // Track the OpenAI file_id returned by the ingest endpoint
+                if (result && result.file_id) {
+                    currentFileId = result.file_id;
+                } else {
+                    console.warn('TP Review ingest did not return file_id as expected:', result);
+                }
+                
                 // Enable the Go button when file is indexed and searchable
                 const goButton = document.getElementById('goButton');
                 goButton.disabled = false;
@@ -297,9 +402,89 @@
             // Set up Go button handler (dead end for now)
             const goButton = document.getElementById('goButton');
             goButton.addEventListener('click', (e) => {
-                // Dead end - do nothing
                 e.preventDefault();
+                if (!currentFileId) {
+                    alert('No file is ready for review yet. Please upload a file first.');
+                    return;
+                }
+                startTPReviewChat();
             });
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function startTPReviewChat() {
+            const uploadButton = document.getElementById('uploadButton');
+            const goButton = document.getElementById('goButton');
+            const chatContainer = document.getElementById('chatContainer');
+            const chatBody = document.getElementById('chatBody');
+            const copyButton = document.getElementById('copyResponseButton');
+
+            // Hide attachment and Go buttons
+            uploadButton.style.display = 'none';
+            goButton.style.display = 'none';
+
+            // Show the chat response window
+            chatContainer.style.display = 'flex';
+            copyButton.disabled = true;
+
+            // Show dynamic hourglass while waiting
+            chatBody.innerHTML = `
+                <div class="loading-state">
+                    <span class="hourglass">⏳</span>
+                    <span>Waiting for review from OpenAI...</span>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/api/tpreview/chat', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_id: currentFileId }),
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || `Request failed with status ${response.status}`);
+                }
+
+                const data = await response.json();
+                const text = data && typeof data.text === 'string'
+                    ? data.text
+                    : '[No text was returned from the review response]';
+
+                // Display response as plain text so it can safely include tables/emojis/etc.
+                chatBody.textContent = text;
+
+                // Enable copy button
+                copyButton.disabled = false;
+                copyButton.textContent = 'Copy';
+                copyButton.onclick = async () => {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        copyButton.textContent = 'Copied';
+                        setTimeout(() => {
+                            copyButton.textContent = 'Copy';
+                        }, 2000);
+                    } catch (err) {
+                        console.error('Failed to copy review text:', err);
+                        alert('Unable to copy text. Please copy it manually.');
+                    }
+                };
+            } catch (error) {
+                console.error('TP Review chat error:', error);
+                chatBody.innerHTML = `
+                    <div class="error-state">
+                        Error requesting review: ${escapeHtml(error.message || 'Unknown error')}
+                    </div>
+                `;
+            }
         }
 
         // Load menu-bar.js and then initialize

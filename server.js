@@ -3311,6 +3311,112 @@ app.post('/api/tpreview/files/ingest-s3', requireAuth, async (req, res) => {
     }
 });
 
+// Helper to ensure tp_settings table exists and get current TP Review prompt id
+async function getTPReviewPromptId() {
+    if (loggingConfig.loggerType !== 'postgresql' || !loggingConfig.logger || !loggingConfig.logger.pool) {
+        // Fallback to environment variable if database is not available
+        return process.env.TPREVIEW_PROMPT_ID || null;
+    }
+
+    const pool = loggingConfig.logger.pool;
+
+    // Ensure settings table exists
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS tp_settings (
+            id SERIAL PRIMARY KEY,
+            key VARCHAR(100) UNIQUE NOT NULL,
+            value TEXT,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    const result = await pool.query(
+        `SELECT key, value FROM tp_settings WHERE key = $1`,
+        ['prompt_id']
+    );
+
+    if (result.rows && result.rows.length > 0) {
+        return result.rows[0].value || null;
+    }
+
+    // If not found in DB, fall back to environment variable
+    return process.env.TPREVIEW_PROMPT_ID || null;
+}
+
+// TP Review chat endpoint - uses OpenAI Responses API with prompt template and attached file
+app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
+    try {
+        const { file_id } = req.body || {};
+
+        if (!file_id || typeof file_id !== 'string') {
+            return res.status(400).json({ error: 'file_id is required' });
+        }
+
+        const client = getOpenAIClient2();
+
+        if (!client) {
+            console.error('tpreview chat failed: OpenAI client 2 unavailable');
+            return res.status(500).json({ error: 'OpenAI client is not configured for TP Review' });
+        }
+
+        const promptId = await getTPReviewPromptId();
+        const version = null; // Use latest version when null
+
+        if (!promptId) {
+            console.error('tpreview chat failed: Prompt ID not configured');
+            return res.status(500).json({ error: 'TP Review prompt ID is not configured' });
+        }
+
+        const promptBlock = version
+            ? { id: promptId, version }
+            : { id: promptId }; // latest version auto-selected
+
+        console.log('[tpreview.chat] Creating response with prompt and attachment:', {
+            prompt_id: promptId,
+            version,
+            file_id: file_id
+        });
+
+        const response = await client.responses.create({
+            prompt: promptBlock,
+            attachments: [
+                {
+                    file_id: file_id,
+                    tools: [{ type: 'file_search' }],
+                },
+            ],
+        });
+
+        // Try to extract a human-readable text output
+        let outText = '';
+        try {
+            if (typeof response.output_text === 'string') {
+                outText = response.output_text;
+            } else if (Array.isArray(response.output) &&
+                       response.output[0]?.content &&
+                       response.output[0].content[0]?.text?.value) {
+                outText = response.output[0].content[0].text.value;
+            } else {
+                outText = JSON.stringify(response, null, 2);
+            }
+        } catch (extractErr) {
+            console.warn('[tpreview.chat] Failed to parse response output, returning raw JSON:', extractErr?.message);
+            outText = JSON.stringify(response, null, 2);
+        }
+
+        return res.json({
+            success: true,
+            text: outText,
+            response_id: response.id,
+        });
+    } catch (err) {
+        console.error('[tpreview.chat] ERROR:', err?.stack || err);
+        return res.status(500).json({
+            error: err?.error?.message || err?.message || 'tpreview_chat_error',
+        });
+    }
+});
+
 // Import from S3 to OpenAI Files API (following guidance pattern)
 app.post('/api/openai/import-s3', requireAuth, async (req, res) => {
     try {
@@ -3572,6 +3678,64 @@ app.get('/api/admin/access-stats', requireAuth, checkUserPermissions, requireAdm
     } catch (error) {
         console.error('Failed to get access stats:', error);
         res.status(500).json({ error: 'Failed to retrieve access statistics' });
+    }
+});
+
+// TP Review settings - get current prompt ID (admin only)
+app.get('/api/admin/tp-settings/prompt-id', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        const promptId = await getTPReviewPromptId();
+        res.json({
+            success: true,
+            promptId: promptId || null,
+        });
+    } catch (error) {
+        console.error('Failed to get TP Review prompt ID:', error);
+        res.status(500).json({ error: 'Failed to retrieve TP Review prompt ID', details: error.message });
+    }
+});
+
+// TP Review settings - update prompt ID (admin only)
+app.post('/api/admin/tp-settings/prompt-id', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        const { promptId } = req.body || {};
+        const normalized = typeof promptId === 'string' ? promptId.trim() : '';
+
+        if (loggingConfig.loggerType !== 'postgresql' || !loggingConfig.logger || !loggingConfig.logger.pool) {
+            // Without PostgreSQL, we can only rely on environment variable; accept the value but don't persist
+            console.warn('TP Review prompt ID POST received but PostgreSQL logger is not available; value will not be persisted.');
+            return res.json({
+                success: true,
+                promptId: normalized || null,
+            });
+        }
+
+        const pool = loggingConfig.logger.pool;
+
+        // Ensure settings table exists
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS tp_settings (
+                id SERIAL PRIMARY KEY,
+                key VARCHAR(100) UNIQUE NOT NULL,
+                value TEXT,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await pool.query(`
+            INSERT INTO tp_settings (key, value, updated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (key)
+            DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        `, ['prompt_id', normalized || null]);
+
+        res.json({
+            success: true,
+            promptId: normalized || null,
+        });
+    } catch (error) {
+        console.error('Failed to update TP Review prompt ID:', error);
+        res.status(500).json({ error: 'Failed to update TP Review prompt ID', details: error.message });
     }
 });
 
