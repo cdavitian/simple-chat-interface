@@ -192,6 +192,14 @@
                     Manage chatbots and their workflow configurations
                 </div>
             </div>
+
+            <div class="menu-item" onclick="navigateToTPUploads()">
+                <div class="menu-icon">📄</div>
+                <div class="menu-title">TP Uploads</div>
+                <div class="menu-description">
+                    View all files uploaded through the TP Review app
+                </div>
+            </div>
         </div>
         
         <div class="version-footer">
@@ -242,6 +250,10 @@
 
         function navigateToChatbots() {
             window.location.href = '/admin/chatbots';
+        }
+
+        function navigateToTPUploads() {
+            window.location.href = '/admin/tp-uploads';
         }
 
         // Load and display version

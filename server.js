@@ -2710,6 +2710,89 @@ app.post('/api/uploads/presign', requireAuth, async (req, res) => {
     }
 });
 
+// Presign S3 upload for TP Review (uses /treatementplans folder)
+app.post('/api/tpreview/uploads/presign', requireAuth, async (req, res) => {
+    try {
+        const bucketName = process.env.S3_BUCKET_NAME;
+        const region = process.env.AWS_REGION || 'us-east-1';
+
+        if (!bucketName) {
+            console.error('TP Review S3 presign failed: S3_BUCKET_NAME not configured');
+            return res.status(500).json({ error: 'S3 bucket is not configured (S3_BUCKET_NAME)' });
+        }
+
+        if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+            console.error('TP Review S3 presign failed: AWS credentials missing');
+            return res.status(500).json({ error: 'AWS credentials are not configured' });
+        }
+
+        const { filename, mime, size } = req.body || {};
+        if (!filename) {
+            return res.status(400).json({ error: 'filename is required' });
+        }
+
+        // Function to get correct MIME type from filename extension
+        // Browsers often send incorrect or missing MIME types for CSV/XLS files
+        const getContentTypeFromFilename = (filename, fallbackMime) => {
+            const ext = filename.toLowerCase().split('.').pop();
+            const mimeMap = {
+                'csv': 'text/csv',
+                'xls': 'application/vnd.ms-excel',
+                'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'pdf': 'application/pdf',
+                'png': 'image/png',
+                'jpg': 'image/jpeg',
+                'jpeg': 'image/jpeg',
+                'gif': 'image/gif',
+                'webp': 'image/webp'
+            };
+            return mimeMap[ext] || (fallbackMime && typeof fallbackMime === 'string' && fallbackMime.trim() !== '' ? fallbackMime : 'application/octet-stream');
+        };
+
+        // Use filename extension to determine correct MIME type, fallback to provided mime if not found
+        const safeContentType = getContentTypeFromFilename(filename, mime);
+
+        if (Number.isFinite(S3_MAX_FILE_BYTES) && S3_MAX_FILE_BYTES > 0 && Number(size) > S3_MAX_FILE_BYTES) {
+            const maxMb = Math.round((S3_MAX_FILE_BYTES / (1024 * 1024)) * 10) / 10;
+            return res.status(413).json({ error: `File exceeds maximum size of ${maxMb} MB` });
+        }
+
+        // Sanitize filename and build an object key in /treatementplans folder
+        const safeName = String(filename).replace(/[^A-Za-z0-9._-]/g, '_');
+        const userId = req.session.user?.id || 'anonymous';
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).slice(2, 8);
+        const objectKey = `treatementplans/${userId}/${timestamp}-${random}-${safeName}`;
+
+        const s3 = new AWS.S3({ region });
+        const uploadUrl = await s3.getSignedUrlPromise('putObject', {
+            Bucket: bucketName,
+            Key: objectKey,
+            Expires: Math.max(S3_UPLOAD_URL_TTL, 60), // ensure at least 60 seconds
+            ContentType: safeContentType,
+            ServerSideEncryption: 'AES256'  // SSE-S3 encryption
+        });
+
+        console.log('Generated S3 presign for TP Review upload:', {
+            userId,
+            objectKey,
+            contentType: safeContentType,
+            size,
+            bucketName,
+            region
+        });
+
+        res.json({
+            uploadUrl,
+            objectKey,
+            contentType: safeContentType  // Return so frontend uses exact same Content-Type in PUT
+        });
+    } catch (error) {
+        console.error('Failed to presign TP Review S3 upload:', error);
+        res.status(500).json({ error: 'Failed to presign upload', details: error.message });
+    }
+});
+
 // Quiet ingest endpoint (S3 → Files → return file_id)
 // No messages created, no responses created - just ingest and return file_id
 app.post('/api/files/ingest-s3', requireAuth, async (req, res) => {
@@ -3152,6 +3235,70 @@ app.post('/api/tpreview/files/ingest-s3', requireAuth, async (req, res) => {
             console.warn('Unable to persist chatkit file metadata in session:', metadataError?.message);
         }
 
+        // Save TP upload record to database
+        try {
+            if (loggingConfig.loggerType === 'postgresql' && loggingConfig.logger && loggingConfig.logger.pool) {
+                const userId = req.session.user?.id || 'anonymous';
+                const userName = req.session.user?.name || req.session.user?.full_name || null;
+                const userEmail = req.session.user?.email || null;
+                const bucketName = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET;
+                const region = process.env.AWS_REGION || 'us-east-1';
+                const s3Url = `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
+
+                // Ensure table exists
+                await loggingConfig.logger.pool.query(`
+                    CREATE TABLE IF NOT EXISTS file_uploads (
+                        id SERIAL PRIMARY KEY,
+                        app_name VARCHAR(100) NOT NULL,
+                        user_id VARCHAR(255) NOT NULL,
+                        user_name VARCHAR(255),
+                        user_email VARCHAR(255),
+                        filename VARCHAR(500) NOT NULL,
+                        s3_key VARCHAR(1000) NOT NULL,
+                        s3_url VARCHAR(1000),
+                        openai_file_id VARCHAR(255) NOT NULL,
+                        content_type VARCHAR(255),
+                        file_size BIGINT,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+
+                // Create indexes if they don't exist
+                await loggingConfig.logger.pool.query(`
+                    CREATE INDEX IF NOT EXISTS idx_file_uploads_app_name ON file_uploads(app_name);
+                    CREATE INDEX IF NOT EXISTS idx_file_uploads_user_id ON file_uploads(user_id);
+                    CREATE INDEX IF NOT EXISTS idx_file_uploads_created_at ON file_uploads(created_at);
+                    CREATE INDEX IF NOT EXISTS idx_file_uploads_openai_file_id ON file_uploads(openai_file_id);
+                `).catch(() => {}); // Ignore errors if indexes already exist
+
+                // Insert upload record
+                await loggingConfig.logger.pool.query(`
+                    INSERT INTO file_uploads (app_name, user_id, user_name, user_email, filename, s3_key, s3_url, openai_file_id, content_type, file_size)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                `, [
+                    'tpreview', // app_name for TP Review
+                    userId,
+                    userName,
+                    userEmail,
+                    resolvedFilename,
+                    key,
+                    s3Url,
+                    uploaded.id,
+                    resolvedContentType,
+                    fileBuffer.length
+                ]);
+
+                console.log('TP upload record saved to database:', {
+                    user_id: userId,
+                    filename: resolvedFilename,
+                    openai_file_id: uploaded.id
+                });
+            }
+        } catch (dbError) {
+            // Log error but don't fail the request - file is still uploaded
+            console.error('Failed to save TP upload record to database:', dbError?.message);
+        }
+
         return res.json({ 
             file_id: uploaded.id, 
             filename: resolvedFilename,
@@ -3425,6 +3572,70 @@ app.get('/api/admin/access-stats', requireAuth, checkUserPermissions, requireAdm
     } catch (error) {
         console.error('Failed to get access stats:', error);
         res.status(500).json({ error: 'Failed to retrieve access statistics' });
+    }
+});
+
+// Get TP uploads (admin only)
+app.get('/api/admin/tp-uploads', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        const { page = 1, limit = 50 } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+
+        if (loggingConfig.loggerType !== 'postgresql' || !loggingConfig.logger || !loggingConfig.logger.pool) {
+            return res.json({
+                success: true,
+                uploads: [],
+                count: 0,
+                totalCount: 0,
+                totalPages: 0,
+                currentPage: pageNum,
+                limit: limitNum
+            });
+        }
+
+        // Get total count (filter by app_name='tpreview')
+        const countResult = await loggingConfig.logger.pool.query(`
+            SELECT COUNT(*) as total FROM file_uploads WHERE app_name = $1
+        `, ['tpreview']);
+        const totalCount = parseInt(countResult.rows[0].total);
+
+        // Get paginated uploads (filter by app_name='tpreview')
+        const offset = (pageNum - 1) * limitNum;
+        const result = await loggingConfig.logger.pool.query(`
+            SELECT 
+                id,
+                app_name,
+                user_id,
+                user_name,
+                user_email,
+                filename,
+                s3_key,
+                s3_url,
+                openai_file_id,
+                content_type,
+                file_size,
+                created_at
+            FROM file_uploads
+            WHERE app_name = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        `, ['tpreview', limitNum, offset]);
+
+        const totalPages = Math.ceil(totalCount / limitNum);
+
+        res.json({
+            success: true,
+            uploads: result.rows,
+            count: result.rows.length,
+            totalCount,
+            totalPages,
+            currentPage: pageNum,
+            limit: limitNum
+        });
+    } catch (error) {
+        console.error('Failed to get TP uploads:', error);
+        res.status(500).json({ error: 'Failed to retrieve TP uploads', details: error.message });
     }
 });
 
@@ -4270,6 +4481,11 @@ app.get('/admin/s3', requireAuth, checkUserPermissions, requireAdmin, (req, res)
 // Admin chatbots route - require admin access
 app.get('/admin/chatbots', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, 'admin-chatbots.html'));
+});
+
+// Admin TP uploads route - require admin access
+app.get('/admin/tp-uploads', requireAuth, checkUserPermissions, requireAdmin, (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-tp-uploads.html'));
 });
 
 // New User Home route - for users with 'New' type

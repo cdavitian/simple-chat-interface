@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>TP Uploads</title>
+    <link rel="stylesheet" href="/menu-bar.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            padding-top: 76px; /* Account for menu bar */
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-weight: 500;
+            color: #555;
+        }
+        input, select, button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .back-btn {
+            background: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .back-btn:hover {
+            background: #5a6268;
+            color: white;
+            text-decoration: none;
+        }
+        .uploads-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .uploads-table th,
+        .uploads-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .uploads-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+            position: sticky;
+            top: 0;
+        }
+        .uploads-table tr:hover {
+            background: #f8f9fa;
+        }
+        .uploads-table td {
+            word-break: break-word;
+        }
+        .s3-url {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .s3-url a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .s3-url a:hover {
+            text-decoration: underline;
+        }
+        .file-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .pagination-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding: 15px 0;
+            border-top: 1px solid #eee;
+        }
+        .pagination-info {
+            color: #666;
+            font-size: 14px;
+        }
+        .pagination-buttons {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .pagination-buttons button {
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .pagination-buttons button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .pagination-buttons button:disabled:hover {
+            background: #ccc;
+        }
+        .page-size-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .page-size-selector select {
+            padding: 6px 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>TP Uploads</h1>
+            <a href="/admin" class="back-btn">← Back to Admin Menu</a>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="pageSize">Rows per page</label>
+                <select id="pageSize">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button onclick="loadUploads()">Refresh</button>
+            </div>
+        </div>
+
+        <div id="uploadsContainer">
+            <div class="loading">Loading uploads...</div>
+        </div>
+
+        <div id="paginationContainer" class="pagination-controls" style="display: none;">
+            <!-- Pagination controls will be populated here -->
+        </div>
+    </div>
+
+    <script>
+        // Pagination state
+        let currentPage = 1;
+        let totalPages = 1;
+        let totalCount = 0;
+
+        async function loadUploads(page = 1) {
+            const pageSize = document.getElementById('pageSize').value;
+            
+            try {
+                const params = new URLSearchParams({
+                    page: page,
+                    limit: pageSize
+                });
+                
+                const response = await fetch(`/api/admin/tp-uploads?${params.toString()}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentPage = data.currentPage;
+                    totalPages = data.totalPages;
+                    totalCount = data.totalCount;
+                    
+                    displayUploads(data.uploads);
+                    displayPagination();
+                } else {
+                    showError('Failed to load uploads');
+                }
+            } catch (error) {
+                showError('Error loading uploads: ' + error.message);
+            }
+        }
+
+        function displayUploads(uploads) {
+            const container = document.getElementById('uploadsContainer');
+            
+            if (uploads.length === 0) {
+                container.innerHTML = '<div class="no-data">No uploads found</div>';
+                return;
+            }
+
+            const table = `
+                <table class="uploads-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>User Name</th>
+                            <th>S3 URL</th>
+                            <th>OpenAI File ID</th>
+                            <th>Creation Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${uploads.map(upload => `
+                            <tr>
+                                <td>${escapeHtml(upload.filename || 'N/A')}</td>
+                                <td>${escapeHtml(upload.user_name || upload.user_email || upload.user_id || 'N/A')}</td>
+                                <td class="s3-url">
+                                    ${upload.s3_url ? `<a href="${escapeHtml(upload.s3_url)}" target="_blank" title="${escapeHtml(upload.s3_url)}">${escapeHtml(upload.s3_url)}</a>` : 'N/A'}
+                                </td>
+                                <td class="file-id">${escapeHtml(upload.openai_file_id || 'N/A')}</td>
+                                <td>${upload.created_at ? new Date(upload.created_at).toLocaleString() : 'N/A'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            
+            container.innerHTML = table;
+        }
+
+        function displayPagination() {
+            const container = document.getElementById('paginationContainer');
+            
+            if (totalPages <= 1) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            const startItem = (currentPage - 1) * parseInt(document.getElementById('pageSize').value) + 1;
+            const endItem = Math.min(currentPage * parseInt(document.getElementById('pageSize').value), totalCount);
+            
+            container.innerHTML = `
+                <div class="pagination-info">
+                    Showing ${startItem}-${endItem} of ${totalCount} uploads
+                </div>
+                <div class="pagination-buttons">
+                    <button onclick="loadUploads(1)" ${currentPage === 1 ? 'disabled' : ''}>First</button>
+                    <button onclick="loadUploads(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
+                    <span style="padding: 0 10px;">Page ${currentPage} of ${totalPages}</span>
+                    <button onclick="loadUploads(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+                    <button onclick="loadUploads(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>Last</button>
+                </div>
+            `;
+            container.style.display = 'flex';
+        }
+
+        function showError(message) {
+            const container = document.getElementById('uploadsContainer');
+            container.innerHTML = `<div class="error">${escapeHtml(message)}</div>`;
+            document.getElementById('paginationContainer').style.display = 'none';
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Add event listener for page size changes
+        document.getElementById('pageSize').addEventListener('change', function() {
+            loadUploads(1); // Reset to first page when page size changes
+        });
+
+        // Initialize menu bar
+        async function initMenuBar() {
+            try {
+                if (window.createMenuBar) {
+                    createMenuBar(null);
+                }
+                
+                const response = await fetch('/api/user');
+                if (response.ok) {
+                    const userData = await response.json();
+                    if (window.updateMenuBarUserInfo) {
+                        updateMenuBarUserInfo(userData);
+                    }
+                }
+            } catch (err) {
+                console.error('Menu bar initialization failed:', err);
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initMenuBar();
+            loadUploads();
+        });
+    </script>
+    <script src="/menu-bar.js"></script>
+</body>
+</html>
+

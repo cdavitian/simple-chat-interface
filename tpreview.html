@@ -152,8 +152,8 @@
                 uploadStatus.textContent = 'Getting upload URL...';
                 uploadStatus.classList.add('show');
                 
-                // 1) Get presigned PUT URL from server
-                const presignResp = await fetch("/api/uploads/presign", {
+                // 1) Get presigned PUT URL from server (TP Review endpoint uses /treatementplans folder)
+                const presignResp = await fetch("/api/tpreview/uploads/presign", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     credentials: "include",
