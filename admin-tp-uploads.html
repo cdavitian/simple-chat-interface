@@ -206,6 +206,18 @@
             <a href="/admin" class="back-btn">← Back to Admin Menu</a>
         </div>
         
+        <div class="prompt-id-section">
+            <label for="promptId">Prompt ID:</label>
+            <input 
+                type="text" 
+                id="promptId" 
+                placeholder="pmpt_692f9786740c81968c5da311ccafb2f40000300af81af760"
+                value=""
+            />
+        </div>
+
+        <h2 class="section-title">User Uploads</h2>
+
         <div class="controls">
             <div class="control-group">
                 <label for="pageSize">Rows per page</label>
@@ -220,18 +232,6 @@
                 <button onclick="loadUploads()">Refresh</button>
             </div>
         </div>
-
-        <div class="prompt-id-section">
-            <label for="promptId">Prompt ID:</label>
-            <input 
-                type="text" 
-                id="promptId" 
-                placeholder="pmpt_692f9786740c81968c5da311ccafb2f40000300af81af760"
-                value=""
-            />
-        </div>
-
-        <h2 class="section-title">User Uploads</h2>
 
         <div id="uploadsContainer">
             <div class="loading">Loading uploads...</div>
