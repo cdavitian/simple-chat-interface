@@ -3368,44 +3368,35 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
             file_id: file_id
         });
 
-        // Build content array: file + (optional) text prompt
+        // Build content array: file + text prompt
         // For Responses API, files go directly in content as input_file, not in attachments
+        // Model and reasoning come from Chat tool configuration, not from code or prompt
         const content = [
             {
                 type: 'input_file',
-                file_id: file_id,  // This is how Responses API sees the file
+                file_id: file_id,
+            },
+            {
+                type: 'input_text',
+                text: hasPromptTemplate
+                    ? 'Please review the attached treatment plan.'
+                    : promptTextFallback,
             },
         ];
 
-        if (!hasPromptTemplate) {
-            // If no prompt template, include explicit instructions
-            content.push({
-                type: 'input_text',
-                text: promptTextFallback,
-            });
-        } else {
-            // Optional: lightweight text for the Prompt to use as input
-            content.push({
-                type: 'input_text',
-                text: 'Please review the attached treatment plan.',
-            });
-        }
-
-        const inputMessage = {
-            role: 'user',
-            content,  // ALWAYS present and non-empty
-        };
-
         const payload = {
-            model: process.env.TPREVIEW_MODEL || 'gpt-4.1',  // or whatever you want as default
-            input: [inputMessage],
+            input: [
+                {
+                    role: 'user',
+                    content,
+                },
+            ],
         };
 
-        // If a Prompt template is configured, attach it and (optionally) let the Prompt control the model
+        // Only add prompt if applicable
+        // Note: Prompt should NOT contain model or reasoning settings - those come from Chat config
         if (hasPromptTemplate) {
-            // If your Prompt already has a model set, you can drop `model`:
-            // delete payload.model;
-            payload.prompt = { id: promptId };  // you can also add version here if you want
+            payload.prompt = { id: promptId };
         }
 
         const response = await client.responses.create(payload);
