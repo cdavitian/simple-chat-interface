@@ -3359,22 +3359,57 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
             return res.status(500).json({ error: 'OpenAI client is not configured for TP Review' });
         }
 
+        // Get S3 key from database using file_id
+        let s3Key = null;
+        const bucketName = process.env.S3_BUCKET_NAME;
+        const region = process.env.AWS_REGION || 'us-east-1';
+
+        if (loggingConfig.loggerType === 'postgresql' && loggingConfig.logger && loggingConfig.logger.pool) {
+            try {
+                const result = await loggingConfig.logger.pool.query(`
+                    SELECT s3_key FROM file_uploads 
+                    WHERE openai_file_id = $1 AND app_name = 'tpreview'
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                `, [file_id]);
+
+                if (result.rows.length > 0) {
+                    s3Key = result.rows[0].s3_key;
+                }
+            } catch (dbError) {
+                console.warn('[tpreview.chat] Failed to lookup S3 key from database:', dbError?.message);
+            }
+        }
+
+        if (!s3Key) {
+            return res.status(404).json({ error: 'File not found in database. Please re-upload the file.' });
+        }
+
+        // Generate pre-signed GET URL for S3 object
+        const s3 = new AWS.S3({ region });
+        const fileUrl = s3.getSignedUrl('getObject', {
+            Bucket: bucketName,
+            Key: s3Key,
+            Expires: 3600 // 1 hour expiration
+        });
+
         const promptId = await getTPReviewPromptId();
         const hasPromptTemplate = !!promptId;
         const promptTextFallback = 'Please review this treatment plan document.';
 
-        console.log('[tpreview.chat] Creating response with prompt template + file input:', {
+        console.log('[tpreview.chat] Creating response with prompt template + file URL:', {
             prompt_id: promptId || null,
-            file_id: file_id
+            file_id: file_id,
+            s3_key: s3Key
         });
 
         // Build content array: file + text prompt
-        // For Responses API, files go directly in content as input_file, not in attachments
+        // For Responses API, files go directly in content as input_file with file_url, not file_id
         // Model and reasoning come from Chat tool configuration, not from code or prompt
         const content = [
             {
                 type: 'input_file',
-                file_id: file_id,
+                file_url: fileUrl,
             },
             {
                 type: 'input_text',
@@ -3384,6 +3419,8 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
             },
         ];
 
+        // Build payload - explicitly exclude model, reasoning, and other settings
+        // These must come from Chat tool configuration, not from our code
         const payload = {
             input: [
                 {
@@ -3398,6 +3435,12 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
         if (hasPromptTemplate) {
             payload.prompt = { id: promptId };
         }
+
+        // Explicitly ensure we never send reasoning or model settings
+        // Chat tool configuration handles these, not our payload
+        delete payload.reasoning;
+        delete payload.model_settings;
+        delete payload.model;
 
         const response = await client.responses.create(payload);
 
@@ -3750,6 +3793,134 @@ app.post('/api/admin/tp-settings/prompt-id', requireAuth, checkUserPermissions, 
     } catch (error) {
         console.error('Failed to update TP Review prompt ID:', error);
         res.status(500).json({ error: 'Failed to update TP Review prompt ID', details: error.message });
+    }
+});
+
+// TP Review settings - remove reasoning from prompt (admin only)
+// This attempts to update the prompt in OpenAI Platform to remove reasoning.effort
+app.post('/api/admin/tp-settings/remove-reasoning', requireAuth, checkUserPermissions, requireAdmin, async (req, res) => {
+    try {
+        const client = getOpenAIClient2();
+        if (!client) {
+            return res.status(500).json({ error: 'OpenAI client is not configured for TP Review' });
+        }
+
+        const promptId = await getTPReviewPromptId();
+        if (!promptId) {
+            return res.status(400).json({ error: 'No prompt ID configured. Please set a prompt ID first.' });
+        }
+
+        console.log('[admin] Attempting to remove reasoning.effort from prompt:', promptId);
+
+        // Try to retrieve the prompt first
+        let prompt;
+        try {
+            // Attempt to use prompts API if available
+            if (client.prompts?.retrieve) {
+                prompt = await client.prompts.retrieve(promptId);
+            } else if (client.beta?.prompts?.retrieve) {
+                prompt = await client.beta.prompts.retrieve(promptId);
+            } else {
+                // If SDK doesn't support prompts API, provide instructions
+                return res.status(501).json({
+                    error: 'Prompt update via API not supported by this SDK version',
+                    instructions: [
+                        'Please remove reasoning.effort from your prompt manually in OpenAI Platform:',
+                        '1. Go to https://platform.openai.com/prompts',
+                        `2. Find prompt ID: ${promptId}`,
+                        '3. Edit the prompt and remove any reasoning.effort or reasoning settings',
+                        '4. Save the prompt',
+                        '',
+                        'Reasoning settings should come from Chat tool configuration, not from the prompt.'
+                    ]
+                });
+            }
+        } catch (retrieveError) {
+            console.error('[admin] Failed to retrieve prompt:', retrieveError);
+            return res.status(500).json({
+                error: 'Failed to retrieve prompt',
+                details: retrieveError?.message || 'Unknown error',
+                instructions: [
+                    'Please remove reasoning.effort from your prompt manually in OpenAI Platform:',
+                    '1. Go to https://platform.openai.com/prompts',
+                    `2. Find prompt ID: ${promptId}`,
+                    '3. Edit the prompt and remove any reasoning.effort or reasoning settings',
+                    '4. Save the prompt'
+                ]
+            });
+        }
+
+        // Check if prompt has reasoning settings
+        const hasReasoning = prompt?.reasoning || prompt?.model_settings?.reasoning;
+        if (!hasReasoning) {
+            return res.json({
+                success: true,
+                message: 'Prompt does not contain reasoning settings - no action needed',
+                promptId: promptId
+            });
+        }
+
+        // Attempt to update the prompt to remove reasoning
+        try {
+            const updatePayload = {};
+            
+            // Remove reasoning from top level if present
+            if (prompt.reasoning) {
+                updatePayload.reasoning = undefined;
+            }
+            
+            // Remove reasoning from model_settings if present
+            if (prompt.model_settings?.reasoning) {
+                if (!updatePayload.model_settings) {
+                    updatePayload.model_settings = { ...prompt.model_settings };
+                }
+                delete updatePayload.model_settings.reasoning;
+            }
+
+            let updatedPrompt;
+            if (client.prompts?.update) {
+                updatedPrompt = await client.prompts.update(promptId, updatePayload);
+            } else if (client.beta?.prompts?.update) {
+                updatedPrompt = await client.beta.prompts.update(promptId, updatePayload);
+            } else {
+                return res.status(501).json({
+                    error: 'Prompt update via API not supported by this SDK version',
+                    instructions: [
+                        'Please remove reasoning.effort from your prompt manually in OpenAI Platform:',
+                        '1. Go to https://platform.openai.com/prompts',
+                        `2. Find prompt ID: ${promptId}`,
+                        '3. Edit the prompt and remove any reasoning.effort or reasoning settings',
+                        '4. Save the prompt'
+                    ]
+                });
+            }
+
+            return res.json({
+                success: true,
+                message: 'Successfully removed reasoning settings from prompt',
+                promptId: promptId,
+                updatedPrompt: updatedPrompt
+            });
+        } catch (updateError) {
+            console.error('[admin] Failed to update prompt:', updateError);
+            return res.status(500).json({
+                error: 'Failed to update prompt',
+                details: updateError?.message || 'Unknown error',
+                instructions: [
+                    'Please remove reasoning.effort from your prompt manually in OpenAI Platform:',
+                    '1. Go to https://platform.openai.com/prompts',
+                    `2. Find prompt ID: ${promptId}`,
+                    '3. Edit the prompt and remove any reasoning.effort or reasoning settings',
+                    '4. Save the prompt'
+                ]
+            });
+        }
+    } catch (error) {
+        console.error('[admin] Failed to remove reasoning from prompt:', error);
+        return res.status(500).json({
+            error: 'Failed to remove reasoning from prompt',
+            details: error?.message || 'Unknown error'
+        });
     }
 });
 
