@@ -3363,52 +3363,49 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
         const hasPromptTemplate = !!promptId;
         const promptTextFallback = 'Please review this treatment plan document.';
 
-        console.log('[tpreview.chat] Creating response with prompt template + file attachment:', {
+        console.log('[tpreview.chat] Creating response with prompt template + file input:', {
             prompt_id: promptId || null,
             file_id: file_id
         });
 
-        // Build content array - ALWAYS required by Responses API, even with prompt template
-        const content = [];
+        // Build content array: file + (optional) text prompt
+        // For Responses API, files go directly in content as input_file, not in attachments
+        const content = [
+            {
+                type: 'input_file',
+                file_id: file_id,  // This is how Responses API sees the file
+            },
+        ];
+
         if (!hasPromptTemplate) {
-            // If no prompt template, include fallback text instruction
-            content.push({ type: 'text', text: promptTextFallback });
-        } else {
-            // When using a prompt template, still send input_text (template can use it)
+            // If no prompt template, include explicit instructions
             content.push({
                 type: 'input_text',
-                input_text: 'Please review the attached treatment plan document.',
+                text: promptTextFallback,
+            });
+        } else {
+            // Optional: lightweight text for the Prompt to use as input
+            content.push({
+                type: 'input_text',
+                text: 'Please review the attached treatment plan.',
             });
         }
 
-        // Build the user message (attachments go at top level, not on input message)
         const inputMessage = {
             role: 'user',
-            content,  // ALWAYS present (required by Responses API)
+            content,  // ALWAYS present and non-empty
         };
-
-        // Model must support files (gpt-4.1, gpt-5.1, etc.)
-        // If using prompt template, let the prompt define the model
-        const model = hasPromptTemplate ? undefined : (process.env.TPREVIEW_MODEL || 'gpt-4.1');
 
         const payload = {
-            ...(model ? { model } : {}),
+            model: process.env.TPREVIEW_MODEL || 'gpt-4.1',  // or whatever you want as default
             input: [inputMessage],
-            // Attachments belong at top level of payload, not on input[0]
-            attachments: [
-                {
-                    file_id: file_id,
-                    tools: [{ type: 'file_search' }],  // Required format for Responses API
-                },
-            ],
-            // Explicitly make file_search available
-            tools: [{ type: 'file_search' }],
         };
 
-        // If a prompt template ID is configured, attach it as the prompt object
-        // The prompt will define the model, so we don't set model in that case
+        // If a Prompt template is configured, attach it and (optionally) let the Prompt control the model
         if (hasPromptTemplate) {
-            payload.prompt = { id: promptId };
+            // If your Prompt already has a model set, you can drop `model`:
+            // delete payload.model;
+            payload.prompt = { id: promptId };  // you can also add version here if you want
         }
 
         const response = await client.responses.create(payload);
