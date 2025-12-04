@@ -3368,19 +3368,25 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
             file_id: file_id
         });
 
-        // Build content array with text instructions
+        // Build content array - ALWAYS required by Responses API, even with prompt template
         // Note: Files must be in attachments array, not in content
         const content = [];
         if (!hasPromptTemplate) {
-            // If no prompt template, include text instruction
+            // If no prompt template, include fallback text instruction
             content.push({ type: 'text', text: promptTextFallback });
+        } else {
+            // When using a prompt template, still send input_text (template can use it)
+            content.push({
+                type: 'input_text',
+                input_text: 'Please review the attached treatment plan.'
+            });
         }
 
         // Build the user message with attachments array (required for Chat to read files)
         // The attachments array with tools: ["file_search"] is what enables Chat to actually read the file
         const inputMessage = {
             role: 'user',
-            ...(content.length > 0 ? { content } : {}),
+            content,  // ALWAYS present now (required by Responses API)
             attachments: [
                 {
                     file_id: file_id,
@@ -3389,7 +3395,11 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
             ]
         };
 
+        // Model must support files (gpt-4.1, gpt-5.1, etc.)
+        const model = process.env.TPREVIEW_MODEL || 'gpt-4.1';
+
         const payload = {
+            model: model,
             input: [inputMessage],
         };
 
