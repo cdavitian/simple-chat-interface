@@ -3363,25 +3363,34 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
         const hasPromptTemplate = !!promptId;
         const promptTextFallback = 'Please review this treatment plan document.';
 
-        console.log('[tpreview.chat] Creating response with prompt template + input_file:', {
+        console.log('[tpreview.chat] Creating response with prompt template + file attachment:', {
             prompt_id: promptId || null,
             file_id: file_id
         });
 
-        const payload = {
-            // Always send the file via input_file so Responses can see it
-            input: [
+        // Build content array with text instructions
+        // Note: Files must be in attachments array, not in content
+        const content = [];
+        if (!hasPromptTemplate) {
+            // If no prompt template, include text instruction
+            content.push({ type: 'text', text: promptTextFallback });
+        }
+
+        // Build the user message with attachments array (required for Chat to read files)
+        // The attachments array with tools: ["file_search"] is what enables Chat to actually read the file
+        const inputMessage = {
+            role: 'user',
+            ...(content.length > 0 ? { content } : {}),
+            attachments: [
                 {
-                    role: 'user',
-                    content: [
-                        // If no prompt template is configured, fall back to inline text
-                        ...(hasPromptTemplate ? [] : [
-                            { type: 'input_text', text: promptTextFallback },
-                        ]),
-                        { type: 'input_file', file_id },
-                    ],
-                },
-            ],
+                    file_id: file_id,
+                    tools: ['file_search']  // Required for the agent to read the file
+                }
+            ]
+        };
+
+        const payload = {
+            input: [inputMessage],
         };
 
         // If a prompt template ID is configured, attach it as the prompt object
