@@ -3360,25 +3360,36 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
         }
 
         const promptId = await getTPReviewPromptId();
-        const promptText = promptId || 'Please review this treatment plan document.';
+        const hasPromptTemplate = !!promptId;
+        const promptTextFallback = 'Please review this treatment plan document.';
 
-        console.log('[tpreview.chat] Creating response with inline prompt and input_file:', {
-            prompt_text: promptText,
+        console.log('[tpreview.chat] Creating response with prompt template + input_file:', {
+            prompt_id: promptId || null,
             file_id: file_id
         });
 
-        const response = await client.responses.create({
-            // Use inline prompt structure with input_text + input_file, per Responses API
-            prompt: [
+        const payload = {
+            // Always send the file via input_file so Responses can see it
+            input: [
                 {
                     role: 'user',
                     content: [
-                        { type: 'input_text', text: promptText },
+                        // If no prompt template is configured, fall back to inline text
+                        ...(hasPromptTemplate ? [] : [
+                            { type: 'input_text', text: promptTextFallback },
+                        ]),
                         { type: 'input_file', file_id },
                     ],
                 },
             ],
-        });
+        };
+
+        // If a prompt template ID is configured, attach it as the prompt object
+        if (hasPromptTemplate) {
+            payload.prompt = { id: promptId };
+        }
+
+        const response = await client.responses.create(payload);
 
         // Try to extract a human-readable text output
         let outText = '';
