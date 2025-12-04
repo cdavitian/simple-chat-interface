@@ -3369,7 +3369,6 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
         });
 
         // Build content array - ALWAYS required by Responses API, even with prompt template
-        // Note: Files must be in attachments array, not in content
         const content = [];
         if (!hasPromptTemplate) {
             // If no prompt template, include fallback text instruction
@@ -3378,32 +3377,36 @@ app.post('/api/tpreview/chat', requireAuth, async (req, res) => {
             // When using a prompt template, still send input_text (template can use it)
             content.push({
                 type: 'input_text',
-                input_text: 'Please review the attached treatment plan.'
+                input_text: 'Please review the attached treatment plan document.',
             });
         }
 
-        // Build the user message with attachments array (required for Chat to read files)
-        // The attachments array with tools: ["file_search"] is what enables Chat to actually read the file
+        // Build the user message (attachments go at top level, not on input message)
         const inputMessage = {
             role: 'user',
-            content,  // ALWAYS present now (required by Responses API)
-            attachments: [
-                {
-                    file_id: file_id,
-                    tools: ['file_search']  // Required for the agent to read the file
-                }
-            ]
+            content,  // ALWAYS present (required by Responses API)
         };
 
         // Model must support files (gpt-4.1, gpt-5.1, etc.)
-        const model = process.env.TPREVIEW_MODEL || 'gpt-4.1';
+        // If using prompt template, let the prompt define the model
+        const model = hasPromptTemplate ? undefined : (process.env.TPREVIEW_MODEL || 'gpt-4.1');
 
         const payload = {
-            model: model,
+            ...(model ? { model } : {}),
             input: [inputMessage],
+            // Attachments belong at top level of payload, not on input[0]
+            attachments: [
+                {
+                    file_id: file_id,
+                    tools: [{ type: 'file_search' }],  // Required format for Responses API
+                },
+            ],
+            // Explicitly make file_search available
+            tools: [{ type: 'file_search' }],
         };
 
         // If a prompt template ID is configured, attach it as the prompt object
+        // The prompt will define the model, so we don't set model in that case
         if (hasPromptTemplate) {
             payload.prompt = { id: promptId };
         }
